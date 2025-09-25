@@ -111,7 +111,7 @@ TRANSCRIPTION_SETTINGS = {
         'mp3', 'mp4', 'wav', 'flac', 'aac', 'ogg', 'webm', 'opus', 'm4a', 'wma'
     ],
     "api_endpoint": "https://api.deepgram.com/v1/listen",
-    "timeout": 30,  # Request timeout in seconds
+    "timeout": 30,  # Request timeout inseconds
 }
 
 # Confidence calculation settings
