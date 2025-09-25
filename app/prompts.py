@@ -2,7 +2,7 @@
 # Modify these settings to change transcription behavior
 
 # Deepgram model settings (using nova-2 for broader availability)
-DEEPGRAM_MODEL = "nova-2"  # High-quality model with medical capabilities
+DEEPGRAM_MODEL = "nova-3"  # High-quality model with medical capabilities
 
 # Deepgram transcription options
 DEEPGRAM_OPTIONS = {
