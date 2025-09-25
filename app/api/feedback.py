@@ -18,14 +18,15 @@ class FeedbackRequest(BaseModel):
 async def submit_feedback(feedback_data: FeedbackRequest):
     """Save feedback to a file on the server"""
     try:
-        # Validate rating
-        if not (1 <= feedback_data.rating <= 5):
-            raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+        # Validate rating (allow 0 for no rating)
+        if not (0 <= feedback_data.rating <= 5):
+            raise HTTPException(status_code=400, detail="Rating must be between 0 and 5 (0 = no rating)")
         
         # Create feedback entry
         feedback_entry = {
             "timestamp": datetime.now().isoformat(),
             "rating": feedback_data.rating,
+            "rating_text": f"{feedback_data.rating} stars" if feedback_data.rating > 0 else "No rating given",
             "feedback": feedback_data.feedback,
             "transcription_preview": feedback_data.transcription_preview
         }
@@ -86,7 +87,9 @@ async def get_feedback_stats():
         
         # Calculate stats
         total = len(feedback)
-        avg_rating = sum(f["rating"] for f in feedback) / total
+        # Only count ratings > 0 for average calculation
+        ratings = [f["rating"] for f in feedback if f["rating"] > 0]
+        avg_rating = sum(ratings) / len(ratings) if ratings else 0
         recent = feedback[-10:]  # Last 10 feedback entries
         
         return {
