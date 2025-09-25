@@ -51,11 +51,15 @@ MEDICAL_CONTEXT_PROMPTS = {
     MEDICAL EXAMINATION TRANSCRIPT - KNEE ASSESSMENT:
     This is a clinical examination of the knee joint. Pay special attention to:
     - Joint mechanics terminology (locking, catching, slipping, instability)
-    - Anatomical references (medial, lateral, joint line, patella)
+    - Anatomical references (medial, lateral, joint line, patella, tricompartmental)
     - Range of motion measurements (degrees, flexion, extension)
     - Physical examination findings (palpation, tenderness, swelling)
+    - Injury mechanisms: "fall slip trauma" (not "false lip trauma")
+    - Joint symptoms: "catching, locking" (not "catching lock")
+    - Skin findings: "open skin lesion" (not "open condition")
     - Use medical terminology knowledge to distinguish between similar-sounding words
-    - "lip" refers to anatomical structures, "slip" refers to joint mechanics
+    - Convert number words to digits (one=1, two=2, etc.)
+    - Focus on orthopedic terminology and clinical accuracy
     """,
     
     "injection_procedure": """
@@ -84,22 +88,104 @@ MEDICAL_CONTEXT_PROMPTS = {
     - "locking" for joint mechanisms vs "lacking" (not medical terminology)
     - Preserve legitimate medical terms, only correct clear mishearings
     - Apply medical knowledge to determine appropriate terminology
+    """,
+    
+    "doctor_orthopedic": """
+    DOCTOR ORTHOPEDIC CONSULTATION TRANSCRIPT:
+    This is a medical consultation for orthopedic conditions. Critical accuracy requirements:
+    
+    INJURY MECHANISMS:
+    - "fall slip trauma" (patient fell and slipped causing trauma)
+    - NOT "false lip trauma" (anatomically incorrect)
+    
+    JOINT SYMPTOMS:
+    - "catching, locking" (joint mechanics symptoms)
+    - NOT "catching lock" (grammatically incorrect)
+    
+    SKIN FINDINGS:
+    - "open skin lesion" (dermatological assessment)
+    - NOT "open condition" (vague medical term)
+    
+    ANATOMICAL TERMS:
+    - "tricompartmental" (knee joint compartments)
+    - NOT "trichomobarbital" (medication name, incorrect context)
+    
+    MEDICAL PROGRESSION:
+    - "no regressed" (condition did not worsen)
+    - NOT "no regrowth" (incorrect medical progression)
+    
+    NUMBERS:
+    - Always use digits: 1, 2, 3, 4, 5 (not one, two, three, four, five)
+    - Critical for measurements, ages, doses, and clinical data
+    
+    Focus on clinical precision and medical terminology accuracy.
     """
 }
 
-# Primary medical transcription prompt
+# Primary medical transcription prompt for doctors
 PRIMARY_MEDICAL_PROMPT = """
-You are transcribing medical content. Apply your medical knowledge to:
-1. Distinguish between similar-sounding medical terms based on context
-2. Use appropriate medical terminology for anatomical structures vs. mechanical descriptions
-3. Preserve legitimate medical terms and only correct obvious transcription errors
-4. Apply clinical context to determine the most appropriate medical terminology
+DOCTOR-FOCUSED MEDICAL TRANSCRIPTION:
+You are transcribing medical content for healthcare professionals. Apply your medical knowledge to:
+
+1. MEDICAL TERMINOLOGY ACCURACY:
+   - Distinguish between similar-sounding medical terms based on clinical context
+   - Use appropriate medical terminology for anatomical structures vs. mechanical descriptions
+   - Correct common transcription errors while preserving legitimate medical terms
+
+2. ORTHOPEDIC/KNEE EXAMINATION SPECIFICS:
+   - "fall slip trauma" (injury mechanism) - NOT "false lip trauma"
+   - "catching, locking" (joint symptoms) - NOT "catching lock"
+   - "open skin lesion" (dermatological finding) - NOT "open condition"
+   - "tricompartmental" (knee anatomy) - NOT "trichomobarbital"
+   - "no regressed" (medical progression) - NOT "no regrowth"
+
+3. NUMBER FORMAT REQUIREMENTS:
+   - Convert all number words to digits (one=1, two=2, three=3, etc.)
+   - Use digits for measurements, ages, doses, and quantities
+   - Maintain medical precision in numerical data
+
+4. CLINICAL CONTEXT AWARENESS:
+   - Apply clinical context to determine the most appropriate medical terminology
+   - Focus on orthopedic terminology and clinical accuracy
+   - Preserve medical abbreviations and standard terminology
 """
 
-# Medical terminology corrections dictionary (EMPTY - using prompts only)
+# Medical terminology corrections for common transcription errors
 MEDICAL_TERMINOLOGY_CORRECTIONS = {
-    # No hardcoded corrections - rely on Deepgram's medical model and intelligent prompts
-    # The Nova-3 model with medical context prompts will handle terminology automatically
+    # Orthopedic/Knee examination specific corrections
+    "false lip trauma": "fall slip trauma",
+    "catching lock": "catching, locking", 
+    "open condition": "open skin lesion",
+    "no regrowth": "no regressed",
+    "trichomobarbital": "tricompartmental",
+    "lacking": "locking",
+    "lip trauma": "slip trauma",
+    
+    # Common medical term corrections
+    "ecchymosis": "ecchymosis",  # Keep correct spelling
+    "erythema": "erythema",      # Keep correct spelling
+    "neurovascular": "neurovascular",  # Keep correct spelling
+    
+    # Number format corrections (words to digits)
+    "one": "1",
+    "two": "2", 
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+    "ten": "10",
+    "twenty": "20",
+    "thirty": "30",
+    "forty": "40",
+    "fifty": "50",
+    "sixty": "60",
+    "seventy": "70",
+    "eighty": "80",
+    "ninety": "90",
+    "hundred": "100"
 }
 
 # Deepgram transcription settings
