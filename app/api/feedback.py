@@ -98,3 +98,27 @@ async def get_feedback_stats():
     except Exception as e:
         logger.error(f"Error getting feedback stats: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get feedback stats")
+
+@router.get("/all")
+async def get_all_feedback():
+    """Get all feedback data"""
+    try:
+        feedback_file = "logs/feedback.json"
+        
+        if not os.path.exists(feedback_file):
+            return {
+                "message": "No feedback file found",
+                "feedback": []
+            }
+        
+        with open(feedback_file, 'r') as f:
+            feedback = json.load(f)
+        
+        return {
+            "total_feedback": len(feedback),
+            "feedback": feedback
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting all feedback: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get feedback data")

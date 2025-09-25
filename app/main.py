@@ -66,17 +66,12 @@ app = FastAPI(
     redoc_url="/redoc" if os.getenv('ENVIRONMENT') == 'development' else None
 )
 
-# CORS middleware
+# CORS middleware - Allow all origins for now
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", 
-        "http://localhost:8080",
-        "https://audio-to-text-frontend.vercel.app",
-        "https://audio-to-text-frontend-j3uuj5pkq-cresol-projects.vercel.app"
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
