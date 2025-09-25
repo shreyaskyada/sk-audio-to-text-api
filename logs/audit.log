@@ -1,0 +1,6 @@
+2025-09-25 18:16:19,891 - app.main - INFO - User Admin logged in successfully
+2025-09-25 18:16:27,224 - app.services.hipaa_compliance - INFO - AUDIT: User Admin performed audio_upload - File: WhatsApp Audio 2025-09-24 at 09.27.44_4b31e630 (online-audio-converter.com).mp3, Size: 1120591
+2025-09-25 18:16:32,804 - httpx - INFO - HTTP Request: POST https://api.deepgram.com/v1/listen?detect_language=false&diarize=false&language=en-US&model=nova-3&multichannel=false&punctuate=true&smart_format=true&utterances=true "HTTP/1.1 200 OK"
+2025-09-25 18:16:33,077 - app.services.transcription_service - INFO - Medical terminology enhanced by Nova-3 Medical model
+2025-09-25 18:16:33,079 - app.services.transcription_service - INFO - Deepgram Nova-3 Medical transcription completed successfully: WhatsApp Audio 2025-09-24 at 09.27.44_4b31e630 (online-audio-converter.com).mp3
+2025-09-25 18:16:33,101 - app.services.hipaa_compliance - INFO - AUDIT: User Admin performed transcription_complete - File: WhatsApp Audio 2025-09-24 at 09.27.44_4b31e630 (online-audio-converter.com).mp3 transcribed successfully
