@@ -11,8 +11,12 @@ router = APIRouter()
 
 class FeedbackRequest(BaseModel):
     rating: int
-    feedback: Optional[str] = ""
+    rating_text: str = ""
     transcription_preview: str
+    errors_found: Optional[list] = []
+    total_errors: Optional[int] = 0
+    feedback_type: Optional[str] = "simple"
+    feedback: Optional[str] = ""  # Keep for backward compatibility
 
 @router.post("/submit")
 async def submit_feedback(feedback_data: FeedbackRequest):
@@ -26,9 +30,12 @@ async def submit_feedback(feedback_data: FeedbackRequest):
         feedback_entry = {
             "timestamp": datetime.now().isoformat(),
             "rating": feedback_data.rating,
-            "rating_text": f"{feedback_data.rating} stars" if feedback_data.rating > 0 else "No rating given",
+            "rating_text": feedback_data.rating_text or (f"{feedback_data.rating} stars" if feedback_data.rating > 0 else "No rating given"),
             "feedback": feedback_data.feedback,
-            "transcription_preview": feedback_data.transcription_preview
+            "transcription_preview": feedback_data.transcription_preview,
+            "errors_found": feedback_data.errors_found,
+            "total_errors": feedback_data.total_errors,
+            "feedback_type": feedback_data.feedback_type
         }
         
         # Save to file - use /tmp on Vercel, logs locally
@@ -56,7 +63,8 @@ async def submit_feedback(feedback_data: FeedbackRequest):
             json.dump(existing_feedback, f, indent=2)
         
         # Log to audit log as well
-        logger.info(f"FEEDBACK_RECEIVED: Rating={feedback_data.rating}, Feedback='{feedback_data.feedback[:50]}...'")
+        error_summary = f"{feedback_data.total_errors} errors" if feedback_data.total_errors > 0 else "no errors"
+        logger.info(f"FEEDBACK_RECEIVED: Rating={feedback_data.rating}, Type={feedback_data.feedback_type}, {error_summary}")
         
         return {"message": "Feedback saved successfully", "total_feedback": len(existing_feedback)}
         
