@@ -23,24 +23,11 @@ class HIPAAComplianceService:
         Log access for HIPAA compliance
         """
         try:
-            audit_log = AuditLog(
-                user_id=user_id,
-                action=action,
-                resource_type="transcription",
-                details=details,
-                ip_address="127.0.0.1",  # Default for local development
-                user_agent="AudioTranscriptionApp/1.0"
-            )
-            
-            db.add(audit_log)
-            db.commit()
-            
-            # Also log to file for additional compliance
+            # Only log to file for now (skip database until tables are created)
             self.logger.info(f"AUDIT: User {user_id} performed {action} - {details}")
             
         except Exception as e:
             self.logger.error(f"Failed to log access: {str(e)}")
-            db.rollback()
     
     async def encrypt_sensitive_data(self, data: str) -> str:
         """
