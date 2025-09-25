@@ -31,11 +31,13 @@ async def submit_feedback(feedback_data: FeedbackRequest):
             "transcription_preview": feedback_data.transcription_preview
         }
         
-        # Save to file in logs folder
-        feedback_file = "logs/feedback.json"
-        
-        # Create logs directory if it doesn't exist
-        os.makedirs("logs", exist_ok=True)
+        # Save to file - use /tmp on Vercel, logs locally
+        if os.path.exists("/tmp"):
+            feedback_file = "/tmp/feedback.json"
+        else:
+            feedback_file = "logs/feedback.json"
+            # Create logs directory if it doesn't exist (local development)
+            os.makedirs("logs", exist_ok=True)
         
         # Load existing feedback
         existing_feedback = []
@@ -66,7 +68,11 @@ async def submit_feedback(feedback_data: FeedbackRequest):
 async def get_feedback_stats():
     """Get feedback statistics"""
     try:
-        feedback_file = "logs/feedback.json"
+        # Use /tmp on Vercel, logs locally
+        if os.path.exists("/tmp"):
+            feedback_file = "/tmp/feedback.json"
+        else:
+            feedback_file = "logs/feedback.json"
         
         if not os.path.exists(feedback_file):
             return {
@@ -106,7 +112,11 @@ async def get_feedback_stats():
 async def get_all_feedback():
     """Get all feedback data"""
     try:
-        feedback_file = "logs/feedback.json"
+        # Use /tmp on Vercel, logs locally
+        if os.path.exists("/tmp"):
+            feedback_file = "/tmp/feedback.json"
+        else:
+            feedback_file = "logs/feedback.json"
         
         if not os.path.exists(feedback_file):
             return {
