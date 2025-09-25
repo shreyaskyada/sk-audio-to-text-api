@@ -1,74 +1,74 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, JSON
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import uuid
+from datetime import datetime
 
 Base = declarative_base()
 
 class User(Base):
     __tablename__ = "users"
     
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    username = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
-    is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Relationships
-    transcriptions = relationship("Transcription", back_populates="user")
-    audit_logs = relationship("AuditLog", back_populates="user")
 
 class Transcription(Base):
     __tablename__ = "transcriptions"
     
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    filename = Column(String, nullable=False)
-    encrypted_content = Column(Text, nullable=False)  # Encrypted transcription text
-    language = Column(String, default="unknown")
-    confidence = Column(Float, default=0.0)
-    duration = Column(Float, default=0.0)
-    file_size = Column(Integer, default=0)
-    status = Column(String, default="completed")  # pending, processing, completed, failed
-    transcription_metadata = Column(Text)  # JSON string for additional metadata
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    filename = Column(String)
+    file_size = Column(Integer)
+    transcription_text = Column(Text)
+    confidence_score = Column(Float)
+    processing_time = Column(Float)
+    model_used = Column(String)
+    language_detected = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Relationships
-    user = relationship("User", back_populates="transcriptions")
 
-class AuditLog(Base):
-    __tablename__ = "audit_logs"
+class TranscriptionFeedback(Base):
+    __tablename__ = "transcription_feedback"
     
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)  # Nullable for system logs
-    action = Column(String, nullable=False)  # login, logout, upload, download, delete, etc.
-    resource_type = Column(String, nullable=False)  # user, transcription, file, etc.
-    resource_id = Column(String, nullable=True)  # ID of the resource being accessed
-    details = Column(Text, nullable=True)  # Additional details about the action
-    ip_address = Column(String, nullable=True)
-    user_agent = Column(Text, nullable=True)
-    success = Column(Boolean, default=True)
+    id = Column(Integer, primary_key=True, index=True)
+    transcription_id = Column(Integer, index=True)
+    user_id = Column(Integer, index=True)
+    
+    # Rating (1-5 stars)
+    overall_rating = Column(Integer)  # 1-5
+    
+    # Specific feedback categories
+    accuracy_rating = Column(Integer)  # 1-5
+    medical_terminology_rating = Column(Integer)  # 1-5
+    punctuation_rating = Column(Integer)  # 1-5
+    speed_rating = Column(Integer)  # 1-5
+    
+    # Text feedback
+    feedback_text = Column(Text)
+    corrections_needed = Column(Text)  # What should be corrected
+    
+    # Technical feedback
+    issues_found = Column(JSON)  # List of issues like ["missing punctuation", "wrong medical term"]
+    suggestions = Column(Text)  # Suggestions for improvement
+    
+    # Metadata
+    feedback_type = Column(String, default="user")  # user, admin, system
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relationships
-    user = relationship("User", back_populates="audit_logs")
 
-class SessionToken(Base):
-    __tablename__ = "session_tokens"
+class ModelImprovement(Base):
+    __tablename__ = "model_improvements"
     
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    token_hash = Column(String, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    is_active = Column(Boolean, default=True)
+    id = Column(Integer, primary_key=True, index=True)
+    feedback_id = Column(Integer, index=True)
+    
+    # Improvement tracking
+    issue_type = Column(String)  # medical_terminology, punctuation, accuracy, etc.
+    current_prompt = Column(Text)
+    suggested_prompt = Column(Text)
+    status = Column(String, default="pending")  # pending, implemented, rejected
+    
+    # Implementation tracking
+    implemented_at = Column(DateTime(timezone=True))
+    improvement_notes = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    last_used = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # Relationships
-    user = relationship("User")
-

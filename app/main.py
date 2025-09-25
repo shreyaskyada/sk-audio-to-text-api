@@ -16,6 +16,7 @@ from app.schemas import TranscriptionResponse, TranscriptionRequest
 from app.services.transcription_service import TranscriptionService
 from app.services.hipaa_compliance import HIPAAComplianceService
 from app.utils.encryption import EncryptionService
+from app.api import feedback
 
 # Load environment variables
 load_dotenv()
@@ -242,6 +243,8 @@ async def transcribe_audio(
             detail="Internal server error during transcription"
         )
 
+# Include feedback router
+app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"])
 
 if __name__ == "__main__":
     import uvicorn
