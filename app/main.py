@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
 import os
 from dotenv import load_dotenv
 import logging
@@ -10,19 +9,15 @@ from typing import Optional
 import jwt
 from pydantic import BaseModel
 
-from app.database import get_db, engine
-from app.models import Base
 from app.schemas import TranscriptionResponse, TranscriptionRequest
 from app.services.transcription_service import TranscriptionService
 from app.services.hipaa_compliance import HIPAAComplianceService
 from app.utils.encryption import EncryptionService
 from app.api import feedback
+from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Load environment variables
 load_dotenv()
-
-# Create database tables
-Base.metadata.create_all(bind=engine)
 
 # Configure logging for HIPAA compliance
 # On Vercel, filesystem is read-only  except /tmp, so we adapt logging accordingly
@@ -117,6 +112,15 @@ async def startup_event():
     """Initialize services on startup"""
     logger.info("Starting HIPAA-Compliant Audio Transcription API with Deepgram Nova-3 Medical")
     
+    # Connect to MongoDB
+    try:
+        await connect_to_mongo()
+        logger.info("MongoDB connection established successfully")
+    except Exception as e:
+        logger.error(f"Failed to connect to MongoDB: {str(e)}")
+        logger.warning("Continuing without MongoDB - audit logs will be file-only")
+        # Don't raise exception - allow app to run without MongoDB for development
+    
     # Verify encryption keys
     if not encryption_service.verify_keys():
         logger.error("Encryption keys not properly configured")
@@ -139,6 +143,12 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to initialize transcription service: {str(e)}")
         raise Exception("Transcription service initialization failed")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up on shutdown"""
+    await close_mongo_connection()
+    logger.info("Application shutdown complete")
 
 @app.get("/")
 async def root():
@@ -174,8 +184,8 @@ async def login(request: LoginRequest):
 @app.post("/api/v1/transcribe", response_model=TranscriptionResponse)
 async def transcribe_audio(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    username: str = Depends(verify_token)
+    username: str = Depends(verify_token),
+    db=Depends(get_database)
 ):
     """
     Transcribe audio file with HIPAA compliance

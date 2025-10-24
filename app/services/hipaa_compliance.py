@@ -1,8 +1,7 @@
 import logging
 from datetime import datetime
 from typing import Optional
-from sqlalchemy.orm import Session
-from app.models import AuditLog
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +16,26 @@ class HIPAAComplianceService:
         user_id: str,
         action: str,
         details: str,
-        db: Session
+        db: Optional[AsyncIOMotorDatabase] = None
     ) -> None:
         """
         Log access for HIPAA compliance
         """
         try:
-            # Only log to file for now (skip database until tables are created)
+            # Log to file
             self.logger.info(f"AUDIT: User {user_id} performed {action} - {details}")
+            
+            # Log to MongoDB if database is provided
+            if db is not None:
+                audit_log = {
+                    "user_id": user_id,
+                    "action": action,
+                    "details": details,
+                    "timestamp": datetime.utcnow(),
+                    "ip_address": None,  # Can be added if needed
+                    "user_agent": None   # Can be added if needed
+                }
+                await db["audit_logs"].insert_one(audit_log)
             
         except Exception as e:
             self.logger.error(f"Failed to log access: {str(e)}")

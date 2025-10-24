@@ -4,3 +4,16 @@
 2025-09-25 18:16:33,077 - app.services.transcription_service - INFO - Medical terminology enhanced by Nova-3 Medical model
 2025-09-25 18:16:33,079 - app.services.transcription_service - INFO - Deepgram Nova-3 Medical transcription completed successfully: WhatsApp Audio 2025-09-24 at 09.27.44_4b31e630 (online-audio-converter.com).mp3
 2025-09-25 18:16:33,101 - app.services.hipaa_compliance - INFO - AUDIT: User Admin performed transcription_complete - File: WhatsApp Audio 2025-09-24 at 09.27.44_4b31e630 (online-audio-converter.com).mp3 transcribed successfully
+2025-10-24 22:12:22,419 - app.services.transcription_service - INFO - Connected to Deepgram Nova-3 Medical API
+2025-10-24 22:12:22,420 - app.services.transcription_service - INFO - Using specialized medical transcription model
+2025-10-24 22:12:22,425 - app.main - INFO - Starting HIPAA-Compliant Audio Transcription API with Deepgram Nova-3 Medical
+2025-10-24 22:12:22,425 - app.mongodb - INFO - Attempting to connect to MongoDB: audio-to-text-db
+2025-10-24 22:12:22,425 - app.mongodb - INFO - MongoDB URL: Local MongoDB...
+2025-10-24 22:12:22,447 - app.mongodb - INFO - Connected to MongoDB database: audio-to-text-db
+2025-10-24 22:12:22,447 - app.main - INFO - MongoDB connection established successfully
+2025-10-24 22:12:22,450 - app.main - INFO - Deepgram Nova-3 Medical service initialized successfully
+2025-10-24 22:12:31,385 - app.services.hipaa_compliance - INFO - AUDIT: User Admin performed audio_upload - File: WhatsApp Audio 2025-09-24 at 09.27.44_4b31e630 (online-audio-converter.com).mp3, Size: 1120591
+2025-10-24 22:12:34,999 - app.services.transcription_service - INFO - Medical terminology enhanced by Nova-3 Medical model
+2025-10-24 22:12:35,000 - app.services.transcription_service - INFO - Deepgram Nova-3 Medical transcription completed successfully: WhatsApp Audio 2025-09-24 at 09.27.44_4b31e630 (online-audio-converter.com).mp3
+2025-10-24 22:12:35,000 - app.services.hipaa_compliance - INFO - AUDIT: User Admin performed transcription_complete - File: WhatsApp Audio 2025-09-24 at 09.27.44_4b31e630 (online-audio-converter.com).mp3 transcribed successfully
+2025-10-24 22:13:23,011 - app.api.feedback - INFO - FEEDBACK_RECEIVED: Rating=5, Type=detailed_medical_correction, 2 errors

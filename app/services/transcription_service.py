@@ -1,11 +1,7 @@
 import os
 import tempfile
-from deepgram import (
-    DeepgramClient,
-    DeepgramClientOptions,
-    PrerecordedOptions,
-    FileSource,
-)
+from deepgram import Deepgram
+from deepgram._types import PrerecordedOptions, BufferSource
 from typing import Dict, Any, Optional
 import logging
 from datetime import datetime
@@ -32,11 +28,8 @@ class TranscriptionService:
         if not api_key:
             raise ValueError(ERROR_MESSAGES['api_key_missing'])
         
-        # Initialize Deepgram client with v3 syntax
-        options = DeepgramClientOptions(
-            options={"keepalive": "true"}
-        )
-        self.deepgram = DeepgramClient(api_key, options)
+        # Initialize Deepgram client with v2 syntax
+        self.deepgram = Deepgram(api_key)
         self.supported_formats = FILE_VALIDATION_RULES['supported_extensions']
         self.max_file_size = TRANSCRIPTION_SETTINGS['max_file_size_mb'] * 1024 * 1024
         
@@ -78,41 +71,53 @@ class TranscriptionService:
                 with open(temp_file_path, 'rb') as audio_file:
                     audio_data_bytes = audio_file.read()
                     
-                    # Create file source
-                    payload: FileSource = {
-                        "buffer": audio_data_bytes,
+                    # Determine mimetype based on file extension
+                    mimetype_map = {
+                        'mp3': 'audio/mpeg',
+                        'mp4': 'audio/mp4',
+                        'wav': 'audio/wav',
+                        'flac': 'audio/flac',
+                        'ogg': 'audio/ogg',
+                        'opus': 'audio/opus',
+                        'webm': 'audio/webm',
+                        'm4a': 'audio/mp4'
+                    }
+                    mimetype = mimetype_map.get(file_extension, 'audio/mpeg')
+                    
+                    # Create BufferSource for Deepgram v2 SDK
+                    source: BufferSource = {
+                        'buffer': audio_data_bytes,
+                        'mimetype': mimetype
                     }
                     
-                    # Configure Deepgram options
+                    # Configure Deepgram options for v2 SDK
                     options = PrerecordedOptions(
                         model=DEEPGRAM_MODEL,
                         smart_format=True,
                         punctuate=True,
                         diarize=False,
-                        language="en-US",
+                        language=language or "en-US",
                         multichannel=False,
                         utterances=True,
                         detect_language=False,
                     )
                     
-                    if language:
-                        options.language = language
-                    
-                    # Make the API request
-                    response = self.deepgram.listen.prerecorded.v("1").transcribe_file(
-                        payload, options
+                    # Make the API request using correct v2 syntax
+                    response = await self.deepgram.transcription.prerecorded(
+                        source=source,
+                        options=options
                     )
                 
-                # Extract transcription details
-                transcription_text = response.results.channels[0].alternatives[0].transcript
-                confidence = response.results.channels[0].alternatives[0].confidence
+                # Extract transcription details (response is a dict in v2 SDK)
+                transcription_text = response['results']['channels'][0]['alternatives'][0]['transcript']
+                confidence = response['results']['channels'][0]['alternatives'][0]['confidence']
                 
                 # Apply medical terminology corrections
                 transcription_text = self._correct_medical_terminology(transcription_text)
                 
-                # Get additional metadata (with fallbacks for missing attributes)
-                detected_language = getattr(response.results, 'language', 'en-US')
-                duration = getattr(response.metadata, 'duration', 0)
+                # Get additional metadata (with fallbacks for missing keys)
+                detected_language = response.get('results', {}).get('language', 'en-US')
+                duration = response.get('metadata', {}).get('duration', 0)
                 
                 # Clean up temporary file
                 os.unlink(temp_file_path)
