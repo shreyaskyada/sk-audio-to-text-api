@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 import logging
 
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -24,8 +25,25 @@ async def connect_to_mongo():
         logger.info(f"Attempting to connect to MongoDB: {database_name}")
         logger.info(f"MongoDB URL: {mongodb_url[:mongodb_url.find('@')] if '@' in mongodb_url else 'Local MongoDB'}...")
         
-        # Create async client
-        mongodb.client = AsyncIOMotorClient(mongodb_url)
+        # Create async client with SSL/TLS configuration for MongoDB Atlas
+        # Add connection parameters to handle SSL/TLS properly
+        connection_params = {
+            'serverSelectionTimeoutMS': 5000,  # 5 second timeout
+            'connectTimeoutMS': 10000,          # 10 second connection timeout
+            'socketTimeoutMS': 20000,           # 20 second socket timeout
+        }
+        
+        # If using MongoDB Atlas (contains mongodb.net), add SSL parameters
+        if 'mongodb.net' in mongodb_url or 'mongodb+srv' in mongodb_url:
+            connection_params.update({
+                'tls': True,
+                'tlsAllowInvalidCertificates': False,  # Set to True only for testing
+                'retryWrites': True,
+                'w': 'majority'
+            })
+            logger.info("Detected MongoDB Atlas - using TLS/SSL connection")
+        
+        mongodb.client = AsyncIOMotorClient(mongodb_url, **connection_params)
         mongodb.database = mongodb.client[database_name]
         
         # Test connection

@@ -27,3 +27,73 @@
 2025-10-25 19:13:05,843 - app.mongodb - INFO - Connected to MongoDB database: audio-to-text-db
 2025-10-25 19:13:05,843 - app.main - INFO - MongoDB connection established successfully
 2025-10-25 19:13:05,846 - app.main - INFO - Deepgram Nova-3 Medical service initialized successfully
+2025-10-25 19:39:25,263 - app.services.transcription_service - INFO - Connected to Deepgram Nova-3 Medical API
+2025-10-25 19:39:25,263 - app.services.transcription_service - INFO - Using specialized medical transcription model
+2025-10-25 19:39:25,270 - app.main - INFO - Starting HIPAA-Compliant Audio Transcription API with Deepgram Nova-3 Medical
+2025-10-25 19:39:25,270 - app.mongodb - INFO - Attempting to connect to MongoDB: audio-to-text-db
+2025-10-25 19:39:25,270 - app.mongodb - INFO - MongoDB URL: Local MongoDB...
+2025-10-25 19:39:25,302 - app.mongodb - INFO - Connected to MongoDB database: audio-to-text-db
+2025-10-25 19:39:25,302 - app.main - INFO - MongoDB connection established successfully
+2025-10-25 19:39:25,305 - app.main - INFO - Deepgram Nova-3 Medical service initialized successfully
+2025-10-25 19:39:28,288 - app.mongodb - INFO - Disconnected from MongoDB
+2025-10-25 19:39:28,292 - app.main - INFO - Application shutdown complete
+2025-10-25 20:10:07,234 - app.services.transcription_service - INFO - Connected to Deepgram Nova-3 Medical API
+2025-10-25 20:10:07,236 - app.services.transcription_service - INFO - Using specialized medical transcription model
+2025-10-25 20:10:07,249 - app.main - INFO - Starting HIPAA-Compliant Audio Transcription API with Deepgram Nova-3 Medical
+2025-10-25 20:10:07,249 - app.mongodb - INFO - Attempting to connect to MongoDB: audio-to-text-db
+2025-10-25 20:10:07,250 - app.mongodb - INFO - MongoDB URL: Local MongoDB...
+2025-10-25 20:10:07,297 - app.mongodb - INFO - Connected to MongoDB database: audio-to-text-db
+2025-10-25 20:10:07,297 - app.main - INFO - MongoDB connection established successfully
+2025-10-25 20:10:07,300 - app.main - INFO - Deepgram Nova-3 Medical service initialized successfully
+2025-10-25 20:12:16,211 - app.mongodb - INFO - Disconnected from MongoDB
+2025-10-25 20:12:16,212 - app.main - INFO - Application shutdown complete
+2025-10-25 20:12:17,769 - app.services.transcription_service - INFO - Connected to Deepgram Nova-3 Medical API
+2025-10-25 20:12:17,769 - app.services.transcription_service - INFO - Using specialized medical transcription model
+2025-10-25 20:12:17,775 - app.main - INFO - Starting HIPAA-Compliant Audio Transcription API with Deepgram Nova-3 Medical
+2025-10-25 20:12:17,775 - app.mongodb - INFO - Attempting to connect to MongoDB: audio-to-text-db
+2025-10-25 20:12:17,775 - app.mongodb - INFO - MongoDB URL: Local MongoDB...
+2025-10-25 20:12:17,818 - app.mongodb - INFO - Connected to MongoDB database: audio-to-text-db
+2025-10-25 20:12:17,818 - app.main - INFO - MongoDB connection established successfully
+2025-10-25 20:12:17,820 - app.main - INFO - Deepgram Nova-3 Medical service initialized successfully
+2025-10-25 20:14:50,163 - app.mongodb - INFO - Disconnected from MongoDB
+2025-10-25 20:14:50,163 - app.main - INFO - Application shutdown complete
+2025-10-25 20:14:51,771 - app.services.transcription_service - INFO - Connected to Deepgram Nova-3 Medical API
+2025-10-25 20:14:51,771 - app.services.transcription_service - INFO - Using specialized medical transcription model
+2025-10-25 20:14:51,777 - app.main - INFO - Starting HIPAA-Compliant Audio Transcription API with Deepgram Nova-3 Medical
+2025-10-25 20:14:51,777 - app.mongodb - INFO - Attempting to connect to MongoDB: audio-to-text-db
+2025-10-25 20:14:51,777 - app.mongodb - INFO - MongoDB URL: Local MongoDB...
+2025-10-25 20:14:51,799 - app.mongodb - INFO - Connected to MongoDB database: audio-to-text-db
+2025-10-25 20:14:51,799 - app.main - INFO - MongoDB connection established successfully
+2025-10-25 20:14:51,801 - app.main - INFO - Deepgram Nova-3 Medical service initialized successfully
+2025-10-25 20:16:11,882 - app.mongodb - INFO - Disconnected from MongoDB
+2025-10-25 20:16:11,882 - app.main - INFO - Application shutdown complete
+2025-10-25 20:16:13,703 - app.services.transcription_service - INFO - Connected to Deepgram Nova-3 Medical API
+2025-10-25 20:16:13,703 - app.services.transcription_service - INFO - Using specialized medical transcription model
+2025-10-25 20:16:13,709 - app.main - INFO - Starting HIPAA-Compliant Audio Transcription API with Deepgram Nova-3 Medical
+2025-10-25 20:16:13,709 - app.mongodb - INFO - Attempting to connect to MongoDB: audio-to-text-db
+2025-10-25 20:16:13,709 - app.mongodb - INFO - MongoDB URL: Local MongoDB...
+2025-10-25 20:16:13,723 - app.mongodb - INFO - Connected to MongoDB database: audio-to-text-db
+2025-10-25 20:16:13,723 - app.main - INFO - MongoDB connection established successfully
+2025-10-25 20:16:13,725 - app.main - INFO - Deepgram Nova-3 Medical service initialized successfully
+2025-10-25 20:16:43,513 - app.mongodb - INFO - Disconnected from MongoDB
+2025-10-25 20:16:43,513 - app.main - INFO - Application shutdown complete
+2025-10-25 20:16:44,927 - app.services.transcription_service - INFO - Connected to Deepgram Nova-3 Medical API
+2025-10-25 20:16:44,927 - app.services.transcription_service - INFO - Using specialized medical transcription model
+2025-10-25 20:16:44,933 - app.main - INFO - Starting HIPAA-Compliant Audio Transcription API with Deepgram Nova-3 Medical
+2025-10-25 20:16:44,933 - app.mongodb - INFO - Attempting to connect to MongoDB: audio-to-text-db
+2025-10-25 20:16:44,933 - app.mongodb - INFO - MongoDB URL: Local MongoDB...
+2025-10-25 20:16:44,947 - app.mongodb - INFO - Connected to MongoDB database: audio-to-text-db
+2025-10-25 20:16:44,947 - app.main - INFO - MongoDB connection established successfully
+2025-10-25 20:16:44,948 - app.main - INFO - Deepgram Nova-3 Medical service initialized successfully
+2025-10-25 20:17:12,927 - app.mongodb - INFO - Disconnected from MongoDB
+2025-10-25 20:17:12,927 - app.main - INFO - Application shutdown complete
+2025-10-25 20:17:14,477 - app.services.transcription_service - INFO - Connected to Deepgram Nova-3 Medical API
+2025-10-25 20:17:14,477 - app.services.transcription_service - INFO - Using specialized medical transcription model
+2025-10-25 20:17:14,483 - app.main - INFO - Starting HIPAA-Compliant Audio Transcription API with Deepgram Nova-3 Medical
+2025-10-25 20:17:14,483 - app.mongodb - INFO - Attempting to connect to MongoDB: audio-to-text-db
+2025-10-25 20:17:14,483 - app.mongodb - INFO - MongoDB URL: Local MongoDB...
+2025-10-25 20:17:14,498 - app.mongodb - INFO - Connected to MongoDB database: audio-to-text-db
+2025-10-25 20:17:14,499 - app.main - INFO - MongoDB connection established successfully
+2025-10-25 20:17:14,500 - app.main - INFO - Deepgram Nova-3 Medical service initialized successfully
+2025-10-25 20:17:17,516 - app.mongodb - INFO - Disconnected from MongoDB
+2025-10-25 20:17:17,516 - app.main - INFO - Application shutdown complete
