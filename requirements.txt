@@ -4,12 +4,11 @@ python-multipart==0.0.6
 python-jose[cryptography]==3.3.0
 PyJWT==2.8.0
 passlib[bcrypt]==1.7.4
-sqlalchemy==2.0.23
-alembic==1.12.1
-psycopg2-binary==2.9.9
-deepgram-sdk==3.2.7
+deepgram-sdk==2.12.0
 python-dotenv==1.0.0
 cryptography==41.0.7
 pydantic==2.5.0
 pydantic-settings==2.1.0
 email-validator==2.1.0
+motor==3.3.2
+pymongo==4.6.1

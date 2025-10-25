@@ -1,8 +1,7 @@
 import os
 import tempfile
 from deepgram import Deepgram
-from deepgram._types import PrerecordedOptions, BufferSource
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TypedDict
 import logging
 from datetime import datetime
 import json
@@ -84,28 +83,28 @@ class TranscriptionService:
                     }
                     mimetype = mimetype_map.get(file_extension, 'audio/mpeg')
                     
-                    # Create BufferSource for Deepgram v2 SDK
-                    source: BufferSource = {
+                    # Create source dictionary for Deepgram v2 SDK
+                    source = {
                         'buffer': audio_data_bytes,
                         'mimetype': mimetype
                     }
                     
-                    # Configure Deepgram options for v2 SDK
-                    options = PrerecordedOptions(
-                        model=DEEPGRAM_MODEL,
-                        smart_format=True,
-                        punctuate=True,
-                        diarize=False,
-                        language=language or "en-US",
-                        multichannel=False,
-                        utterances=True,
-                        detect_language=False,
-                    )
+                    # Configure Deepgram options for v2 SDK (as dictionary)
+                    options = {
+                        'model': DEEPGRAM_MODEL,
+                        'smart_format': True,
+                        'punctuate': True,
+                        'diarize': False,
+                        'language': language or "en-US",
+                        'multichannel': False,
+                        'utterances': True,
+                        'detect_language': False,
+                    }
                     
                     # Make the API request using correct v2 syntax
                     response = await self.deepgram.transcription.prerecorded(
-                        source=source,
-                        options=options
+                        source,
+                        options
                     )
                 
                 # Extract transcription details (response is a dict in v2 SDK)
