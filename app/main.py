@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, status, Header
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, status, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 from dotenv import load_dotenv
@@ -8,6 +9,12 @@ from datetime import datetime, timedelta
 from typing import Optional
 import jwt
 from pydantic import BaseModel
+import requests
+from urllib.parse import urlencode, quote
+from openai import OpenAI
+from jiwer import wer
+import tempfile
+import subprocess
 
 from app.schemas import TranscriptionResponse, TranscriptionRequest
 from app.services.transcription_service import TranscriptionService
@@ -84,6 +91,10 @@ encryption_service = EncryptionService()
 transcription_service = TranscriptionService()
 hipaa_service = HIPAAComplianceService()
 security = HTTPBearer()
+
+# API Keys
+DG_KEY = os.getenv('DEEPGRAM_API_KEY')
+OPENAI_KEY = os.getenv('OPENAI_API_KEY')
 
 # Authentication functions
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -184,11 +195,14 @@ async def login(request: LoginRequest):
 @app.post("/api/v1/transcribe", response_model=TranscriptionResponse)
 async def transcribe_audio(
     file: UploadFile = File(...),
+    generate_soap: bool = Form(False),
     username: str = Depends(verify_token),
     db=Depends(get_database)
 ):
+
     """
-    Transcribe audio file with HIPAA compliance
+    Transcribe audio file with HIPAA compliance.
+    Optionally generate SOAP note by setting generate_soap=true
     """
     try:
         # Validate file type and size
@@ -209,24 +223,92 @@ async def transcribe_audio(
         await hipaa_service.log_access(
             user_id=username,
             action="audio_upload",
-            details=f"File: {file.filename}, Size: {file.size}",
+            details=f"File: {file.filename}, Size: {file.size}, Generate SOAP: {generate_soap}",
             db=db
         )
         
         # Read file content
         file_content = await file.read()
         
-        # Perform transcription directly
-        transcription_result = await transcription_service.transcribe_audio(
-            file_content,
-            file.filename
-        )
+        soap_note = None
+        
+        # If SOAP generation is requested, use enhanced Deepgram API
+        if generate_soap:
+            logger.info(f"SOAP generation requested for file: {file.filename}")
+            
+            # Convert OPUS to WAV if needed
+            filename_lower = file.filename.lower()
+            if filename_lower.endswith(".opus"):
+                file_content = convert_opus_to_wav(file_content)
+            else:
+                file_content = normalize_audio_bytes(file_content)
+            
+            # Build enhanced Deepgram API URL
+            keyterms = [
+                "pes anserine", "antalgic gait", "corticosteroid injection",
+                "intra-articular", "ligamentous", "osteoarthritis",
+                "bursitis", "MCL", "ACL", "PCL", "LCL", "McMurray test",
+                "contralateral", "neurovascularly intact",
+                "range of motion", "joint line tenderness",
+                "effusion", "crepitus", "meniscus", "patellofemoral"
+            ]
+            
+            query_params = {
+                "model": "nova-3-medical",
+                "numerals": "true",
+                "language": "en-US",
+                "version": "latest",
+                "smart_format": "true",
+                "diarize": "true",
+                "custom_intent": "orthopedic_patient_assessment",
+                "custom_intent_mode": "extended",
+                "sentiment": "false"
+            }
+            
+            # Build URL with keyterms
+            url = f"https://api.deepgram.com/v1/listen?" + urlencode(query_params)
+            for term in keyterms:
+                url += f"&keyterm={quote(term)}"
+            
+            headers = {"Authorization": f"Token {DG_KEY}", "Content-Type": "audio/wav"}
+            
+            # Get transcription from Deepgram
+            response = requests.post(url, headers=headers, data=file_content)
+            response.raise_for_status()
+            result = response.json()
+            
+            raw_transcript = result["results"]["channels"][0]["alternatives"][0]["transcript"].strip()
+            raw_transcript = fix_terms(raw_transcript)
+            
+            # Generate SOAP note
+            logger.info("Generating SOAP note with GPT-4...")
+            soap_note = generate_soap_note_from_transcription(raw_transcript)
+            
+            # Extract metadata
+            confidence = result["results"]["channels"][0]["alternatives"][0].get("confidence", 0.0)
+            duration = result.get("metadata", {}).get("duration", 0.0)
+            detected_language = result.get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])[0].get("languages", ["en-US"])[0] if "languages" in result.get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])[0] else "en-US"
+            
+            transcription_result = {
+                'text': raw_transcript,
+                'confidence': confidence,
+                'language': detected_language,
+                'duration': duration
+            }
+        else:
+            # Use standard transcription service (run in thread to avoid blocking)
+            import asyncio
+            transcription_result = await asyncio.to_thread(
+                transcription_service.transcribe_audio,
+                file_content,
+                file.filename
+            )
         
         # Log successful transcription
         await hipaa_service.log_access(
             user_id=username,
             action="transcription_complete",
-            details=f"File: {file.filename} transcribed successfully",
+            details=f"File: {file.filename} transcribed successfully. SOAP: {generate_soap}",
             db=db
         )
         
@@ -236,7 +318,8 @@ async def transcribe_audio(
             confidence=transcription_result.get('confidence', 0.0),
             language=transcription_result.get('language', 'unknown'),
             duration=transcription_result.get('duration', 0.0),
-            created_at=datetime.utcnow()
+            created_at=datetime.utcnow(),
+            soap_note=soap_note
         )
             
     except HTTPException:
@@ -247,6 +330,143 @@ async def transcribe_audio(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error during transcription"
         )
+
+# ----------------------------
+# 🔧 Helper Functions for SOAP Generation
+# ----------------------------
+
+def convert_opus_to_wav(opus_data: bytes) -> bytes:
+    """Convert OPUS audio to WAV format using ffmpeg"""
+    try:
+        # Create temporary files
+        with tempfile.NamedTemporaryFile(suffix='.opus', delete=False) as opus_file:
+            opus_file.write(opus_data)
+            opus_path = opus_file.name
+        
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_file:
+            wav_path = wav_file.name
+        
+        # Convert using ffmpeg
+        cmd = [
+            'ffmpeg', '-i', opus_path, '-acodec', 'pcm_s16le', 
+            '-ar', '16000', '-ac', '1', '-y', wav_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error(f"FFmpeg conversion failed: {result.stderr}")
+            raise Exception(f"Audio conversion failed: {result.stderr}")
+        
+        # Read converted file
+        with open(wav_path, 'rb') as f:
+            wav_data = f.read()
+        
+        # Clean up temporary files
+        os.unlink(opus_path)
+        os.unlink(wav_path)
+        
+        return wav_data
+        
+    except FileNotFoundError:
+        logger.error("FFmpeg not found. Please install FFmpeg to convert OPUS files.")
+        raise Exception("FFmpeg not found. Please install FFmpeg to convert OPUS files.")
+    except Exception as e:
+        logger.error(f"OPUS conversion error: {str(e)}")
+        raise
+
+
+def normalize_audio_bytes(audio_data: bytes) -> bytes:
+    """Normalize audio bytes (for MP3/WAV files)"""
+    # For now, just return the audio data as-is
+    # Can add normalization logic if needed
+    return audio_data
+
+
+def fix_terms(text: str) -> str:
+    """Fix common medical terminology errors in transcription"""
+    from app.prompts import MEDICAL_TERMINOLOGY_CORRECTIONS
+    corrected_text = text
+    for incorrect, correct in MEDICAL_TERMINOLOGY_CORRECTIONS.items():
+        corrected_text = corrected_text.replace(incorrect, correct)
+    return corrected_text
+
+
+def generate_soap_note_from_transcription(text: str) -> str:
+    """
+    Generate a structured SOAP note from raw clinical transcription using GPT.
+    It corrects grammar and organizes information into Subjective, Objective, Assessment, and Plan sections.
+    """
+    try:
+        client = OpenAI(api_key=OPENAI_KEY)
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a medical documentation assistant. "
+                        "Your task is to transform a raw clinical transcription into a structured SOAP note."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "I will give you a transcription of a clinical encounter.\n\n"
+                        "Your task is to:\n"
+                        "1. Correct grammatical or typographical errors while preserving clinical meaning.\n"
+                        "2. Organize the information into a structured consult note with the following sections:\n"
+                        "   - S: Subjective (chief complaint, history, patient-reported details)\n"
+                        "   - O: Objective (physical exam findings, imaging/lab mentions, observations)\n"
+                        "   - A: Assessment (diagnosis, clinical impression)\n"
+                        "   - P: Plan (treatment plan, follow-up, medications, referrals)\n"
+                        "3. Keep the tone formal and clinical.\n"
+                        "4. Include all special tests, exam findings, and measurements mentioned.\n"
+                        "5. Use standard orthopedic terminology when applicable.\n"
+                        "6. Do not invent or omit any detail that is not in the transcription.\n\n"
+                        f"Here is the transcription:\n\n{text}"
+                    )
+                }
+            ],
+            temperature=0.2,
+            max_tokens=5000
+        )
+
+        structured_note = response.choices[0].message.content.strip()
+        return structured_note
+
+    except Exception as e:
+        logger.error(f"❌ GPT SOAP generation failed: {e}")
+        return text
+
+# ----------------------------
+# 🚀 SOAP Note Generation API
+# ----------------------------
+
+@app.post("/generate-soap")
+async def generate_soap(text: str = Form(...)):
+    """
+    Generate a structured SOAP note from clinical transcription text.
+    Simply provide the transcription text and get back a formatted SOAP note.
+    """
+    try:
+        # Apply medical terminology corrections
+        corrected_text = fix_terms(text)
+        
+        # Generate SOAP note
+        logger.info("Generating SOAP note with GPT-4...")
+        soap_note = generate_soap_note_from_transcription(corrected_text)
+
+        return JSONResponse({
+            "text": corrected_text,
+            "soap_note": soap_note,
+            "created_at": datetime.utcnow().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"SOAP generation error: {str(e)}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 
 # Include feedback router
 app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"])

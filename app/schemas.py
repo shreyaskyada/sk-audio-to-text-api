@@ -38,6 +38,7 @@ class TranscriptionResponse(BaseModel):
     language: str
     duration: float
     created_at: datetime
+    soap_note: Optional[str] = None
     
     class Config:
         from_attributes = True

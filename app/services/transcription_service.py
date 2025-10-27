@@ -1,11 +1,12 @@
 import os
 import tempfile
-from deepgram import Deepgram
-from typing import Dict, Any, Optional, TypedDict
+from typing import Dict, Any, Optional
 import logging
 from datetime import datetime
-import json
 import subprocess
+import requests
+from urllib.parse import urlencode, quote
+
 from app.prompts import (
     DEEPGRAM_OPTIONS,
     DEEPGRAM_MODEL,
@@ -23,24 +24,22 @@ class TranscriptionService:
     """Service for audio transcription using Deepgram Nova-3 Medical API"""
     
     def __init__(self):
-        api_key = os.getenv('DEEPGRAM_API_KEY')
-        if not api_key:
+        self.api_key = os.getenv('DEEPGRAM_API_KEY')
+        if not self.api_key:
             raise ValueError(ERROR_MESSAGES['api_key_missing'])
         
-        # Initialize Deepgram client with v2 syntax
-        self.deepgram = Deepgram(api_key)
         self.supported_formats = FILE_VALIDATION_RULES['supported_extensions']
         self.max_file_size = TRANSCRIPTION_SETTINGS['max_file_size_mb'] * 1024 * 1024
         
         logger.info(SUCCESS_MESSAGES['deepgram_connected'])
         logger.info(SUCCESS_MESSAGES['medical_model_active'])
     
-    async def transcribe_audio(
+    def transcribe_audio(
         self, 
         audio_data: bytes, 
         filename: str,
         language: Optional[str] = None,
-        model: str = None
+        model: str = "nova-3-medical"
     ) -> Dict[str, Any]:
         """
         Transcribe audio using Deepgram Nova-3 Medical API
@@ -48,103 +47,85 @@ class TranscriptionService:
         try:
             # Validate file size
             if len(audio_data) > self.max_file_size:
-                raise ValueError(f"File size ({len(audio_data)} bytes) exceeds maximum allowed size ({self.max_file_size} bytes)")
+                raise ValueError(f"File size exceeds maximum allowed size")
             
-            # Create temporary file
             file_extension = self._get_file_extension(filename)
             if file_extension not in self.supported_formats:
                 raise ValueError(f"Unsupported file format: {file_extension}")
             
-            # Handle OPUS files by converting to WAV
+            # Handle OPUS conversion if needed
             if file_extension == 'opus':
-                logger.info(SUCCESS_MESSAGES['opus_converted'])
+                logger.info("Converting OPUS file to WAV format")
                 audio_data = self._convert_opus_to_wav(audio_data)
                 file_extension = 'wav'
             
-            with tempfile.NamedTemporaryFile(suffix=f".{file_extension}", delete=False) as temp_file:
-                temp_file.write(audio_data)
-                temp_file_path = temp_file.name
+            # Build Deepgram API URL with enhanced parameters
+            keyterms = [
+                "pes anserine", "antalgic gait", "corticosteroid injection",
+                "intra-articular", "ligamentous", "osteoarthritis",
+                "bursitis", "MCL", "ACL", "PCL", "LCL", "McMurray test",
+                "contralateral", "neurovascularly intact",
+                "range of motion", "joint line tenderness",
+                "effusion", "crepitus", "meniscus", "patellofemoral"
+            ]
             
-            try:
-                # Transcribe using Deepgram Nova-3 Medical
-                with open(temp_file_path, 'rb') as audio_file:
-                    audio_data_bytes = audio_file.read()
-                    
-                    # Determine mimetype based on file extension
-                    mimetype_map = {
-                        'mp3': 'audio/mpeg',
-                        'mp4': 'audio/mp4',
-                        'wav': 'audio/wav',
-                        'flac': 'audio/flac',
-                        'ogg': 'audio/ogg',
-                        'opus': 'audio/opus',
-                        'webm': 'audio/webm',
-                        'm4a': 'audio/mp4'
-                    }
-                    mimetype = mimetype_map.get(file_extension, 'audio/mpeg')
-                    
-                    # Create source dictionary for Deepgram v2 SDK
-                    source = {
-                        'buffer': audio_data_bytes,
-                        'mimetype': mimetype
-                    }
-                    
-                    # Configure Deepgram options for v2 SDK (as dictionary)
-                    options = {
-                        'model': DEEPGRAM_MODEL,
-                        'smart_format': True,
-                        'punctuate': True,
-                        'diarize': False,
-                        'language': language or "en-US",
-                        'multichannel': False,
-                        'utterances': True,
-                        'detect_language': False,
-                    }
-                    
-                    # Make the API request using correct v2 syntax
-                    response = await self.deepgram.transcription.prerecorded(
-                        source,
-                        options
-                    )
-                
-                # Extract transcription details (response is a dict in v2 SDK)
-                transcription_text = response['results']['channels'][0]['alternatives'][0]['transcript']
-                confidence = response['results']['channels'][0]['alternatives'][0]['confidence']
-                
-                # Apply medical terminology corrections
-                transcription_text = self._correct_medical_terminology(transcription_text)
-                
-                # Get additional metadata (with fallbacks for missing keys)
-                detected_language = response.get('results', {}).get('language', 'en-US')
-                duration = response.get('metadata', {}).get('duration', 0)
-                
-                # Clean up temporary file
-                os.unlink(temp_file_path)
-                
-                logger.info(f"{SUCCESS_MESSAGES['transcription_complete']}: {filename}")
-                
-                return {
-                    "text": transcription_text,
-                    "confidence": confidence,
-                    "language": detected_language,
-                    "duration": duration,
-                    "model": DEEPGRAM_MODEL,
-                    "file_size": len(audio_data),
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "metadata": {
-                        "model_used": DEEPGRAM_MODEL,
-                        "file_format": file_extension,
-                        "transcription_method": "deepgram_nova3_medical",
-                        "provider": "deepgram"
-                    }
+            query_params = {
+                "model": model or "nova-3-medical",
+                "numerals": "true",
+                "language": language or "en-US",
+                "version": "latest",
+                "smart_format": "true",
+                "diarize": "true",
+                "custom_intent": "orthopedic_patient_assessment",
+                "custom_intent_mode": "extended",
+                "sentiment": "false"
+            }
+            
+            # Build URL with keyterms
+            url = f"https://api.deepgram.com/v1/listen?" + urlencode(query_params)
+            for term in keyterms:
+                url += f"&keyterm={quote(term)}"
+            
+            headers = {
+                "Authorization": f"Token {self.api_key}",
+                "Content-Type": "audio/wav"
+            }
+            
+            # Make API request to Deepgram
+            logger.info(f"Sending request to Deepgram API for file: {filename}")
+            response = requests.post(url, headers=headers, data=audio_data)
+            response.raise_for_status()
+            result = response.json()
+            
+            # Extract transcription
+            transcription_text = result["results"]["channels"][0]["alternatives"][0]["transcript"]
+            confidence = result["results"]["channels"][0]["alternatives"][0]["confidence"]
+            
+            # Apply medical terminology corrections
+            transcription_text = self._correct_medical_terminology(transcription_text)
+            
+            # Get metadata
+            detected_language = result.get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])[0].get("language", language or "en-US")
+            duration = result.get("metadata", {}).get("duration", 0)
+            
+            logger.info(f"Transcription complete: {filename}")
+            
+            return {
+                "text": transcription_text,
+                "confidence": confidence,
+                "language": detected_language,
+                "duration": duration,
+                "model": model,
+                "file_size": len(audio_data),
+                "timestamp": datetime.utcnow().isoformat(),
+                "metadata": {
+                    "model_used": model,
+                    "file_format": file_extension,
+                    "transcription_method": "deepgram_nova3_medical",
+                    "provider": "deepgram"
                 }
-                
-            except Exception as e:
-                # Clean up temporary file in case of error
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-                raise e
-                
+            }
+            
         except Exception as e:
             logger.error(f"Transcription failed: {str(e)}")
             raise
@@ -156,7 +137,6 @@ class TranscriptionService:
     def _convert_opus_to_wav(self, opus_data: bytes) -> bytes:
         """Convert OPUS audio to WAV format using ffmpeg"""
         try:
-            # Create temporary files
             with tempfile.NamedTemporaryFile(suffix='.opus', delete=False) as opus_file:
                 opus_file.write(opus_data)
                 opus_path = opus_file.name
@@ -164,7 +144,6 @@ class TranscriptionService:
             with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_file:
                 wav_path = wav_file.name
             
-            # Convert using ffmpeg
             cmd = [
                 'ffmpeg', '-i', opus_path, '-acodec', 'pcm_s16le', 
                 '-ar', '16000', '-ac', '1', '-y', wav_path
@@ -176,11 +155,9 @@ class TranscriptionService:
                 logger.error(f"FFmpeg conversion failed: {result.stderr}")
                 raise Exception(f"Audio conversion failed: {result.stderr}")
             
-            # Read converted file
             with open(wav_path, 'rb') as f:
                 wav_data = f.read()
             
-            # Clean up temporary files
             os.unlink(opus_path)
             os.unlink(wav_path)
             
@@ -188,7 +165,7 @@ class TranscriptionService:
             
         except FileNotFoundError:
             logger.error("FFmpeg not found. Please install FFmpeg to convert OPUS files.")
-            raise Exception(ERROR_MESSAGES['ffmpeg_not_found'])
+            raise Exception("FFmpeg not found")
         except Exception as e:
             logger.error(f"OPUS conversion error: {str(e)}")
             raise
@@ -198,8 +175,6 @@ class TranscriptionService:
         corrected_text = text
         for incorrect, correct in MEDICAL_TERMINOLOGY_CORRECTIONS.items():
             corrected_text = corrected_text.replace(incorrect, correct)
-            
-        logger.info(SUCCESS_MESSAGES['medical_corrections_applied'])
         return corrected_text
     
     async def get_supported_formats(self) -> list:
@@ -216,7 +191,6 @@ class TranscriptionService:
         }
         
         try:
-            # Check file size
             file_size = len(audio_data)
             validation_result["file_info"]["size_bytes"] = file_size
             validation_result["file_info"]["size_mb"] = round(file_size / (1024 * 1024), 2)
@@ -227,19 +201,14 @@ class TranscriptionService:
             
             if file_size > self.max_file_size:
                 validation_result["valid"] = False
-                validation_result["errors"].append(f"File size ({file_size} bytes) exceeds maximum allowed size ({self.max_file_size} bytes)")
+                validation_result["errors"].append(f"File size exceeds maximum")
             
-            # Check file extension
             file_extension = self._get_file_extension(filename)
             validation_result["file_info"]["extension"] = file_extension
             
             if file_extension not in self.supported_formats:
                 validation_result["valid"] = False
                 validation_result["errors"].append(f"Unsupported file format: {file_extension}")
-            
-            # Check for minimum file size (very small files might be corrupted)
-            if file_size < FILE_VALIDATION_RULES['min_file_size_bytes']:
-                validation_result["warnings"].append("File is very small and might be corrupted")
             
         except Exception as e:
             validation_result["valid"] = False
@@ -250,12 +219,10 @@ class TranscriptionService:
     def get_service_status(self) -> Dict[str, Any]:
         """Get transcription service status"""
         try:
-            # Test API connection
-            api_key = os.getenv('DEEPGRAM_API_KEY')
-            if not api_key:
+            if not self.api_key:
                 return {
                     "status": "error",
-                    "message": ERROR_MESSAGES['api_key_missing'],
+                    "message": "API key missing",
                     "available": False
                 }
             
