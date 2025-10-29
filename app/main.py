@@ -18,13 +18,18 @@ import tempfile
 import subprocess
 import asyncio
 from urllib.parse import urlencode, quote
+
 from openai import OpenAI
+import httpx
 
 # Import schemas
 from app.schemas import (
     LoginRequest,
     LoginResponse,
-    TranscriptionResponse
+    TranscriptionResponse,
+    SOAPRequest,
+    SOAPResponse,
+    PatientInfo
 )
 
 # Import MongoDB functions
@@ -32,6 +37,13 @@ from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
 from app.api import feedback
+
+# Import prompts
+from app.prompts import (
+    MEDICAL_TERMINOLOGY_CORRECTIONS,
+    ORTHOPEDIC_SOAP_SYSTEM_PROMPT,
+    ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE
+)
 
 # Load environment variables
 load_dotenv()
@@ -65,16 +77,8 @@ MEDICAL_KEYTERMS = [
     "effusion", "crepitus", "meniscus", "patellofemoral"
 ]
 
-# Medical terminology corrections
-MEDICAL_CORRECTIONS = {
-    "false lip trauma": "fall slip trauma",
-    "catching lock": "catching, locking",
-    "open condition": "open skin lesion",
-    "no regrowth": "no regressed",
-    "trichomobarbital": "tricompartmental",
-    "lacking": "locking",
-    "lip trauma": "slip trauma",
-}
+# Use medical terminology corrections from prompts module
+MEDICAL_CORRECTIONS = MEDICAL_TERMINOLOGY_CORRECTIONS
 
 # ============================================
 # FASTAPI APP INITIALIZATION
@@ -189,13 +193,37 @@ def fix_terms(text: str) -> str:
     return corrected_text
 
 
+def create_openai_client():
+    """
+    Create OpenAI client with explicit configuration to avoid proxy issues.
+    """
+    # Create httpx client without proxy
+    http_client = httpx.Client(
+        timeout=60.0,
+        limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+    )
+    
+    # Create OpenAI client
+    client = OpenAI(
+        api_key=OPENAI_API_KEY,
+        max_retries=2,
+        timeout=60.0,
+        http_client=http_client
+    )
+    
+    return client
+
+
 def generate_soap_note_from_transcription(text: str) -> str:
     """
-    Generate a structured SOAP note from raw clinical transcription using GPT-4.
-    Corrects grammar and organizes into Subjective, Objective, Assessment, and Plan sections.
+    LEGACY: Generate a structured SOAP note from raw clinical transcription using GPT-4.
+    This is kept for backward compatibility with the transcribe endpoint.
+    For comprehensive SOAP generation, use generate_comprehensive_soap_note().
     """
     try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        # Initialize OpenAI client
+        client = create_openai_client()
+        
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -234,7 +262,141 @@ def generate_soap_note_from_transcription(text: str) -> str:
 
     except Exception as e:
         logger.error(f"❌ GPT SOAP generation failed: {e}")
+        logger.error(f"Full error details: {type(e).__name__}: {str(e)}")
         return text
+
+
+def generate_comprehensive_soap_note(soap_request: SOAPRequest) -> dict:
+    """
+    Generate a comprehensive orthopedic SOAP note from transcription with optional structured data.
+    Returns a dictionary with structured SOAP sections and formatted note.
+    """
+    try:
+        # Apply medical terminology corrections to transcription
+        corrected_transcription = fix_terms(soap_request.transcription)
+        
+        # Build patient context section
+        patient_context = ""
+        header_section = ""
+        
+        if soap_request.patient:
+            patient_info = []
+            if soap_request.patient.name:
+                patient_info.append(f"Name: {soap_request.patient.name}")
+            if soap_request.patient.age:
+                patient_info.append(f"Age: {soap_request.patient.age}")
+            if soap_request.patient.gender:
+                patient_info.append(f"Gender: {soap_request.patient.gender}")
+            
+            if patient_info:
+                patient_context = "**PATIENT INFORMATION:**\n" + "\n".join(patient_info)
+                header_section = f"Patient: {', '.join(patient_info)}\n"
+        
+        if soap_request.date_of_service:
+            header_section += f"Date of Service: {soap_request.date_of_service}\n"
+        
+        if soap_request.location:
+            header_section += f"Location: {soap_request.location}\n"
+        
+        if soap_request.reason_for_visit:
+            header_section += f"Reason for Visit: {soap_request.reason_for_visit}\n"
+        
+        # Build the user prompt
+        user_prompt = ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE.format(
+            transcription=corrected_transcription,
+            patient_context=patient_context,
+            header_section=header_section
+        )
+        
+        # Call OpenAI GPT-4 with explicit configuration
+        client = create_openai_client()
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": ORTHOPEDIC_SOAP_SYSTEM_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt
+                }
+            ],
+            temperature=0.2,
+            max_tokens=6000
+        )
+        
+        formatted_soap_note = response.choices[0].message.content.strip()
+        
+        # Extract sections from the formatted note (simple parsing)
+        # This is a best-effort extraction for structured access
+        sections = {
+            "subjective": "",
+            "objective": "",
+            "assessment": "",
+            "plan": ""
+        }
+        
+        # Try to extract sections from Markdown format
+        import re
+        
+        # Extract Subjective section
+        subjective_match = re.search(
+            r'## S – SUBJECTIVE\s*\n(.*?)(?=## O – OBJECTIVE|---)',
+            formatted_soap_note,
+            re.DOTALL
+        )
+        if subjective_match:
+            sections["subjective"] = subjective_match.group(1).strip()
+        
+        # Extract Objective section
+        objective_match = re.search(
+            r'## O – OBJECTIVE\s*\n(.*?)(?=## A – ASSESSMENT|---)',
+            formatted_soap_note,
+            re.DOTALL
+        )
+        if objective_match:
+            sections["objective"] = objective_match.group(1).strip()
+        
+        # Extract Assessment section
+        assessment_match = re.search(
+            r'## A – ASSESSMENT\s*\n(.*?)(?=## P – PLAN|---)',
+            formatted_soap_note,
+            re.DOTALL
+        )
+        if assessment_match:
+            sections["assessment"] = assessment_match.group(1).strip()
+        
+        # Extract Plan section
+        plan_match = re.search(
+            r'## P – PLAN\s*\n(.*?)(?=---|$)',
+            formatted_soap_note,
+            re.DOTALL
+        )
+        if plan_match:
+            sections["plan"] = plan_match.group(1).strip()
+        
+        return {
+            "transcription": soap_request.transcription,
+            "corrected_transcription": corrected_transcription,
+            "subjective": sections["subjective"],
+            "objective": sections["objective"],
+            "assessment": sections["assessment"],
+            "plan": sections["plan"],
+            "formatted_soap_note": formatted_soap_note,
+            "created_at": datetime.utcnow().isoformat(),
+            "patient_info": {
+                "name": soap_request.patient.name if soap_request.patient else None,
+                "age": soap_request.patient.age if soap_request.patient else None,
+                "gender": soap_request.patient.gender if soap_request.patient else None,
+            } if soap_request.patient else None,
+            "format": "markdown"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Comprehensive SOAP generation failed: {e}")
+        raise
 
 
 # ============================================
@@ -253,7 +415,10 @@ async def root():
             "health": "/health",
             "auth": "/api/v1/auth/login",
             "transcribe": "/api/v1/transcribe",
-            "soap": "/generate-soap",
+            "soap": {
+                "comprehensive": "/api/v1/generate-soap",
+                "legacy": "/generate-soap"
+            },
             "feedback": {
                 "submit": "/api/v1/feedback/submit",
                 "stats": "/api/v1/feedback/stats",
@@ -439,36 +604,130 @@ async def transcribe_audio(
         )
 
 
-@app.post("/generate-soap")
-async def generate_soap(text: str = Form(...)):
+@app.post("/api/v1/generate-soap", response_model=SOAPResponse)
+async def generate_soap_comprehensive(soap_request: SOAPRequest):
     """
-    Generate a structured SOAP note from clinical transcription text.
+    Generate a comprehensive orthopedic SOAP note from clinical transcription.
     
     **Parameters:**
-    - text: Clinical transcription text
+    - transcription: Clinical transcription text (REQUIRED)
+    - patient: Optional patient information (name, age, gender)
+    - date_of_service: Optional date of service
+    - location: Optional clinic/hospital location
+    - reason_for_visit: Optional reason for visit
+    - Additional structured data for S/O/A/P sections (optional)
     
     **Returns:**
-    - Original text (with corrections)
-    - Generated SOAP note
-    - Timestamp
+    - Original and corrected transcription
+    - Structured SOAP sections (Subjective, Objective, Assessment, Plan)
+    - Fully formatted SOAP note (ready for PDF export)
+    - Patient information and metadata
+    
+    **Example Request:**
+    ```json
+    {
+        "transcription": "78-year-old female with one week history...",
+        "patient": {
+            "name": "Jane Smith",
+            "age": 78,
+            "gender": "Female"
+        },
+        "date_of_service": "2025-10-27",
+        "location": "Cresol Ortho Center",
+        "reason_for_visit": "Left wrist pain after fall"
+    }
+    ```
     """
     try:
-        # Apply medical terminology corrections
-        corrected_text = fix_terms(text)
+        logger.info("Generating comprehensive orthopedic SOAP note with GPT-4...")
         
-        # Generate SOAP note
-        logger.info("Generating SOAP note with GPT-4...")
-        soap_note = generate_soap_note_from_transcription(corrected_text)
+        # Generate comprehensive SOAP note
+        soap_result = generate_comprehensive_soap_note(soap_request)
+        
+        # Return as SOAPResponse
+        return SOAPResponse(**soap_result)
+        
+    except Exception as e:
+        logger.error(f"Comprehensive SOAP generation error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate SOAP note: {str(e)}"
+        )
 
-        return JSONResponse({
-            "text": corrected_text,
-            "soap_note": soap_note,
-            "created_at": datetime.utcnow().isoformat()
-        })
 
+@app.post("/generate-soap", response_model=SOAPResponse)
+async def generate_soap_simple(
+    transcription: str = Form(...),
+    patient_name: Optional[str] = Form(None),
+    patient_age: Optional[int] = Form(None),
+    patient_gender: Optional[str] = Form(None),
+    date_of_service: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    reason_for_visit: Optional[str] = Form(None)
+):
+    """
+    Generate comprehensive orthopedic SOAP note from transcription text.
+    
+    **Accepts Form Data or JSON:**
+    - Use this endpoint if sending form-data
+    - Use /api/v1/generate-soap if sending JSON payload
+    
+    **Required Parameters:**
+    - transcription: Clinical transcription text
+    
+    **Optional Parameters:**
+    - patient_name: Patient's full name
+    - patient_age: Patient's age
+    - patient_gender: Patient's gender
+    - date_of_service: Date of visit (YYYY-MM-DD)
+    - location: Clinic/hospital location
+    - reason_for_visit: Chief complaint
+    
+    **Returns:**
+    - Comprehensive SOAP note with structured sections
+    - Formatted note ready for PDF export
+    - ICD-10 codes in assessment section
+    
+    **Example (form-data):**
+    ```
+    transcription: "78-year-old female with left wrist fracture..."
+    patient_name: "Jane Smith"
+    patient_age: 78
+    patient_gender: "Female"
+    ```
+    """
+    try:
+        logger.info("Generating comprehensive orthopedic SOAP note...")
+        
+        # Build SOAPRequest object from form data
+        patient_info = None
+        if patient_name or patient_age or patient_gender:
+            patient_info = PatientInfo(
+                name=patient_name,
+                age=patient_age,
+                gender=patient_gender
+            )
+        
+        soap_request = SOAPRequest(
+            transcription=transcription,
+            patient=patient_info,
+            date_of_service=date_of_service,
+            location=location,
+            reason_for_visit=reason_for_visit
+        )
+        
+        # Generate comprehensive SOAP note
+        soap_result = generate_comprehensive_soap_note(soap_request)
+        
+        # Return as SOAPResponse
+        return SOAPResponse(**soap_result)
+        
     except Exception as e:
         logger.error(f"SOAP generation error: {str(e)}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate SOAP note: {str(e)}"
+        )
 
 
 # ============================================
