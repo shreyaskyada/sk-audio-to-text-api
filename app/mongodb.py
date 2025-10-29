@@ -1,70 +1,50 @@
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from pymongo import MongoClient
+"""
+MongoDB connection and database management
+"""
 import os
-from dotenv import load_dotenv
 import logging
-
-
-load_dotenv()
+from motor.motor_asyncio import AsyncIOMotorClient
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-class MongoDB:
-    client: AsyncIOMotorClient = None
-    database: AsyncIOMotorDatabase = None
+# MongoDB client
+mongo_client: Optional[AsyncIOMotorClient] = None
+mongo_db = None
 
-mongodb = MongoDB()
+# Configuration
+MONGODB_URL = os.getenv('MONGODB_URL', 'mongodb://localhost:27017')
+MONGODB_DB_NAME = os.getenv('MONGODB_DB_NAME', 'audio-to-text-db')
+
 
 async def connect_to_mongo():
-    """Create database connection"""
+    """Connect to MongoDB"""
+    global mongo_client, mongo_db
     try:
-        # Get MongoDB connection string from environment
-        mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-        database_name = os.getenv("MONGODB_DATABASE", "audio_transcription")
-        
-        logger.info(f"Attempting to connect to MongoDB: {database_name}")
-        logger.info(f"MongoDB URL: {mongodb_url[:mongodb_url.find('@')] if '@' in mongodb_url else 'Local MongoDB'}...")
-        
-        # Create async client with SSL/TLS configuration for MongoDB Atlas
-        # Add connection parameters to handle SSL/TLS properly
-        connection_params = {
-            'serverSelectionTimeoutMS': 5000,  # 5 second timeout
-            'connectTimeoutMS': 10000,          # 10 second connection timeout
-            'socketTimeoutMS': 20000,           # 20 second socket timeout
-        }
-        
-        # If using MongoDB Atlas (contains mongodb.net), add SSL parameters
-        if 'mongodb.net' in mongodb_url or 'mongodb+srv' in mongodb_url:
-            connection_params.update({
-                'tls': True,
-                'tlsAllowInvalidCertificates': False,  # Set to True only for testing
-                'retryWrites': True,
-                'w': 'majority'
-            })
-            logger.info("Detected MongoDB Atlas - using TLS/SSL connection")
-        
-        mongodb.client = AsyncIOMotorClient(mongodb_url, **connection_params)
-        mongodb.database = mongodb.client[database_name]
+        mongo_client = AsyncIOMotorClient(MONGODB_URL)
+        mongo_db = mongo_client[MONGODB_DB_NAME]
         
         # Test connection
-        await mongodb.client.admin.command('ping')
-        logger.info(f"Connected to MongoDB database: {database_name}")
-        
+        await mongo_client.admin.command('ping')
+        logger.info(f"✅ Connected to MongoDB: {MONGODB_DB_NAME}")
+        return True
     except Exception as e:
-        logger.error(f"Failed to connect to MongoDB: {str(e)}")
-        raise
+        logger.error(f"❌ MongoDB connection failed: {e}")
+        logger.warning("⚠️  Continuing without MongoDB - feedback storage will be limited")
+        return False
+
 
 async def close_mongo_connection():
-    """Close database connection"""
-    if mongodb.client:
-        mongodb.client.close()
-        logger.info("Disconnected from MongoDB")
+    """Close MongoDB connection"""
+    global mongo_client
+    if mongo_client:
+        mongo_client.close()
+        logger.info("MongoDB connection closed")
 
-def get_database() -> AsyncIOMotorDatabase:
-    """Get database instance"""
-    return mongodb.database
 
-# Collection names
-FEEDBACK_COLLECTION = "feedback"
-AUDIT_LOGS_COLLECTION = "audit_logs"
+def get_database():
+    """Get MongoDB database instance"""
+    if mongo_db is None:
+        return None
+    return mongo_db
 

@@ -1,60 +1,41 @@
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List, Union, Dict, Any
-from datetime import datetime
+"""
+Feedback API endpoints
+"""
 import logging
-from bson import ObjectId
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
+from datetime import datetime
+from typing import Dict, List
 
-from app.mongodb import get_database, FEEDBACK_COLLECTION
+from app.schemas import (
+    FeedbackRequest,
+    FeedbackResponse,
+    FeedbackStatsResponse,
+    FeedbackListResponse,
+    ErrorCorrection
+)
+from app.mongodb import get_database
 
 logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
-class ErrorCorrection(BaseModel):
-    """Model for medical terminology corrections"""
-    wrong: str
-    correct: str
+# Configuration
+FEEDBACK_COLLECTION = 'feedback'
 
-class FeedbackRequest(BaseModel):
-    rating: int
-    rating_text: str = ""
-    transcription_preview: str
-    errors_found: Optional[List[Union[str, ErrorCorrection, Dict[str, Any]]]] = []
-    total_errors: Optional[int] = 0
-    feedback_type: Optional[str] = "simple"
-    feedback: Optional[str] = ""  # Keep for backward compatibility
 
-class FeedbackResponse(BaseModel):
-    id: str
-    rating: int
-    rating_text: str
-    transcription_preview: str
-    errors_found: List[Union[str, Dict[str, Any]]]
-    total_errors: int
-    feedback_type: str
-    feedback: str
-    timestamp: datetime
-    
-    model_config = ConfigDict(from_attributes=True)
+# ============================================
+# FEEDBACK STORAGE FUNCTIONS (MongoDB)
+# ============================================
 
-class FeedbackStatsResponse(BaseModel):
-    total_feedback: int
-    average_rating: float
-    recent_feedback: List[FeedbackResponse]
-
-class FeedbackListResponse(BaseModel):
-    total_feedback: int
-    feedback: List[FeedbackResponse]
-
-@router.post("/submit", response_model=dict)
-async def submit_feedback(feedback_data: FeedbackRequest, db=Depends(get_database)):
-    """Save feedback to MongoDB"""
+async def add_feedback_to_db(feedback_data: FeedbackRequest) -> Dict:
+    """Add feedback entry to MongoDB"""
     try:
-        # Validate rating (allow 0 for no rating)
-        if not (0 <= feedback_data.rating <= 5):
-            raise HTTPException(status_code=400, detail="Rating must be between 0 and 5 (0 = no rating)")
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
         
-        # Convert errors_found to proper format for MongoDB
+        # Convert errors to proper format
         errors_list = []
         for error in feedback_data.errors_found:
             if isinstance(error, ErrorCorrection):
@@ -67,7 +48,9 @@ async def submit_feedback(feedback_data: FeedbackRequest, db=Depends(get_databas
         # Create feedback document
         feedback_doc = {
             "rating": feedback_data.rating,
-            "rating_text": feedback_data.rating_text or (f"{feedback_data.rating} stars" if feedback_data.rating > 0 else "No rating given"),
+            "rating_text": feedback_data.rating_text or (
+                f"{feedback_data.rating} stars" if feedback_data.rating > 0 else "No rating given"
+            ),
             "feedback": feedback_data.feedback,
             "transcription_preview": feedback_data.transcription_preview,
             "errors_found": errors_list,
@@ -78,51 +61,159 @@ async def submit_feedback(feedback_data: FeedbackRequest, db=Depends(get_databas
         
         # Insert into MongoDB
         result = await db[FEEDBACK_COLLECTION].insert_one(feedback_doc)
+        feedback_doc["id"] = str(result.inserted_id)
         
-        # Log to audit log as well
-        error_summary = f"{feedback_data.total_errors} errors" if feedback_data.total_errors > 0 else "no errors"
-        logger.info(f"FEEDBACK_RECEIVED: Rating={feedback_data.rating}, Type={feedback_data.feedback_type}, {error_summary}")
-        
-        # Get total count
-        total_count = await db[FEEDBACK_COLLECTION].count_documents({})
-        
-        return {
-            "message": "Feedback saved successfully", 
-            "feedback_id": str(result.inserted_id),
-            "total_feedback": total_count
-        }
+        return feedback_doc
         
     except Exception as e:
-        logger.error(f"Error saving feedback: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to save feedback")
+        logger.error(f"Error adding feedback to MongoDB: {e}")
+        raise
 
-@router.get("/stats", response_model=FeedbackStatsResponse)
-async def get_feedback_stats(db=Depends(get_database)):
+
+async def get_feedback_stats_from_db() -> Dict:
     """Get feedback statistics from MongoDB"""
     try:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+        
         # Get total count
         total = await db[FEEDBACK_COLLECTION].count_documents({})
         
         if total == 0:
-            return FeedbackStatsResponse(
-                total_feedback=0,
-                average_rating=0,
-                recent_feedback=[]
-            )
+            return {
+                "total": 0,
+                "average_rating": 0.0,
+                "recent": []
+            }
         
-        # Calculate average rating (only count ratings > 0)
+        # Calculate average rating (only ratings > 0)
         pipeline = [
             {"$match": {"rating": {"$gt": 0}}},
             {"$group": {"_id": None, "avg_rating": {"$avg": "$rating"}}}
         ]
         
         avg_result = await db[FEEDBACK_COLLECTION].aggregate(pipeline).to_list(1)
-        avg_rating = avg_result[0]["avg_rating"] if avg_result else 0
+        avg_rating = avg_result[0]["avg_rating"] if avg_result else 0.0
         
         # Get recent feedback (last 10)
         recent_docs = await db[FEEDBACK_COLLECTION].find().sort("timestamp", -1).limit(10).to_list(10)
-        recent_feedback = [
-            FeedbackResponse(
+        
+        return {
+            "total": total,
+            "average_rating": round(avg_rating, 2),
+            "recent": recent_docs
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting feedback stats: {e}")
+        raise
+
+
+async def get_all_feedback_from_db() -> List[Dict]:
+    """Get all feedback from MongoDB"""
+    try:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+        
+        # Get all feedback documents
+        docs = await db[FEEDBACK_COLLECTION].find().sort("timestamp", -1).to_list(None)
+        
+        return docs
+        
+    except Exception as e:
+        logger.error(f"Error getting all feedback: {e}")
+        raise
+
+
+# ============================================
+# FEEDBACK API ENDPOINTS
+# ============================================
+
+@router.post("/submit")
+async def submit_feedback(feedback_data: FeedbackRequest):
+    """
+    Submit feedback about transcription quality
+    
+    **Parameters:**
+    - rating: Rating from 0-5 (0 = no rating)
+    - rating_text: Description of the rating
+    - transcription_preview: Preview of the transcription
+    - errors_found: List of errors found in transcription
+    - total_errors: Total number of errors
+    - feedback_type: Type of feedback (simple/detailed)
+    - feedback: Additional feedback text
+    
+    **Returns:**
+    - message: Success message
+    - feedback_id: ID of the submitted feedback
+    - total_feedback: Total number of feedback entries
+    """
+    try:
+        # Validate rating
+        if not (0 <= feedback_data.rating <= 5):
+            raise HTTPException(
+                status_code=400,
+                detail="Rating must be between 0 and 5 (0 = no rating)"
+            )
+        
+        # Add feedback entry to MongoDB
+        feedback_entry = await add_feedback_to_db(feedback_data)
+        
+        # Log feedback
+        error_summary = (
+            f"{feedback_data.total_errors} errors" 
+            if feedback_data.total_errors > 0 
+            else "no errors"
+        )
+        logger.info(
+            f"FEEDBACK_RECEIVED: Rating={feedback_data.rating}, "
+            f"Type={feedback_data.feedback_type}, {error_summary}"
+        )
+        
+        # Get total count
+        db = get_database()
+        total_count = await db[FEEDBACK_COLLECTION].count_documents({})
+        
+        return JSONResponse({
+            "message": "Feedback saved successfully",
+            "feedback_id": feedback_entry["id"],
+            "total_feedback": total_count
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving feedback: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to save feedback"
+        )
+
+
+@router.get("/stats", response_model=FeedbackStatsResponse)
+async def get_feedback_stats():
+    """
+    Get feedback statistics
+    
+    **Returns:**
+    - total_feedback: Total number of feedback entries
+    - average_rating: Average rating (excluding 0 ratings)
+    - recent_feedback: List of recent feedback entries (last 10)
+    
+    **Note:**
+    - This endpoint does not require authentication
+    - Useful for displaying feedback analytics
+    """
+    try:
+        # Get stats from MongoDB
+        stats = await get_feedback_stats_from_db()
+        
+        # Convert recent feedback to response model
+        recent_feedback = []
+        for doc in stats["recent"]:
+            recent_feedback.append(FeedbackResponse(
                 id=str(doc["_id"]),
                 rating=doc["rating"],
                 rating_text=doc["rating_text"],
@@ -132,28 +223,44 @@ async def get_feedback_stats(db=Depends(get_database)):
                 feedback_type=doc.get("feedback_type", "simple"),
                 feedback=doc.get("feedback", ""),
                 timestamp=doc["timestamp"]
-            ) for doc in recent_docs
-        ]
+            ))
         
         return FeedbackStatsResponse(
-            total_feedback=total,
-            average_rating=round(avg_rating, 2),
+            total_feedback=stats["total"],
+            average_rating=stats["average_rating"],
             recent_feedback=recent_feedback
         )
         
     except Exception as e:
-        logger.error(f"Error getting feedback stats: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get feedback stats")
+        logger.error(f"Error getting feedback stats: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get feedback statistics"
+        )
+
 
 @router.get("/all", response_model=FeedbackListResponse)
-async def get_all_feedback(db=Depends(get_database)):
-    """Get all feedback data from MongoDB"""
+async def get_all_feedback():
+    """
+    Get all feedback entries
+    
+    **Returns:**
+    - total_feedback: Total number of feedback entries
+    - feedback: List of all feedback entries (sorted by timestamp, newest first)
+    
+    **Note:**
+    - This endpoint does not require authentication
+    - Returns complete feedback history
+    - Useful for reviewing all submitted feedback
+    """
     try:
-        # Get all feedback documents
-        docs = await db[FEEDBACK_COLLECTION].find().sort("timestamp", -1).to_list(None)
+        # Get all feedback from MongoDB
+        feedback_docs = await get_all_feedback_from_db()
         
-        feedback_list = [
-            FeedbackResponse(
+        # Convert to response model
+        feedback_responses = []
+        for doc in feedback_docs:
+            feedback_responses.append(FeedbackResponse(
                 id=str(doc["_id"]),
                 rating=doc["rating"],
                 rating_text=doc["rating_text"],
@@ -163,14 +270,17 @@ async def get_all_feedback(db=Depends(get_database)):
                 feedback_type=doc.get("feedback_type", "simple"),
                 feedback=doc.get("feedback", ""),
                 timestamp=doc["timestamp"]
-            ) for doc in docs
-        ]
+            ))
         
         return FeedbackListResponse(
-            total_feedback=len(feedback_list),
-            feedback=feedback_list
+            total_feedback=len(feedback_responses),
+            feedback=feedback_responses
         )
         
     except Exception as e:
-        logger.error(f"Error getting all feedback: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get feedback data")
+        logger.error(f"Error getting all feedback: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get feedback data"
+        )
+
