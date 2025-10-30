@@ -148,6 +148,10 @@ class SOAPRequest(BaseModel):
     location: Optional[str] = None
     reason_for_visit: Optional[str] = None
     
+    # Custom prompts (optional) - allows frontend to send dynamic prompts
+    system_prompt: Optional[str] = None
+    user_prompt_template: Optional[str] = None
+    
     # Pre-filled sections (optional)
     subjective: Optional[SubjectiveSection] = None
     objective: Optional[ObjectiveSection] = None

@@ -36,7 +36,8 @@ from app.schemas import (
 from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
-from app.api import feedback
+from app.api import feedback, soap_notes
+from app.api.soap_storage import save_soap_note_to_db
 
 # Import prompts
 from app.prompts import (
@@ -270,6 +271,7 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest) -> dict:
     """
     Generate a comprehensive orthopedic SOAP note from transcription with optional structured data.
     Returns a dictionary with structured SOAP sections and formatted note.
+    Supports dynamic custom prompts from frontend.
     """
     try:
         # Apply medical terminology corrections to transcription
@@ -301,12 +303,30 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest) -> dict:
         if soap_request.reason_for_visit:
             header_section += f"Reason for Visit: {soap_request.reason_for_visit}\n"
         
-        # Build the user prompt
-        user_prompt = ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE.format(
-            transcription=corrected_transcription,
-            patient_context=patient_context,
-            header_section=header_section
-        )
+        # Use custom prompts if provided, otherwise use default prompts
+        system_prompt = soap_request.system_prompt if soap_request.system_prompt else ORTHOPEDIC_SOAP_SYSTEM_PROMPT
+        
+        # Build the user prompt - use custom template if provided
+        if soap_request.user_prompt_template:
+            # Custom prompt template - replace placeholders
+            user_prompt = soap_request.user_prompt_template.format(
+                transcription=corrected_transcription,
+                patient_context=patient_context,
+                header_section=header_section
+            )
+            logger.info("Using custom user prompt template provided by frontend")
+        else:
+            # Use default template
+            user_prompt = ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE.format(
+                transcription=corrected_transcription,
+                patient_context=patient_context,
+                header_section=header_section
+            )
+            logger.info("Using default orthopedic SOAP prompt template")
+        
+        # Log if custom system prompt is used
+        if soap_request.system_prompt:
+            logger.info("Using custom system prompt provided by frontend")
         
         # Call OpenAI GPT-4 with explicit configuration
         client = create_openai_client()
@@ -316,7 +336,7 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest) -> dict:
             messages=[
                 {
                     "role": "system",
-                    "content": ORTHOPEDIC_SOAP_SYSTEM_PROMPT
+                    "content": system_prompt
                 },
                 {
                     "role": "user",
@@ -391,6 +411,11 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest) -> dict:
                 "age": soap_request.patient.age if soap_request.patient else None,
                 "gender": soap_request.patient.gender if soap_request.patient else None,
             } if soap_request.patient else None,
+            "date_of_service": soap_request.date_of_service,
+            "location": soap_request.location,
+            "reason_for_visit": soap_request.reason_for_visit,
+            "system_prompt": soap_request.system_prompt,
+            "user_prompt_template": soap_request.user_prompt_template,
             "format": "markdown"
         }
         
@@ -416,8 +441,13 @@ async def root():
             "auth": "/api/v1/auth/login",
             "transcribe": "/api/v1/transcribe",
             "soap": {
-                "comprehensive": "/api/v1/generate-soap",
-                "legacy": "/generate-soap"
+                "generate_json": "/api/v1/generate-soap",
+                "generate_form": "/generate-soap",
+                "get_all": "/api/v1/soap-notes/all",
+                "get_by_id": "/api/v1/soap-notes/{id}",
+                "stats": "/api/v1/soap-notes/stats",
+                "update": "/api/v1/soap-notes/{id}",
+                "delete": "/api/v1/soap-notes/{id}"
             },
             "feedback": {
                 "submit": "/api/v1/feedback/submit",
@@ -608,6 +638,7 @@ async def transcribe_audio(
 async def generate_soap_comprehensive(soap_request: SOAPRequest):
     """
     Generate a comprehensive orthopedic SOAP note from clinical transcription.
+    Supports custom prompts and automatically saves to database.
     
     **Parameters:**
     - transcription: Clinical transcription text (REQUIRED)
@@ -615,6 +646,8 @@ async def generate_soap_comprehensive(soap_request: SOAPRequest):
     - date_of_service: Optional date of service
     - location: Optional clinic/hospital location
     - reason_for_visit: Optional reason for visit
+    - system_prompt: Optional custom system prompt for SOAP generation
+    - user_prompt_template: Optional custom user prompt template (use {transcription}, {patient_context}, {header_section} placeholders)
     - Additional structured data for S/O/A/P sections (optional)
     
     **Returns:**
@@ -634,7 +667,9 @@ async def generate_soap_comprehensive(soap_request: SOAPRequest):
         },
         "date_of_service": "2025-10-27",
         "location": "Cresol Ortho Center",
-        "reason_for_visit": "Left wrist pain after fall"
+        "reason_for_visit": "Left wrist pain after fall",
+        "system_prompt": "Custom system prompt here (optional)",
+        "user_prompt_template": "Custom template with {transcription} placeholder (optional)"
     }
     ```
     """
@@ -643,6 +678,14 @@ async def generate_soap_comprehensive(soap_request: SOAPRequest):
         
         # Generate comprehensive SOAP note
         soap_result = generate_comprehensive_soap_note(soap_request)
+        
+        # Save to MongoDB
+        try:
+            saved_doc = await save_soap_note_to_db(soap_result)
+            logger.info(f"✅ SOAP note saved with ID: {saved_doc.get('_id')}")
+        except Exception as db_error:
+            logger.error(f"⚠️ Failed to save SOAP note to database: {db_error}")
+            logger.warning("Continuing without database storage...")
         
         # Return as SOAPResponse
         return SOAPResponse(**soap_result)
@@ -663,10 +706,13 @@ async def generate_soap_simple(
     patient_gender: Optional[str] = Form(None),
     date_of_service: Optional[str] = Form(None),
     location: Optional[str] = Form(None),
-    reason_for_visit: Optional[str] = Form(None)
+    reason_for_visit: Optional[str] = Form(None),
+    system_prompt: Optional[str] = Form(None),
+    user_prompt_template: Optional[str] = Form(None)
 ):
     """
     Generate comprehensive orthopedic SOAP note from transcription text.
+    Supports custom prompts and automatically saves to database.
     
     **Accepts Form Data or JSON:**
     - Use this endpoint if sending form-data
@@ -682,6 +728,8 @@ async def generate_soap_simple(
     - date_of_service: Date of visit (YYYY-MM-DD)
     - location: Clinic/hospital location
     - reason_for_visit: Chief complaint
+    - system_prompt: Custom system prompt for SOAP generation
+    - user_prompt_template: Custom user prompt template (use {transcription}, {patient_context}, {header_section} placeholders)
     
     **Returns:**
     - Comprehensive SOAP note with structured sections
@@ -694,6 +742,8 @@ async def generate_soap_simple(
     patient_name: "Jane Smith"
     patient_age: 78
     patient_gender: "Female"
+    system_prompt: "Custom system prompt (optional)"
+    user_prompt_template: "Custom template (optional)"
     ```
     """
     try:
@@ -713,11 +763,21 @@ async def generate_soap_simple(
             patient=patient_info,
             date_of_service=date_of_service,
             location=location,
-            reason_for_visit=reason_for_visit
+            reason_for_visit=reason_for_visit,
+            system_prompt=system_prompt,
+            user_prompt_template=user_prompt_template
         )
         
         # Generate comprehensive SOAP note
         soap_result = generate_comprehensive_soap_note(soap_request)
+        
+        # Save to MongoDB
+        try:
+            saved_doc = await save_soap_note_to_db(soap_result)
+            logger.info(f"✅ SOAP note saved with ID: {saved_doc.get('_id')}")
+        except Exception as db_error:
+            logger.error(f"⚠️ Failed to save SOAP note to database: {db_error}")
+            logger.warning("Continuing without database storage...")
         
         # Return as SOAPResponse
         return SOAPResponse(**soap_result)
@@ -736,6 +796,9 @@ async def generate_soap_simple(
 
 # Include feedback router
 app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"])
+
+# Include SOAP notes router
+app.include_router(soap_notes.router, prefix="/api/v1/soap-notes", tags=["soap-notes"])
 
 
 # ============================================
