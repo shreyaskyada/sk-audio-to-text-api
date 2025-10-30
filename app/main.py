@@ -443,6 +443,7 @@ async def root():
             "soap": {
                 "generate_json": "/api/v1/generate-soap",
                 "generate_form": "/generate-soap",
+                "get_default_prompts": "/api/v1/soap-prompts/default",
                 "get_all": "/api/v1/soap-notes/all",
                 "get_by_id": "/api/v1/soap-notes/{id}",
                 "stats": "/api/v1/soap-notes/stats",
@@ -632,6 +633,46 @@ async def transcribe_audio(
             status_code=500,
             detail=f"Internal server error during transcription: {str(e)}"
         )
+
+
+@app.get("/api/v1/soap-prompts/default")
+async def get_default_soap_prompts():
+    """
+    Get the default orthopedic SOAP note prompts.
+    
+    **Returns:**
+    - system_prompt: Default system prompt for orthopedic SOAP notes
+    - user_prompt_template: Default user prompt template with placeholders
+    - placeholders: List of available placeholders for the template
+    - description: Description of the default prompts
+    
+    **Usage:**
+    Frontend can fetch these default prompts to:
+    - Show users the default template
+    - Use as a starting point for customization
+    - Understand available placeholders
+    
+    **Example Response:**
+    ```json
+    {
+        "system_prompt": "You are an expert medical documentation AI...",
+        "user_prompt_template": "Transform the following clinical transcription...",
+        "placeholders": ["{transcription}", "{patient_context}", "{header_section}"],
+        "description": "Default orthopedic SOAP note prompts"
+    }
+    ```
+    """
+    return JSONResponse({
+        "system_prompt": ORTHOPEDIC_SOAP_SYSTEM_PROMPT,
+        "user_prompt_template": ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE,
+        "placeholders": [
+            "{transcription}",
+            "{patient_context}",
+            "{header_section}"
+        ],
+        "description": "Default orthopedic SOAP note prompts following DWC, AMA, and HIPAA standards",
+        "specialty": "orthopedics"
+    })
 
 
 @app.post("/api/v1/generate-soap", response_model=SOAPResponse)
