@@ -26,107 +26,198 @@ MEDICAL_TERMINOLOGY_CORRECTIONS = {
 
 ORTHOPEDIC_SOAP_SYSTEM_PROMPT = """You are an expert medical documentation AI assistant specializing in orthopedic consultation notes. Your task is to transform clinical transcriptions into structured, professional SOAP notes that comply with DWC, AMA, and HIPAA documentation standards.
 
-You must follow the ORTHOPEDIC CONSULTATION SOAP NOTE TEMPLATE format exactly."""
+You must follow the ORTHOPEDIC CONSULTATION SOAP NOTE TEMPLATE format exactly.
+
+IMPORTANT: If patient demographic information (name, age, gender) is not provided in the input, you should still generate a complete SOAP note from the transcription. Mark missing demographic fields as "[Not documented]" in the appropriate sections, but proceed with the medical documentation based on the transcription content provided."""
 
 
-ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE = """Transform the following clinical transcription into a comprehensive, structured SOAP note following the orthopedic consultation format.
+ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE = """**TASK:**
+Transform the following clinical transcription into a complete orthopedic SOAP note and narrative report following the exact structure and sequence of the official Orthopedic Consultation template.
+
+---
+
+### INPUT:
+
+{header_section}
 
 **TRANSCRIPTION:**
 {transcription}
 
 {patient_context}
 
-**INSTRUCTIONS:**
-1. Correct any grammatical or typographical errors while preserving clinical meaning
-2. Organize information into the structured SOAP format below
-3. Extract and include ICD-10 codes for diagnoses when possible
-4. Use professional orthopedic terminology
-5. Do NOT invent information not present in the transcription
-6. If information for a section is not available, note as "[Not documented]"
-7. Format the output in clean Markdown
+---
 
-**REQUIRED FORMAT (Markdown):**
+### INSTRUCTIONS:
 
-# 📝 ORTHOPEDIC CONSULTATION – SOAP NOTE
+1. **ALWAYS generate the complete SOAP note** from the transcription provided, even if patient demographic information is missing.
+2. Correct grammatical or transcription errors while preserving the original medical meaning.  
+3. Use professional orthopedic and clinical terminology (no layman terms).  
+4. Reconstruct the note using the **two-part output format** below:  
+   - **Part 1 – Structured SOAP Note (Markdown format)**  
+   - **Part 2 – Narrative Orthopedic Report (free-text narrative)**  
+5. Include **ICD-10** and **CPT** codes wherever applicable.  
+6. If patient demographics (name, age, gender) are not provided, mark them as "[Not documented]" but continue generating the full medical note from the transcription.  
+7. For any other missing clinical data, clearly mark as "[Not documented]" — never invent or assume new details.  
+8. Use clean Markdown structure for Part 1 and professional paragraph formatting for Part 2.  
+9. Follow DWC, AMA, HIPAA, and MTUS documentation compliance.  
+10. Maintain consistency in formatting, tone, and section order identical to the PDF structure.
 
-{header_section}
+---
+
+# PART 1: STRUCTURED ORTHOPEDIC SOAP NOTE (Markdown)
+
+# ORTHOPEDIC CONSULTATION – SOAP NOTE
 
 ---
 
 ## S – SUBJECTIVE
 
 ### Chief Complaint
-[Primary symptom or reason for visit from transcription]
+[Primary reason for visit or main symptom]
 
 ### History of Present Illness
-[Detailed description from transcription — onset, mechanism of injury, pain level, progression, and current status]
+- Onset date and mechanism of injury  
+- Location, quality, and intensity of pain  
+- Functional impact on mobility or daily activities  
+- Aggravating and relieving factors  
+- Associated symptoms (numbness, swelling, instability)  
+- Progression since injury or last visit
+
+### Failure of Conservative Treatment
+[List any prior non-surgical treatments tried, their duration, and response]
 
 ### Past Medical History
-[List key comorbidities – e.g., HTN, AFib, DM, etc. or "None documented"]
+[List comorbidities or “As per chart”]
 
 ### Medications
-[List medications or note "As per chart" or "None documented"]
+[List current medications or “None documented”]
 
-### Social History
-[Living situation, independence, work, assistive devices, etc. or "Not documented"]
+### Social & Occupational History
+- Occupation and work demands  
+- Living situation or support system  
+- Work status (Full duty / Modified duty / Off work)
 
-### Review of Systems
-[Positive and negative symptoms relevant to the injury or "Not documented"]
+### Review of Systems (ROS)
+[Relevant positives and negatives, or “No acute findings”]
 
 ---
 
 ## O – OBJECTIVE
 
-### General Exam
-[Patient appearance, distress level, vitals if mentioned]
+### General Examination
+- Appearance, orientation, and pain distress level  
+- Vital signs (BP, HR, Temp, SpO₂, BMI)
 
-### Local Exam
-- **Inspection:** [Swelling, deformity, wound, etc.]
-- **Palpation:** [Tenderness sites, warmth, etc.]
-- **ROM:** [Limitations, pain, inability to move, etc.]
-- **Neurovascular:** [Sensory/motor intactness, pulses]
+### Local Musculoskeletal Examination
+- **Inspection:** [Deformity, swelling, ecchymosis, skin integrity]  
+- **Palpation:** [Tenderness points, warmth, effusion]  
+- **ROM:** [Degrees or limitations]  
+- **Strength:** [Muscle grade 0–5]  
+- **Neurovascular Status:** [Sensation, motor, pulses]  
+- **Special Tests:** [If performed]
 
-### Imaging
-[X-ray/MRI/CT findings summarized or "Not performed"]
+### Imaging Studies
+[Summary of X-ray, MRI, CT findings or “Not performed”]
 
 ---
 
 ## A – ASSESSMENT
 
-| Condition | ICD-10 Code | Notes |
-|-----------|-------------|-------|
-| [Primary Diagnosis] | [ICD-10] | [Brief notes] |
-| [Secondary Diagnosis if any] | [ICD-10] | [Brief notes] |
-| [Mechanism/Associated condition] | [ICD-10] | [e.g., Fall mechanism] |
+| Condition / Diagnosis | ICD-10 Code | Notes |
+|------------------------|-------------|-------|
+| [Primary Diagnosis] | [ICD-10] | [Clinical note] |
+| [Secondary Diagnosis] | [ICD-10] | [Additional note] |
+| [Comorbidities] | [ICD-10] | [If applicable] |
+
+### Functional Impairment Statement
+[Describe how the condition affects ADLs, work, or ROM]
+
+### Medical Necessity & MTUS Compliance
+[Justify why recommended care is medically necessary per MTUS]
+
+### Medical Decision Making (MDM)
+- Problem Complexity: [Low / Moderate / High]  
+- Data Reviewed: [Imaging, lab, prior notes]  
+- Risk Level: [Low / Moderate / High]
 
 ---
 
 ## P – PLAN
 
 ### Immediate Treatment
-- [Casting, splinting, surgical planning, medication, etc.]
+[List all treatments provided or initiated]
 
-### Follow-Up Instructions
-- [Recheck timing, repeat imaging, cast removal, transition to brace, etc.]
+### Request for Authorization (RFA)
+- **Requested Services:** [e.g., MRI, PT, injections]  
+- **CPT Codes:** [List if available]  
+- **Justification:** [Include MTUS or clinical reasoning]
+
+### Follow-Up
+- [Return visit, re-evaluation, or imaging schedule]
 
 ### Surgical Plan (if applicable)
-- [Procedure, timing, consent obtained, labs, NPO status, pre-op clearance]
+- Procedure name, status (planned/pending), and consent
 
 ### Patient Education
-- [Precautions, expected recovery timeline, signs to watch for]
+- [Precautions, home care, red flags, expectations]
 
-### Work Status (if applicable)
-[Return to work status and restrictions]
-
-### RFA/Authorization (if applicable)
-[Any authorization requests needed]
-
----
-
-**✅ Generated by Ortho AI Voice Charting** (Whisper → SOAP → ICD-10 Mapping)  
-*Compliant with DWC, AMA, and HIPAA documentation standards.*
+### Work Status
+- Work Capacity: [Full duty / Modified duty / TTD / P&S]  
+- Restrictions: [Weight limits, movement restrictions, etc.]  
+- Duration & Review Date: [Timeline]
 
 ---
 
-Please generate the SOAP note following this exact Markdown format, with clear sections and professional medical language."""
+**Generated by Ortho AI Charting Assistant**  
+*Compliant with DWC, AMA, HIPAA, and MTUS documentation standards.*
+
+---
+
+# PART 2: NARRATIVE ORTHOPEDIC REPORT (Free-Text Format)
+
+**Patient Name:** [Not documented]  
+**Age/Sex:** [Not documented]  
+**Date of Visit:** [Insert or “Not documented”]  
+**Examined By:** [Physician’s name or “Not documented”]
+
+---
+
+### HISTORY OF PRESENT ILLNESS:
+[Full paragraph combining details of onset, mechanism, symptoms, aggravating factors, and functional impact. Maintain a narrative tone with clear medical flow.]
+
+### FAILURE OF CONSERVATIVE TREATMENT:
+[Describe prior therapy, medications, rest, bracing, or PT attempts.]
+
+### PAST MEDICAL HISTORY / MEDICATIONS / SOCIAL HISTORY:
+[Condense relevant details into short narrative sentences.]
+
+### PHYSICAL EXAMINATION:
+[Describe inspection, palpation, ROM, strength, neurological, and vascular findings in continuous prose. Include imaging summaries if available.]
+
+### DIAGNOSIS:
+[List primary and secondary conditions with ICD-10 codes in paragraph form.]
+
+### PLAN:
+[Discuss treatment recommendations, medications, injections, therapy, bracing, surgery plan, and follow-up instructions in a smooth narrative.]
+
+### WORK STATUS:
+[State if the patient remains on modified duty, off work, or full duty, with timeframe and reasoning.]
+
+---
+
+**Provider Signature:**  
+[Physician Name, MD/DO]  
+**Date:** [Today’s Date]
+
+---
+
+**Generated by Ortho AI Voice Charting System**  
+*Compliant with DWC, AMA, HIPAA, and MTUS documentation standards.*
+
+---
+
+### PRO TIP:
+If you want only one version at a time, add this line to your input:  
+> “Generate only the [Structured SOAP Note]” or “Generate only the [Narrative Report].”
+"""
 
