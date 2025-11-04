@@ -344,7 +344,8 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest) -> dict:
                 }
             ],
             temperature=0.2,
-            max_tokens=6000
+            max_tokens=6000,
+            top_p=1.0
         )
         
         formatted_soap_note = response.choices[0].message.content.strip()
@@ -574,7 +575,7 @@ async def transcribe_audio(
             
             # Generate SOAP note
             logger.info("Generating SOAP note with GPT-4...")
-            soap_note = generate_soap_note_from_transcription(raw_transcript)
+            # soap_note = generate_soap_note_from_transcription(raw_transcript)
             
             # Extract metadata
             confidence = result["results"]["channels"][0]["alternatives"][0].get("confidence", 0.0)
