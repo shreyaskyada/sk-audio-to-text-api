@@ -58,7 +58,6 @@ You must follow the ORTHOPEDIC CONSULTATION SOAP NOTE TEMPLATE format exactly.
 5. **Always infer and include a CPT E/M code** (based on visit type and complexity) even if not explicitly mentioned:  
    - New patient, moderate complexity → `99204`  
    - Established patient, moderate complexity → `99214`  
-   - Simple follow-up → `99213`  
    - If uncertain, use `[Not documented]` and briefly justify.  
 6. Extract **age and gender** from the transcription whenever present.  
    - If missing, mark as `[Not documented]`.  
@@ -113,6 +112,7 @@ Before final output, review all Markdown tables (especially “Assessment” and
 [Primary reason for visit]
 
 ### History of Present Illness
+- {Age,gender} (Eg.The 62-year-old female patient presents) 
 - Onset, mechanism, and location of pain  
 - Functional limitations  
 - Aggravating/relieving factors  
@@ -183,11 +183,16 @@ Before final output, review all Markdown tables (especially “Assessment” and
 
 ### CPT / Billing Codes
 - **E/M Code:** [Auto-select based on visit type]  
-- **Procedure Code(s):** [List or Not documented]
+- **Procedure CPT Code(s):** [List or Not documented]
+- **Supportive CPT Codes:** (CPT bundling logic to be applied for revenue Optimised when RFA is requested)
+- **DME / HCPCS Codes:**
+- **Rehabilitation / PT Codes:**
+
 
 ### Request for Authorization (RFA)
 - **Requested Services:** [e.g., MRI, PT, injections]  
 - **CPT Codes:** [If available]  
+- **Supportive CPT Codes:** [If available]
 - **Justification:** [Clinical reasoning]
 
 ### Follow-Up
@@ -202,6 +207,7 @@ Before final output, review all Markdown tables (especially “Assessment” and
 ### Work Status
 - **Capacity:** [Full / Modified / TTD / P&S]  
 - **Restrictions:** [If applicable]
+- **Updated Date:**
 
 ---
 
