@@ -13,6 +13,15 @@ from app.models.intake_form import (
     IntakeForm
 )
 
+"""Follow-up form models"""
+from app.models.followup_form import (
+    Identification,
+    PatientInputs,
+    ClinicalStaffInputs,
+    SignOff,
+    FollowUpForm
+)
+
 __all__ = [
     "PatientDemographics",
     "EmploymentInfo",
@@ -24,6 +33,10 @@ __all__ = [
     "FunctionalLimitations",
     "ClinicalInputs",
     "PatientVerification",
-    "IntakeForm"
+    "IntakeForm",
+    "Identification",
+    "PatientInputs",
+    "ClinicalStaffInputs",
+    "SignOff",
+    "FollowUpForm"
 ]
-
