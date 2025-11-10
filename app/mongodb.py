@@ -48,3 +48,10 @@ def get_database():
         return None
     return mongo_db
 
+
+def get_database_by_name(db_name: str):
+    """Get MongoDB database instance by name"""
+    if mongo_client is None:
+        return None
+    return mongo_client[db_name]
+

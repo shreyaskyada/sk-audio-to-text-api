@@ -36,7 +36,7 @@ from app.schemas import (
 from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
-from app.api import feedback, soap_notes
+from app.api import feedback, soap_notes, intake_forms
 from app.api.soap_storage import save_soap_note_to_db
 
 # Import prompts
@@ -455,6 +455,9 @@ async def root():
                 "submit": "/api/v1/feedback/submit",
                 "stats": "/api/v1/feedback/stats",
                 "all": "/api/v1/feedback/all"
+            },
+            "intake_forms": {
+                "create": "/api/v1/intake-form"
             }
         }
     }
@@ -841,6 +844,9 @@ app.include_router(feedback.router, prefix="/api/v1/feedback", tags=["feedback"]
 
 # Include SOAP notes router
 app.include_router(soap_notes.router, prefix="/api/v1/soap-notes", tags=["soap-notes"])
+
+# Include intake forms router
+app.include_router(intake_forms.router, prefix="/api/v1", tags=["intake-forms"])
 
 
 # ============================================
