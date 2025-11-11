@@ -457,10 +457,12 @@ async def root():
                 "all": "/api/v1/feedback/all"
             },
             "intake_forms": {
-                "create": "/api/v1/intake-form"
+                "create": "/api/v1/intake-form",
+                "latest": "/api/v1/intake-form/latest"
             },
             "followup_forms": {
-                "create": "/api/v1/followup-intake"
+                "create": "/api/v1/followup-intake",
+                "latest": "/api/v1/follow-up/latest"
             }
         }
     }
