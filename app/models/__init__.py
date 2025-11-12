@@ -22,6 +22,16 @@ from app.models.followup_form import (
     FollowUpForm
 )
 
+"""PR-1 generation models"""
+from app.models.pr1_models import (
+    SOAPDiagnosis,
+    SOAPRFAItem,
+    SOAPNoteForPR1,
+    IntakeFormForPR1,
+    FollowUpFormForPR1,
+    PR1GenerateRequest
+)
+
 __all__ = [
     "PatientDemographics",
     "EmploymentInfo",
@@ -38,5 +48,11 @@ __all__ = [
     "PatientInputs",
     "ClinicalStaffInputs",
     "SignOff",
-    "FollowUpForm"
+    "FollowUpForm",
+    "SOAPDiagnosis",
+    "SOAPRFAItem",
+    "SOAPNoteForPR1",
+    "IntakeFormForPR1",
+    "FollowUpFormForPR1",
+    "PR1GenerateRequest"
 ]

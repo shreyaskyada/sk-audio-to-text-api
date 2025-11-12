@@ -36,7 +36,7 @@ from app.schemas import (
 from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
-from app.api import feedback, soap_notes, intake_forms, followup_forms
+from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_generator
 from app.api.soap_storage import save_soap_note_to_db
 
 # Import prompts
@@ -463,6 +463,10 @@ async def root():
             "followup_forms": {
                 "create": "/api/v1/followup-intake",
                 "latest": "/api/v1/follow-up/latest"
+            },
+            "pr1_generator": {
+                "generate": "/api/v1/pr1/generate",
+                "generate_from_pdf": "/api/v1/pr1/generate-from-pdf"
             }
         }
     }
@@ -855,6 +859,9 @@ app.include_router(intake_forms.router, prefix="/api/v1", tags=["intake-forms"])
 
 # Include follow-up forms router
 app.include_router(followup_forms.router, prefix="/api/v1", tags=["followup-forms"])
+
+# Include PR-1 generator router
+app.include_router(pr1_generator.router, prefix="/api/v1", tags=["pr1-generator"])
 
 
 # ============================================
