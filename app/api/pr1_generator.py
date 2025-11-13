@@ -1025,25 +1025,25 @@ Return the JSON structure with all extracted fields. Use null for missing fields
         )
 
 
-@router.post("/pr1/generate-from-pdf")
-async def generate_pr1_from_pdf(
-    pdf_file: UploadFile = File(..., description="SOAP note PDF file"),
+@router.post("/pr1/generate-from-soap")
+async def generate_pr1_from_soap(
+    soap_id: str = Form(..., description="SOAP note MongoDB ID"),
     use_latest_intake: bool = Form(False, description="Use latest intake form"),
     use_latest_followup: bool = Form(False, description="Use latest follow-up form"),
     flags: Optional[str] = Form(None, description="JSON string with PR-1 flags (e.g., {'progress_report': true})")
 ):
     """
-    Generate PR-1 form from PDF SOAP note and latest intake/follow-up data
+    Generate PR-1 form from SOAP note (using formatted_soap_note field) and latest intake/follow-up data
     
     **Workflow:**
-    1. Upload SOAP note PDF file
-    2. Extract text from PDF
-    3. Use GPT API to convert PDF text to structured SOAP JSON
+    1. Fetch SOAP note from MongoDB using soap_id
+    2. Extract formatted_soap_note field from the SOAP note
+    3. Use GPT API to convert formatted SOAP note text to structured SOAP JSON
     4. Automatically fetch latest intake and/or follow-up forms if requested
     5. Generate complete PR-1 form structure
     
     **Parameters:**
-    - pdf_file: SOAP note PDF file (required)
+    - soap_id: MongoDB ObjectId string of the SOAP note (required)
     - use_latest_intake: Boolean - If True, fetches latest intake form (default: False)
     - use_latest_followup: Boolean - If True, fetches latest follow-up form (default: False)
     - flags: Optional JSON string with PR-1 checkbox flags (e.g., '{"progress_report": true, "request_for_authorization": true}')
@@ -1052,53 +1052,74 @@ async def generate_pr1_from_pdf(
     - status: Success status
     - pr1_values: Complete PR-1 form data structure
     - metadata: Information about which documents were used
-    - soap_data: Extracted SOAP data from PDF
+    - soap_data: Extracted SOAP data from formatted_soap_note
     
     **Example Request (multipart/form-data):**
     ```
-    pdf_file: [PDF file]
+    soap_id: 507f1f77bcf86cd799439011
     use_latest_intake: true
     use_latest_followup: true
     flags: {"progress_report": true, "request_for_authorization": true}
     ```
     """
     try:
-        # Validate PDF file
-        if not pdf_file.filename or not pdf_file.filename.lower().endswith('.pdf'):
-            raise HTTPException(
-                status_code=400,
-                detail="File must be a PDF (.pdf)"
-            )
-        
-        logger.info(f"Processing PDF file: {pdf_file.filename}")
-        
         # Step 1: Validate OpenAI API key is configured (lazy load)
         openai_api_key = get_openai_api_key()
         if not openai_api_key:
             raise HTTPException(
                 status_code=500,
-                detail="OpenAI API key not configured. Please set OPENAI_API_KEY environment variable to use PDF processing."
+                detail="OpenAI API key not configured. Please set OPENAI_API_KEY environment variable to use SOAP note processing."
             )
         
-        # Step 2: Extract text from PDF
-        pdf_text = await extract_text_from_pdf(pdf_file)
+        # Step 2: Fetch SOAP note from MongoDB
+        db = get_database()
+        if db is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Database connection not available"
+            )
         
-        if not pdf_text or len(pdf_text.strip()) < 50:
+        try:
+            soap_doc = await db[COLL_SOAP].find_one({"_id": ObjectId(soap_id)})
+            if not soap_doc:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"SOAP note not found with ID: {soap_id}"
+                )
+        except Exception as e:
+            if isinstance(e, HTTPException):
+                raise
+            logger.error(f"Error fetching SOAP note: {e}")
             raise HTTPException(
                 status_code=400,
-                detail="PDF appears to be empty or could not extract sufficient text. Please ensure the PDF contains readable text."
+                detail=f"Invalid SOAP note ID: {str(e)}"
             )
         
-        logger.info(f"Extracted {len(pdf_text)} characters from PDF")
+        logger.info(f"Fetched SOAP note with ID: {soap_id}")
         
-        # Step 3: Convert PDF text to structured SOAP JSON using GPT API
+        # Step 3: Extract formatted_soap_note field
+        formatted_soap_note = soap_doc.get("formatted_soap_note")
+        if not formatted_soap_note:
+            raise HTTPException(
+                status_code=400,
+                detail="SOAP note does not have a 'formatted_soap_note' field. Please ensure the SOAP note was generated with formatted content."
+            )
+        
+        if len(formatted_soap_note.strip()) < 50:
+            raise HTTPException(
+                status_code=400,
+                detail="formatted_soap_note appears to be empty or too short. Please ensure the SOAP note contains sufficient content."
+            )
+        
+        logger.info(f"Extracted formatted_soap_note with {len(formatted_soap_note)} characters")
+        
+        # Step 4: Convert formatted SOAP note text to structured SOAP JSON using GPT API
         try:
-            soap_data_dict = convert_pdf_text_to_soap_json(pdf_text)
+            soap_data_dict = convert_pdf_text_to_soap_json(formatted_soap_note)
         except HTTPException:
-            # Re-raise HTTP exceptions from convert function
             raise
         except Exception as e:
-            error_msg = f"Failed to convert PDF to structured data: {str(e)}"
+            error_msg = f"Failed to convert formatted SOAP note to structured data: {str(e)}"
             logger.error(error_msg)
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1107,7 +1128,7 @@ async def generate_pr1_from_pdf(
                 detail=error_msg
             )
         
-        # Step 4: Parse flags if provided
+        # Step 5: Parse flags if provided
         pr1_flags = None
         if flags:
             try:
@@ -1116,7 +1137,7 @@ async def generate_pr1_from_pdf(
                 logger.warning(f"Invalid JSON in flags parameter: {flags}, error: {e}")
                 pr1_flags = None
         
-        # Step 5: Fetch latest intake and follow-up data if requested
+        # Step 6: Fetch latest intake and follow-up data if requested
         intake_doc = None
         intake_source = None
         if use_latest_intake:
@@ -1137,7 +1158,7 @@ async def generate_pr1_from_pdf(
             else:
                 logger.warning("No follow-up forms found in database (use_latest_followup=True)")
         
-        # Step 6: Build PR-1 payload using extracted SOAP data
+        # Step 7: Build PR-1 payload using extracted SOAP data
         try:
             pr1 = build_pr1_payload(intake_doc, follow_doc, soap_data_dict, pr1_flags or {})
         except Exception as e:
@@ -1150,7 +1171,7 @@ async def generate_pr1_from_pdf(
                 detail=error_msg
             )
         
-        # Step 7: Prepare response
+        # Step 8: Prepare response
         response_data = {
             "status": "success",
             "pr1_values": pr1,
@@ -1162,27 +1183,27 @@ async def generate_pr1_from_pdf(
                 "followup_id": follow_doc.get("_id") if follow_doc else None,
                 "followup_source": followup_source,
                 "soap_used": True,
-                "soap_source": "pdf_upload",
-                "pdf_filename": pdf_file.filename
+                "soap_source": "soap_note_id",
+                "soap_id": soap_id
             },
-            "soap_data": soap_data_dict  # Include extracted SOAP data for reference
+            "soap_data": soap_data_dict
         }
         
-        logger.info(f"✅ PR-1 payload generated successfully from PDF")
+        logger.info(f"✅ PR-1 payload generated successfully from SOAP note")
         logger.info(f"   - Intake: {'Used (source: latest)' if intake_doc else 'Not used'}")
         logger.info(f"   - Follow-up: {'Used (source: latest)' if follow_doc else 'Not used'}")
-        logger.info(f"   - SOAP: Used (source: PDF upload)")
+        logger.info(f"   - SOAP: Used (source: SOAP note ID: {soap_id})")
         
         return JSONResponse(response_data)
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error generating PR-1 from PDF: {e}")
+        logger.error(f"Error generating PR-1 from SOAP note: {e}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate PR-1 from PDF: {str(e)}"
+            detail=f"Failed to generate PR-1 from SOAP note: {str(e)}"
         )
 

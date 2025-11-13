@@ -466,7 +466,7 @@ async def root():
             },
             "pr1_generator": {
                 "generate": "/api/v1/pr1/generate",
-                "generate_from_pdf": "/api/v1/pr1/generate-from-pdf"
+                "generate_from_soap": "/api/v1/pr1/generate-from-soap"
             }
         }
     }
@@ -734,15 +734,20 @@ async def generate_soap_comprehensive(soap_request: SOAPRequest):
         soap_result = generate_comprehensive_soap_note(soap_request)
         
         # Save to MongoDB
+        document_id = None
         try:
             saved_doc = await save_soap_note_to_db(soap_result)
-            logger.info(f"✅ SOAP note saved with ID: {saved_doc.get('_id')}")
+            document_id = saved_doc.get('_id')
+            logger.info(f"✅ SOAP note saved with ID: {document_id}")
         except Exception as db_error:
             logger.error(f"⚠️ Failed to save SOAP note to database: {db_error}")
             logger.warning("Continuing without database storage...")
         
-        # Return as SOAPResponse
-        return SOAPResponse(**soap_result)
+        # Return as SOAPResponse with document ID
+        soap_response = SOAPResponse(**soap_result)
+        if document_id:
+            soap_response.document_id = document_id
+        return soap_response
         
     except Exception as e:
         logger.error(f"Comprehensive SOAP generation error: {str(e)}")
@@ -789,6 +794,7 @@ async def generate_soap_simple(
     - Comprehensive SOAP note with structured sections
     - Formatted note ready for PDF export
     - ICD-10 codes in assessment section
+    - document_id: MongoDB document ID of the saved SOAP note (if successfully saved)
     
     **Example (form-data):**
     ```
@@ -826,15 +832,20 @@ async def generate_soap_simple(
         soap_result = generate_comprehensive_soap_note(soap_request)
         
         # Save to MongoDB
+        document_id = None
         try:
             saved_doc = await save_soap_note_to_db(soap_result)
-            logger.info(f"✅ SOAP note saved with ID: {saved_doc.get('_id')}")
+            document_id = saved_doc.get('_id')
+            logger.info(f"✅ SOAP note saved with ID: {document_id}")
         except Exception as db_error:
             logger.error(f"⚠️ Failed to save SOAP note to database: {db_error}")
             logger.warning("Continuing without database storage...")
         
-        # Return as SOAPResponse
-        return SOAPResponse(**soap_result)
+        # Return as SOAPResponse with document ID
+        soap_response = SOAPResponse(**soap_result)
+        if document_id:
+            soap_response.document_id = document_id
+        return soap_response
         
     except Exception as e:
         logger.error(f"SOAP generation error: {str(e)}")

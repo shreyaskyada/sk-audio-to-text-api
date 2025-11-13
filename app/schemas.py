@@ -178,4 +178,5 @@ class SOAPResponse(BaseModel):
     created_at: str
     patient_info: Optional[dict] = None
     format: str = "markdown"  # Format of the SOAP note
+    document_id: Optional[str] = None  # MongoDB document ID if saved to database
 
