@@ -27,6 +27,8 @@ from app.schemas import (
     LoginRequest,
     LoginResponse,
     TranscriptionResponse,
+    TranscriptionListResponse,
+    TranscriptionListItem,
     SOAPRequest,
     SOAPResponse,
     PatientInfo
@@ -38,6 +40,12 @@ from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 # Import API routers
 from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_generator
 from app.api.soap_storage import save_soap_note_to_db
+from app.api.transcription_storage import (
+    save_transcription_to_db,
+    get_all_transcriptions,
+    get_transcription_by_id,
+    get_transcriptions_count
+)
 
 # Import prompts
 from app.prompts import (
@@ -441,6 +449,10 @@ async def root():
             "health": "/health",
             "auth": "/api/v1/auth/login",
             "transcribe": "/api/v1/transcribe",
+            "transcriptions": {
+                "get_all": "/api/v1/transcriptions",
+                "get_by_id": "/api/v1/transcriptions/{id}"
+            },
             "soap": {
                 "generate_json": "/api/v1/generate-soap",
                 "generate_form": "/generate-soap",
@@ -510,8 +522,7 @@ async def login(request: LoginRequest):
 @app.post("/api/v1/transcribe", response_model=TranscriptionResponse)
 async def transcribe_audio(
     file: UploadFile = File(...),
-    generate_soap: bool = Form(False),
-    username: str = Depends(verify_token)
+    generate_soap: bool = Form(False)
 ):
     """
     Transcribe audio file with optional SOAP note generation.
@@ -628,14 +639,33 @@ async def transcribe_audio(
         
         logger.info(f"Transcription complete: {len(transcription_result['text'])} chars")
         
+        # Save transcription to database
+        document_id = None
+        try:
+            transcription_data = {
+                'text': transcription_result['text'],
+                'confidence': transcription_result.get('confidence', 0.0),
+                'language': transcription_result.get('language', 'unknown'),
+                'duration': transcription_result.get('duration', 0.0),
+                'filename': file.filename,
+                'username': None
+            }
+            saved_doc = await save_transcription_to_db(transcription_data)
+            document_id = saved_doc.get('_id')
+            logger.info(f"✅ Transcription saved to database with ID: {document_id}")
+        except Exception as db_error:
+            logger.error(f"⚠️ Failed to save transcription to database: {db_error}")
+            logger.warning("Continuing without database storage...")
+        
         return TranscriptionResponse(
-            transcription_id=f"temp_{datetime.utcnow().timestamp()}",
+            transcription_id=document_id or f"temp_{datetime.utcnow().timestamp()}",
             text=transcription_result['text'],
             confidence=transcription_result.get('confidence', 0.0),
             language=transcription_result.get('language', 'unknown'),
             duration=transcription_result.get('duration', 0.0),
             created_at=datetime.utcnow(),
-            soap_note=soap_note
+            soap_note=soap_note,
+            document_id=document_id
         )
             
     except HTTPException:
@@ -645,6 +675,108 @@ async def transcribe_audio(
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error during transcription: {str(e)}"
+        )
+
+
+@app.get("/api/v1/transcriptions", response_model=TranscriptionListResponse)
+async def get_transcriptions(
+    limit: int = 100,
+    skip: int = 0
+):
+    """
+    Get all transcriptions with pagination.
+    
+    **Parameters:**
+    - limit: Maximum number of transcriptions to return (default: 100, max: 1000)
+    - skip: Number of transcriptions to skip for pagination (default: 0)
+    
+    **Returns:**
+    - List of transcriptions with metadata
+    """
+    try:
+        # Validate limit
+        if limit > 1000:
+            limit = 1000
+        if limit < 1:
+            limit = 100
+        if skip < 0:
+            skip = 0
+        
+        # Get transcriptions from database
+        transcriptions = await get_all_transcriptions(limit=limit, skip=skip)
+        total = await get_transcriptions_count()
+        
+        # Convert to response format
+        transcription_items = []
+        for trans in transcriptions:
+            transcription_items.append(
+                TranscriptionListItem(
+                    id=trans.get("_id", ""),
+                    text=trans.get("text", ""),
+                    confidence=trans.get("confidence", 0.0),
+                    language=trans.get("language", "unknown"),
+                    duration=trans.get("duration", 0.0),
+                    filename=trans.get("filename"),
+                    username=trans.get("username"),
+                    created_at=trans.get("created_at", datetime.utcnow())
+                )
+            )
+        
+        return TranscriptionListResponse(
+            total=total,
+            limit=limit,
+            skip=skip,
+            transcriptions=transcription_items
+        )
+        
+    except Exception as e:
+        logger.error(f"Error retrieving transcriptions: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error retrieving transcriptions: {str(e)}"
+        )
+
+
+@app.get("/api/v1/transcriptions/{transcription_id}", response_model=TranscriptionListItem)
+async def get_transcription_by_id_endpoint(
+    transcription_id: str
+):
+    """
+    Get a specific transcription by ID.
+    
+    **Parameters:**
+    - transcription_id: MongoDB document ID of the transcription
+    
+    **Returns:**
+    - Transcription details
+    """
+    try:
+        transcription = await get_transcription_by_id(transcription_id)
+        
+        if not transcription:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Transcription not found: {transcription_id}"
+            )
+        
+        return TranscriptionListItem(
+            id=transcription.get("_id", ""),
+            text=transcription.get("text", ""),
+            confidence=transcription.get("confidence", 0.0),
+            language=transcription.get("language", "unknown"),
+            duration=transcription.get("duration", 0.0),
+            filename=transcription.get("filename"),
+            username=transcription.get("username"),
+            created_at=transcription.get("created_at", datetime.utcnow())
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving transcription: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error retrieving transcription: {str(e)}"
         )
 
 
@@ -695,7 +827,8 @@ async def generate_soap_comprehensive(soap_request: SOAPRequest):
     Supports custom prompts and automatically saves to database.
     
     **Parameters:**
-    - transcription: Clinical transcription text (REQUIRED)
+    - transcription_id: MongoDB transcription document ID (required if transcription not provided)
+    - transcription: Clinical transcription text (required if transcription_id not provided)
     - patient: Optional patient information (name, age, gender)
     - date_of_service: Optional date of service
     - location: Optional clinic/hospital location
@@ -713,7 +846,7 @@ async def generate_soap_comprehensive(soap_request: SOAPRequest):
     **Example Request:**
     ```json
     {
-        "transcription": "78-year-old female with one week history...",
+        "transcription_id": "507f1f77bcf86cd799439011",
         "patient": {
             "name": "Jane Smith",
             "age": 78,
@@ -721,14 +854,28 @@ async def generate_soap_comprehensive(soap_request: SOAPRequest):
         },
         "date_of_service": "2025-10-27",
         "location": "Cresol Ortho Center",
-        "reason_for_visit": "Left wrist pain after fall",
-        "system_prompt": "Custom system prompt here (optional)",
-        "user_prompt_template": "Custom template with {transcription} placeholder (optional)"
+        "reason_for_visit": "Left wrist pain after fall"
     }
     ```
     """
     try:
         logger.info("Generating comprehensive orthopedic SOAP note with GPT-4...")
+        
+        # Fetch transcription from database if transcription_id is provided
+        if soap_request.transcription_id:
+            transcription = await get_transcription_by_id(soap_request.transcription_id)
+            if not transcription:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Transcription not found with ID: {soap_request.transcription_id}"
+                )
+            # Set transcription text from database
+            soap_request.transcription = transcription.get("text", "")
+        elif not soap_request.transcription:
+            raise HTTPException(
+                status_code=400,
+                detail="Either transcription_id or transcription text must be provided"
+            )
         
         # Generate comprehensive SOAP note
         soap_result = generate_comprehensive_soap_note(soap_request)
@@ -759,7 +906,8 @@ async def generate_soap_comprehensive(soap_request: SOAPRequest):
 
 @app.post("/generate-soap", response_model=SOAPResponse)
 async def generate_soap_simple(
-    transcription: str = Form(...),
+    transcription_id: Optional[str] = Form(None),
+    transcription: Optional[str] = Form(None),
     patient_name: Optional[str] = Form(None),
     patient_age: Optional[int] = Form(None),
     patient_gender: Optional[str] = Form(None),
@@ -777,7 +925,8 @@ async def generate_soap_simple(
     - Use this endpoint if sending form-data
     - Use /api/v1/generate-soap if sending JSON payload
     
-    **Required Parameters:**
+    **Required Parameters (one of):**
+    - transcription_id: MongoDB transcription document ID
     - transcription: Clinical transcription text
     
     **Optional Parameters:**
@@ -798,7 +947,7 @@ async def generate_soap_simple(
     
     **Example (form-data):**
     ```
-    transcription: "78-year-old female with left wrist fracture..."
+    transcription_id: "507f1f77bcf86cd799439011"
     patient_name: "Jane Smith"
     patient_age: 78
     patient_gender: "Female"
@@ -808,6 +957,21 @@ async def generate_soap_simple(
     """
     try:
         logger.info("Generating comprehensive orthopedic SOAP note...")
+        
+        # Fetch transcription from database if transcription_id is provided
+        if transcription_id:
+            transcription_doc = await get_transcription_by_id(transcription_id)
+            if not transcription_doc:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Transcription not found with ID: {transcription_id}"
+                )
+            transcription = transcription_doc.get("text", "")
+        elif not transcription:
+            raise HTTPException(
+                status_code=400,
+                detail="Either transcription_id or transcription text must be provided"
+            )
         
         # Build SOAPRequest object from form data
         patient_info = None
@@ -820,6 +984,7 @@ async def generate_soap_simple(
         
         soap_request = SOAPRequest(
             transcription=transcription,
+            transcription_id=transcription_id,
             patient=patient_info,
             date_of_service=date_of_service,
             location=location,

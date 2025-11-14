@@ -15,6 +15,7 @@ from app.schemas import (
     ErrorCorrection
 )
 from app.mongodb import get_database
+from app.api.transcription_storage import get_transcription_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ async def add_feedback_to_db(feedback_data: FeedbackRequest) -> Dict:
                 f"{feedback_data.rating} stars" if feedback_data.rating > 0 else "No rating given"
             ),
             "feedback": feedback_data.feedback,
+            "transcription_id": feedback_data.transcription_id,
             "transcription_preview": feedback_data.transcription_preview,
             "errors_found": errors_list,
             "total_errors": feedback_data.total_errors,
@@ -139,7 +141,8 @@ async def submit_feedback(feedback_data: FeedbackRequest):
     **Parameters:**
     - rating: Rating from 0-5 (0 = no rating)
     - rating_text: Description of the rating
-    - transcription_preview: Preview of the transcription
+    - transcription_id: MongoDB transcription document ID (required)
+    - transcription_preview: Optional preview of the transcription
     - errors_found: List of errors found in transcription
     - total_errors: Total number of errors
     - feedback_type: Type of feedback (simple/detailed)
@@ -157,6 +160,18 @@ async def submit_feedback(feedback_data: FeedbackRequest):
                 status_code=400,
                 detail="Rating must be between 0 and 5 (0 = no rating)"
             )
+        
+        # Validate transcription_id exists
+        transcription = await get_transcription_by_id(feedback_data.transcription_id)
+        if not transcription:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Transcription not found with ID: {feedback_data.transcription_id}"
+            )
+        
+        # If transcription_preview is not provided, use the transcription text
+        if not feedback_data.transcription_preview:
+            feedback_data.transcription_preview = transcription.get("text", "")[:200]  # First 200 chars as preview
         
         # Add feedback entry to MongoDB
         feedback_entry = await add_feedback_to_db(feedback_data)

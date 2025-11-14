@@ -38,8 +38,31 @@ class TranscriptionResponse(BaseModel):
     duration: float
     created_at: datetime
     soap_note: Optional[str] = None
+    document_id: Optional[str] = None  # MongoDB document ID if saved to database
     
     model_config = ConfigDict(from_attributes=True)
+
+
+class TranscriptionListItem(BaseModel):
+    """Model for transcription list item"""
+    id: str
+    text: str
+    confidence: float
+    language: str
+    duration: float
+    filename: Optional[str] = None
+    username: Optional[str] = None
+    created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TranscriptionListResponse(BaseModel):
+    """Response model for transcription list"""
+    total: int
+    limit: int
+    skip: int
+    transcriptions: List[TranscriptionListItem]
 
 
 # ============================================
@@ -57,7 +80,8 @@ class FeedbackRequest(BaseModel):
     rating: int
     rating_text: Optional[str] = None
     feedback: Optional[str] = None
-    transcription_preview: str
+    transcription_id: str  # MongoDB transcription document ID
+    transcription_preview: Optional[str] = None  # Optional preview text
     errors_found: List[ErrorCorrection] = []
     total_errors: int = 0
     feedback_type: str = "simple"
@@ -139,8 +163,9 @@ class PlanSection(BaseModel):
 
 class SOAPRequest(BaseModel):
     """Request model for comprehensive SOAP note generation"""
-    # Core transcription (required)
-    transcription: str
+    # Core transcription - either transcription_id or transcription text
+    transcription_id: Optional[str] = None  # MongoDB transcription document ID
+    transcription: Optional[str] = None  # Transcription text (if not using transcription_id)
     
     # Optional structured data
     patient: Optional[PatientInfo] = None
