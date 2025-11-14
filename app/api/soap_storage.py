@@ -43,6 +43,7 @@ async def save_soap_note_to_db(soap_data: dict) -> Dict:
         soap_doc = {
             "transcription": soap_data.get("transcription", ""),
             "corrected_transcription": soap_data.get("corrected_transcription", ""),
+            "transcription_id": soap_data.get("transcription_id"),  # Store transcription_id for lookup
             "subjective": soap_data.get("subjective", ""),
             "objective": soap_data.get("objective", ""),
             "assessment": soap_data.get("assessment", ""),
@@ -109,6 +110,41 @@ async def get_soap_note_by_id(soap_note_id: str) -> Optional[Dict]:
         
     except Exception as e:
         logger.error(f"Error retrieving SOAP note: {e}")
+        raise
+
+
+async def get_soap_note_by_transcription_id(transcription_id: str) -> Optional[Dict]:
+    """
+    Retrieve a SOAP note by transcription_id
+    
+    Args:
+        transcription_id: The MongoDB transcription document ID as string
+        
+    Returns:
+        Dictionary with SOAP note data or None if not found
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+        
+        # Find document by transcription_id (most recent first)
+        cursor = db[SOAP_NOTES_COLLECTION].find(
+            {"transcription_id": transcription_id}
+        ).sort("created_at", -1).limit(1)
+        doc = await cursor.to_list(1)
+        doc = doc[0] if doc else None
+        
+        if doc:
+            doc["_id"] = str(doc["_id"])
+            logger.info(f"Retrieved SOAP note by transcription_id: {transcription_id}")
+            return doc
+        else:
+            logger.info(f"No SOAP note found for transcription_id: {transcription_id}")
+            return None
+        
+    except Exception as e:
+        logger.error(f"Error retrieving SOAP note by transcription_id: {e}")
         raise
 
 

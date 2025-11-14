@@ -39,7 +39,7 @@ from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
 from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_generator
-from app.api.soap_storage import save_soap_note_to_db
+from app.api.soap_storage import save_soap_note_to_db, get_soap_note_by_transcription_id
 from app.api.transcription_storage import (
     save_transcription_to_db,
     get_all_transcriptions,
@@ -409,6 +409,7 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest) -> dict:
         return {
             "transcription": soap_request.transcription,
             "corrected_transcription": corrected_transcription,
+            "transcription_id": soap_request.transcription_id,  # Include transcription_id for database lookup
             "subjective": sections["subjective"],
             "objective": sections["objective"],
             "assessment": sections["assessment"],
@@ -863,6 +864,33 @@ async def generate_soap_comprehensive(soap_request: SOAPRequest):
         
         # Fetch transcription from database if transcription_id is provided
         if soap_request.transcription_id:
+            # Check if SOAP note already exists for this transcription_id
+            existing_soap = await get_soap_note_by_transcription_id(soap_request.transcription_id)
+            if existing_soap:
+                logger.info(f"✅ Found existing SOAP note for transcription_id: {soap_request.transcription_id}")
+                # Convert existing SOAP note to SOAPResponse format
+                # Handle created_at - convert datetime to ISO string if needed
+                created_at = existing_soap.get("created_at")
+                if created_at and isinstance(created_at, datetime):
+                    created_at = created_at.isoformat()
+                elif not created_at:
+                    created_at = datetime.utcnow().isoformat()
+                
+                soap_response = SOAPResponse(
+                    transcription=existing_soap.get("transcription", ""),
+                    corrected_transcription=existing_soap.get("corrected_transcription", ""),
+                    subjective=existing_soap.get("subjective", ""),
+                    objective=existing_soap.get("objective", ""),
+                    assessment=existing_soap.get("assessment", ""),
+                    plan=existing_soap.get("plan", ""),
+                    formatted_soap_note=existing_soap.get("formatted_soap_note", ""),
+                    created_at=created_at,
+                    patient_info=existing_soap.get("patient_info"),
+                    format=existing_soap.get("format", "markdown"),
+                    document_id=existing_soap.get("_id")
+                )
+                return soap_response
+            
             transcription = await get_transcription_by_id(soap_request.transcription_id)
             if not transcription:
                 raise HTTPException(
@@ -960,6 +988,33 @@ async def generate_soap_simple(
         
         # Fetch transcription from database if transcription_id is provided
         if transcription_id:
+            # Check if SOAP note already exists for this transcription_id
+            existing_soap = await get_soap_note_by_transcription_id(transcription_id)
+            if existing_soap:
+                logger.info(f"✅ Found existing SOAP note for transcription_id: {transcription_id}")
+                # Convert existing SOAP note to SOAPResponse format
+                # Handle created_at - convert datetime to ISO string if needed
+                created_at = existing_soap.get("created_at")
+                if created_at and isinstance(created_at, datetime):
+                    created_at = created_at.isoformat()
+                elif not created_at:
+                    created_at = datetime.utcnow().isoformat()
+                
+                soap_response = SOAPResponse(
+                    transcription=existing_soap.get("transcription", ""),
+                    corrected_transcription=existing_soap.get("corrected_transcription", ""),
+                    subjective=existing_soap.get("subjective", ""),
+                    objective=existing_soap.get("objective", ""),
+                    assessment=existing_soap.get("assessment", ""),
+                    plan=existing_soap.get("plan", ""),
+                    formatted_soap_note=existing_soap.get("formatted_soap_note", ""),
+                    created_at=created_at,
+                    patient_info=existing_soap.get("patient_info"),
+                    format=existing_soap.get("format", "markdown"),
+                    document_id=existing_soap.get("_id")
+                )
+                return soap_response
+            
             transcription_doc = await get_transcription_by_id(transcription_id)
             if not transcription_doc:
                 raise HTTPException(
