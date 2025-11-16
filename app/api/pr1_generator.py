@@ -590,7 +590,38 @@ def build_section_b(
                 return None
             if obj is None:
                 return None
+        # Preserve boolean values, convert other non-strings to strings
+        if isinstance(obj, bool):
+            return obj
         return obj if isinstance(obj, str) else str(obj) if obj else None
+    
+    # Helper function to extract nested boolean values (for checkboxes)
+    def extract_nested_bool(obj, *keys):
+        """Extract boolean value from nested dict structure"""
+        if not obj:
+            return None
+        for key in keys:
+            if isinstance(obj, dict):
+                obj = obj.get(key)
+            else:
+                return None
+            if obj is None:
+                return None
+        # Return boolean if it's a boolean, otherwise convert truthy values to True
+        if isinstance(obj, bool):
+            return obj
+        if isinstance(obj, str):
+            return obj.lower() in ('true', 'yes', '1', 'checked')
+        return bool(obj) if obj else None
+    
+    # Helper function to try multiple extraction paths and return first non-None value
+    def try_extract(*paths):
+        """Try multiple extraction paths and return first non-None value (including False)"""
+        for path_func in paths:
+            result = path_func()
+            if result is not None:
+                return result
+        return None
     
     # SUBJECTIVE FINDINGS (Mandatory) - Data Source: Physician dictation (SOAP)
     # Extract ALL available subjective data from SOAP dictation
@@ -1124,13 +1155,48 @@ def build_section_b(
         "outcomes_adl": outcomes_adl,  # Field 4: Outcomes ADL
         "adl_goal_next_visit": adl_goal_next_visit,  # ADL Goal for next visit/treatment period
         "disability_status": disability_status,  # Field 5: Disability Status
-        "secondary_physician_reports": doc.get("secondary_physician_reports"),
+        # Extract secondary physician reports - handle both flat and nested structures
+        "secondary_physician_reports": try_extract(
+            lambda: doc.get("secondary_physician_reports") if doc.get("secondary_physician_reports") else None,
+            lambda: extract_from_nested(doc, "values", "page6", "secondaryPhysicianReports"),
+            lambda: extract_from_nested(doc, "page6", "secondaryPhysicianReports"),
+            lambda: extract_from_nested(doc, "secondaryPhysicianReports")
+        ),
+        # Discussion/Assessment - already extracted with nested support above
         "discussion_assessment": discussion_assessment,
+        # Treatment plan - already extracted with nested support above
         "treatment_plan": treatment_plan,
-        "continue_same_treatment": doc.get("continue_same_treatment"),
-        "discharge_from_care": doc.get("discharge_from_care"),
-        "change_in_treatment_plan": doc.get("change_in_treatment_plan"),
-        "dispense_as_written": doc.get("dispense_as_written")
+        # Extract treatment plan checkboxes - handle both flat and nested structures
+        # Try multiple paths: flat fields first, then nested structures
+        "continue_same_treatment": try_extract(
+            lambda: doc.get("continue_same_treatment") if doc.get("continue_same_treatment") is not None else None,
+            lambda: extract_nested_bool(doc, "values", "page6", "treatmentPlan", "continueSameTreatmentPlan"),
+            lambda: extract_nested_bool(doc, "treatmentPlan", "continueSameTreatmentPlan"),
+            lambda: extract_nested_bool(doc, "page6", "treatmentPlan", "continueSameTreatmentPlan")
+        ),
+        "discharge_from_care": try_extract(
+            lambda: doc.get("discharge_from_care") if doc.get("discharge_from_care") is not None else None,
+            lambda: extract_nested_bool(doc, "values", "page6", "treatmentPlan", "dischargeFromCare"),
+            lambda: extract_nested_bool(doc, "treatmentPlan", "dischargeFromCare"),
+            lambda: extract_nested_bool(doc, "page6", "treatmentPlan", "dischargeFromCare")
+        ),
+        "change_in_treatment_plan": try_extract(
+            lambda: doc.get("change_in_treatment_plan") if doc.get("change_in_treatment_plan") is not None else None,
+            lambda: extract_nested_bool(doc, "values", "page6", "treatmentPlan", "changeInTreatmentPlan"),
+            lambda: extract_nested_bool(doc, "treatmentPlan", "changeInTreatmentPlan"),
+            lambda: extract_nested_bool(doc, "page6", "treatmentPlan", "changeInTreatmentPlan")
+        ),
+        "dispense_as_written": try_extract(
+            lambda: doc.get("dispense_as_written") if doc.get("dispense_as_written") is not None else None,
+            lambda: extract_nested_bool(doc, "values", "page6", "treatmentPlan", "dispensePrescriptionAsWritten"),
+            lambda: extract_nested_bool(doc, "treatmentPlan", "dispensePrescriptionAsWritten"),
+            lambda: extract_nested_bool(doc, "page6", "treatmentPlan", "dispensePrescriptionAsWritten")
+        ),
+        "comments": (
+            doc.get("comments") or
+            extract_from_nested(doc, "values", "page6", "comments") or
+            extract_from_nested(doc, "page6", "comments")
+        )
     }
 
 
@@ -1202,20 +1268,38 @@ def build_section_c(
         work_status = "[Not documented]"
         logger.warning("Work Status not found in SOAP dictation (mandatory per mapping)")
     
+    # Extract patientStatus object if available
+    patient_status = doc.get("patientStatus")
+    if isinstance(patient_status, dict):
+        # Use patientStatus dates if available, otherwise fall back to flat fields
+        return_full_duty_date = to_mmddyyyy(patient_status.get("returnToFullDutyDate") or doc.get("return_full_duty_date"))
+        return_modified_duty_date = to_mmddyyyy(patient_status.get("returnToModifiedDutyDate") or doc.get("return_modified_duty_date"))
+        mmi_date = to_mmddyyyy(patient_status.get("maxMedicalImprovementDate") or doc.get("mmi_date"))
+        next_visit_date = to_mmddyyyy(patient_status.get("nextVisitDate") or doc.get("next_visit_date"))
+        discharged_date = to_mmddyyyy(patient_status.get("dischargedFromCareDate") or doc.get("discharged_date"))
+        logger.info("Using patientStatus object for date extraction")
+    else:
+        # Fall back to flat fields
+        return_full_duty_date = to_mmddyyyy(doc.get("return_full_duty_date"))
+        return_modified_duty_date = to_mmddyyyy(doc.get("return_modified_duty_date"))
+        mmi_date = to_mmddyyyy(doc.get("mmi_date"))
+        next_visit_date = to_mmddyyyy(doc.get("next_visit_date"))
+        discharged_date = to_mmddyyyy(doc.get("discharged_date"))
+    
     return {
         "instruction": work_status,
-        "return_full_duty_date": to_mmddyyyy(doc.get("return_full_duty_date")),
+        "return_full_duty_date": return_full_duty_date,
         "unable_to_work_from": None,  # optional: populate if you track ranges
         "unable_to_work_to": None,
         "restrictions_text": restrictions,  # From SOAP dictation (nested or flat)
         "restrictions_duration": restrictions_duration,  # From SOAP dictation (nested or flat)
         "meds_affect_alertness": meds_affect_alertness,  # From SOAP dictation (nested or flat)
         "meds_effect_description": meds_effect_description,  # From SOAP dictation (nested or flat)
-        "anticipate_full_duty_date": to_mmddyyyy(doc.get("return_full_duty_date")),
-        "anticipate_modified_duty_date": to_mmddyyyy(doc.get("return_modified_duty_date")),
-        "anticipate_mmi_date": to_mmddyyyy(doc.get("mmi_date")),
-        "next_visit_date": to_mmddyyyy(doc.get("next_visit_date")),
-        "discharged_from_care_date": to_mmddyyyy(doc.get("discharged_date"))
+        "anticipate_full_duty_date": return_full_duty_date,
+        "anticipate_modified_duty_date": return_modified_duty_date,
+        "anticipate_mmi_date": mmi_date,
+        "next_visit_date": next_visit_date,
+        "discharged_from_care_date": discharged_date
     }
 
 
@@ -1657,9 +1741,22 @@ The JSON structure should include:
   - Assessment: discussion_assessment, diagnoses, disability_status
   - Plan: treatment_plan_text, current_treatments (medications with dose and frequency), outcomes_adl (functional improvements and ADL changes), adl_goal_next_visit (goals for next visit), disability_status
 - Diagnoses (list of conditions with ICD-10 codes) - MANDATORY: Must correctly reflect work-related condition
+- Secondary physician reports (secondary_physician_reports) - MANDATORY if applicable: Reports from other physicians, discuss and incorporate findings if appropriate
 - RFA items (requests for authorization - services, goods, drugs with CPT/HCPCS codes)
 - Work status (work_status, restrictions, dates, medication effects) - MANDATORY: RTW status (Full Duty / Modified Duty / TTD)
+- Patient status (patientStatus object) - Extract patient status information with checked flags and dates:
+  - returnToFullDutyChecked (boolean) and returnToFullDutyDate (date string)
+  - returnToModifiedDutyChecked (boolean) and returnToModifiedDutyDate (date string)
+  - maxMedicalImprovementChecked (boolean) and maxMedicalImprovementDate (date string)
+  - nextVisitChecked (boolean) and nextVisitDate (date string)
+  - dischargedFromCareChecked (boolean) and dischargedFromCareDate (date string)
 - Treatment plan information - MANDATORY if applicable: Surgery, PT, injections, imaging, DME
+- Treatment plan checkboxes (if available in document):
+  - continue_same_treatment (boolean) - "Continue same treatment plan"
+  - change_in_treatment_plan (boolean) - "Change in treatment plan"
+  - discharge_from_care (boolean) - "Discharge from care"
+  - dispense_as_written (boolean) - "Dispense prescription as written"
+- Treatment plan comments (comments field) - Any additional comments or notes related to the treatment plan
 - Current treatments and medications - Extract all medications with dose and frequency
 - Outcomes ADL - Functional improvements and Activities of Daily Living (note positive/negative changes)
 - ADL Goal for next visit - Goals for the next treatment period
@@ -1957,7 +2054,9 @@ async def generate_pr1_from_soap(
                        "meds_effect_description", "restrictions_duration", "claim_number",
                        "employer", "dob", "patient_name", "date_of_injury",
                        "primary_treating_physician", "reason_for_visit", "transcription",
-                       "corrected_transcription"]
+                       "corrected_transcription", "patientStatus", "continue_same_treatment",
+                       "discharge_from_care", "change_in_treatment_plan", "dispense_as_written",
+                       "comments"]
             
             for key in additional_fields:
                 if soap_doc.get(key) and not soap_data_dict.get(key):

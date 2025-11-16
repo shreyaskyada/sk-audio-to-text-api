@@ -28,6 +28,20 @@ class SOAPRFAItem(BaseModel):
     exempt_drug_review_requested: Optional[bool] = None
 
 
+class PatientStatus(BaseModel):
+    """Patient status information with checked flags and dates"""
+    returnToFullDutyChecked: Optional[bool] = None
+    returnToFullDutyDate: Optional[str] = None  # "MM/DD/YYYY"
+    returnToModifiedDutyChecked: Optional[bool] = None
+    returnToModifiedDutyDate: Optional[str] = None  # "MM/DD/YYYY"
+    maxMedicalImprovementChecked: Optional[bool] = None
+    maxMedicalImprovementDate: Optional[str] = None  # "MM/DD/YYYY"
+    nextVisitChecked: Optional[bool] = None
+    nextVisitDate: Optional[str] = None  # "MM/DD/YYYY"
+    dischargedFromCareChecked: Optional[bool] = None
+    dischargedFromCareDate: Optional[str] = None  # "MM/DD/YYYY"
+
+
 class SOAPNoteForPR1(BaseModel):
     """SOAP Note structure for PR-1 generation"""
     patient_name: Optional[str] = None
@@ -60,6 +74,7 @@ class SOAPNoteForPR1(BaseModel):
     discharge_from_care: Optional[bool] = None
     change_in_treatment_plan: Optional[bool] = None
     dispense_as_written: Optional[bool] = None
+    comments: Optional[str] = None  # Comments section for treatment plan
     diagnoses: Optional[List[SOAPDiagnosis]] = None
     rfa_items: Optional[List[SOAPRFAItem]] = None
     
@@ -74,6 +89,9 @@ class SOAPNoteForPR1(BaseModel):
     meds_affect_alertness: Optional[bool] = None
     meds_effect_description: Optional[str] = None
     restrictions_duration: Optional[str] = None
+    
+    # Patient status with checked flags and dates
+    patientStatus: Optional[PatientStatus] = None
 
 
 class IntakeFormForPR1(BaseModel):
