@@ -33,7 +33,16 @@ IMPORTANT: If patient demographic information (name, age, gender) is not provide
 
 ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE = """
 You are an expert medical documentation AI assistant specializing in orthopedic consultation notes.
-Your task is to convert the transcription into a SOAP note that follows EXACTLY the format below.  
+Your task is to convert the transcription into a SOAP note that follows EXACTLY the format below.
+
+{header_section}
+
+{patient_context}
+
+TRANSCRIPTION TO CONVERT:
+{transcription}
+
+---  
 
 DO NOT change headings, spacing, indentation, table structure, or layout.  
 The output MUST match this PDF format line-for-line.
