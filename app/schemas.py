@@ -65,6 +65,26 @@ class TranscriptionListResponse(BaseModel):
     transcriptions: List[TranscriptionListItem]
 
 
+class TranscriptionCreateRequest(BaseModel):
+    """Request model for creating a transcription"""
+    text: str
+    confidence: Optional[float] = 0.0
+    language: Optional[str] = "unknown"
+    duration: Optional[float] = 0.0
+    filename: Optional[str] = None
+    username: Optional[str] = None
+
+
+class TranscriptionUpdateRequest(BaseModel):
+    """Request model for updating a transcription"""
+    text: Optional[str] = None
+    confidence: Optional[float] = None
+    language: Optional[str] = None
+    duration: Optional[float] = None
+    filename: Optional[str] = None
+    username: Optional[str] = None
+
+
 # ============================================
 # FEEDBACK SCHEMAS
 # ============================================

@@ -29,6 +29,8 @@ from app.schemas import (
     TranscriptionResponse,
     TranscriptionListResponse,
     TranscriptionListItem,
+    TranscriptionCreateRequest,
+    TranscriptionUpdateRequest,
     SOAPRequest,
     SOAPResponse,
     PatientInfo
@@ -39,12 +41,19 @@ from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
 from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_generator
-from app.api.soap_storage import save_soap_note_to_db, get_soap_note_by_transcription_id
+from app.api.soap_storage import (
+    save_soap_note_to_db, 
+    get_soap_note_by_transcription_id,
+    get_all_soap_notes_by_transcription_id,
+    update_soap_note
+)
 from app.api.transcription_storage import (
     save_transcription_to_db,
     get_all_transcriptions,
     get_transcription_by_id,
-    get_transcriptions_count
+    get_transcriptions_count,
+    update_transcription_in_db,
+    delete_transcription_in_db
 )
 
 # Import prompts
@@ -451,8 +460,11 @@ async def root():
             "auth": "/api/v1/auth/login",
             "transcribe": "/api/v1/transcribe",
             "transcriptions": {
+                "create": "/api/v1/transcriptions",
                 "get_all": "/api/v1/transcriptions",
-                "get_by_id": "/api/v1/transcriptions/{id}"
+                "get_by_id": "/api/v1/transcriptions/{id}",
+                "update": "/api/v1/transcriptions/{id}",
+                "delete": "/api/v1/transcriptions/{id}"
             },
             "soap": {
                 "generate_json": "/api/v1/generate-soap",
@@ -738,6 +750,86 @@ async def get_transcriptions(
         )
 
 
+@app.post("/api/v1/transcriptions", response_model=TranscriptionListItem)
+async def create_transcription_endpoint(
+    create_request: TranscriptionCreateRequest
+):
+    """
+    Create a new transcription.
+    
+    **Note:** This endpoint allows you to manually create a transcription without audio transcription.
+    For audio transcription, use the `/api/v1/transcribe` endpoint instead.
+    
+    **Parameters:**
+    - create_request: JSON body with transcription data:
+        - text: Transcription text (required)
+        - confidence: Confidence score (optional, default: 0.0)
+        - language: Language code (optional, default: "unknown")
+        - duration: Audio duration in seconds (optional, default: 0.0)
+        - filename: Original filename (optional)
+        - username: Username who created the transcription (optional)
+    
+    **Returns:**
+    - Created transcription details with ID
+    
+    **Example Request:**
+    ```json
+    {
+        "text": "Patient presents with left shoulder pain...",
+        "confidence": 0.95,
+        "language": "en-US",
+        "duration": 120.5,
+        "filename": "patient_recording.wav",
+        "username": "john_doe"
+    }
+    ```
+    """
+    try:
+        # Validate required field
+        if not create_request.text or not create_request.text.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Text field is required and cannot be empty"
+            )
+        
+        # Prepare transcription data
+        transcription_data = {
+            'text': create_request.text.strip(),
+            'confidence': create_request.confidence if create_request.confidence is not None else 0.0,
+            'language': create_request.language if create_request.language else "unknown",
+            'duration': create_request.duration if create_request.duration is not None else 0.0,
+            'filename': create_request.filename,
+            'username': create_request.username
+        }
+        
+        # Save transcription to database
+        saved_doc = await save_transcription_to_db(transcription_data)
+        document_id = saved_doc.get('_id')
+        
+        logger.info(f"✅ Transcription created with ID: {document_id}")
+        
+        # Return created transcription
+        return TranscriptionListItem(
+            id=document_id,
+            text=saved_doc.get("text", ""),
+            confidence=saved_doc.get("confidence", 0.0),
+            language=saved_doc.get("language", "unknown"),
+            duration=saved_doc.get("duration", 0.0),
+            filename=saved_doc.get("filename"),
+            username=saved_doc.get("username"),
+            created_at=saved_doc.get("created_at", datetime.utcnow())
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating transcription: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error creating transcription: {str(e)}"
+        )
+
+
 @app.get("/api/v1/transcriptions/{transcription_id}", response_model=TranscriptionListItem)
 async def get_transcription_by_id_endpoint(
     transcription_id: str
@@ -778,6 +870,228 @@ async def get_transcription_by_id_endpoint(
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error retrieving transcription: {str(e)}"
+        )
+
+
+@app.put("/api/v1/transcriptions/{transcription_id}", response_model=TranscriptionListItem)
+async def update_transcription_endpoint(
+    transcription_id: str,
+    update_request: TranscriptionUpdateRequest
+):
+    """
+    Update a transcription by ID.
+    
+    **Note:** If the transcription text is updated, all linked SOAP notes will be automatically regenerated
+    with the new transcription text while preserving patient information, custom prompts, and other metadata.
+    
+    **Parameters:**
+    - transcription_id: MongoDB document ID of the transcription
+    - update_request: JSON body with fields to update (all fields are optional):
+        - text: Updated transcription text (will trigger SOAP note regeneration if changed)
+        - confidence: Updated confidence score
+        - language: Updated language
+        - duration: Updated duration
+        - filename: Updated filename
+        - username: Updated username
+    
+    **Returns:**
+    - Updated transcription details
+    
+    **Example Request:**
+    ```json
+    {
+        "text": "Updated transcription text...",
+        "confidence": 0.95
+    }
+    ```
+    
+    **Behavior:**
+    - If `text` field is updated and the text actually changed, all SOAP notes linked to this transcription
+      will be automatically regenerated using the updated transcription text
+    - Patient information, custom prompts, date of service, location, and other metadata from existing
+      SOAP notes are preserved during regeneration
+    - The transcription update will succeed even if SOAP regeneration fails (errors are logged)
+    """
+    try:
+        # Convert Pydantic model to dict, excluding None values
+        update_data = update_request.model_dump(exclude_none=True)
+        
+        # Check if there's anything to update
+        if not update_data:
+            raise HTTPException(
+                status_code=400,
+                detail="No fields provided to update"
+            )
+        
+        # Check if transcription text is being updated
+        transcription_text_changed = "text" in update_data
+        
+        # Get original transcription to compare text if needed
+        original_transcription = None
+        if transcription_text_changed:
+            original_transcription = await get_transcription_by_id(transcription_id)
+            if original_transcription:
+                original_text = original_transcription.get("text", "")
+                new_text = update_data.get("text", "")
+                # Only regenerate if text actually changed
+                transcription_text_changed = original_text != new_text
+        
+        # Update transcription in database
+        success = await update_transcription_in_db(transcription_id, update_data)
+        
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Transcription not found or not modified: {transcription_id}"
+            )
+        
+        # If transcription text changed, regenerate all linked SOAP notes
+        if transcription_text_changed:
+            try:
+                logger.info(f"Transcription text changed for ID: {transcription_id}. Regenerating linked SOAP notes...")
+                
+                # Get all SOAP notes linked to this transcription
+                linked_soap_notes = await get_all_soap_notes_by_transcription_id(transcription_id)
+                
+                if linked_soap_notes:
+                    logger.info(f"Found {len(linked_soap_notes)} SOAP note(s) to regenerate")
+                    
+                    # Get updated transcription text
+                    updated_transcription = await get_transcription_by_id(transcription_id)
+                    updated_text = updated_transcription.get("text", "") if updated_transcription else update_data.get("text", "")
+                    
+                    # Regenerate each SOAP note
+                    for soap_note in linked_soap_notes:
+                        try:
+                            soap_note_id = soap_note.get("_id")
+                            
+                            # Create SOAPRequest with updated transcription and preserved metadata
+                            soap_request = SOAPRequest(
+                                transcription_id=transcription_id,
+                                transcription=updated_text,
+                                patient=PatientInfo(
+                                    name=soap_note.get("patient_info", {}).get("name") if soap_note.get("patient_info") else None,
+                                    age=soap_note.get("patient_info", {}).get("age") if soap_note.get("patient_info") else None,
+                                    gender=soap_note.get("patient_info", {}).get("gender") if soap_note.get("patient_info") else None
+                                ) if soap_note.get("patient_info") else None,
+                                date_of_service=soap_note.get("date_of_service"),
+                                location=soap_note.get("location"),
+                                reason_for_visit=soap_note.get("reason_for_visit"),
+                                system_prompt=soap_note.get("custom_prompts", {}).get("system_prompt") if soap_note.get("custom_prompts") else None,
+                                user_prompt_template=soap_note.get("custom_prompts", {}).get("user_prompt_template") if soap_note.get("custom_prompts") else None
+                            )
+                            
+                            # Regenerate SOAP note
+                            regenerated_soap = generate_comprehensive_soap_note(soap_request)
+                            
+                            # Update SOAP note in database (preserve transcription_id and created_at)
+                            update_soap_data = {
+                                "transcription": regenerated_soap.get("transcription", ""),
+                                "corrected_transcription": regenerated_soap.get("corrected_transcription", ""),
+                                "subjective": regenerated_soap.get("subjective", ""),
+                                "objective": regenerated_soap.get("objective", ""),
+                                "assessment": regenerated_soap.get("assessment", ""),
+                                "plan": regenerated_soap.get("plan", ""),
+                                "formatted_soap_note": regenerated_soap.get("formatted_soap_note", "")
+                            }
+                            
+                            await update_soap_note(soap_note_id, update_soap_data)
+                            logger.info(f"✅ Regenerated and updated SOAP note: {soap_note_id}")
+                            
+                        except Exception as soap_error:
+                            logger.error(f"⚠️ Failed to regenerate SOAP note {soap_note.get('_id')}: {soap_error}")
+                            # Continue with other SOAP notes even if one fails
+                            continue
+                    
+                    logger.info(f"✅ Completed regeneration of {len(linked_soap_notes)} SOAP note(s)")
+                else:
+                    logger.info(f"No SOAP notes found linked to transcription_id: {transcription_id}")
+                    
+            except Exception as regenerate_error:
+                logger.error(f"⚠️ Error during SOAP note regeneration: {regenerate_error}")
+                # Don't fail the transcription update if SOAP regeneration fails
+                logger.warning("Continuing with transcription update despite SOAP regeneration error...")
+        
+        # Retrieve updated transcription
+        updated_transcription = await get_transcription_by_id(transcription_id)
+        
+        if not updated_transcription:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Transcription not found after update: {transcription_id}"
+            )
+        
+        return TranscriptionListItem(
+            id=updated_transcription.get("_id", ""),
+            text=updated_transcription.get("text", ""),
+            confidence=updated_transcription.get("confidence", 0.0),
+            language=updated_transcription.get("language", "unknown"),
+            duration=updated_transcription.get("duration", 0.0),
+            filename=updated_transcription.get("filename"),
+            username=updated_transcription.get("username"),
+            created_at=updated_transcription.get("created_at", datetime.utcnow())
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating transcription: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error updating transcription: {str(e)}"
+        )
+
+
+@app.delete("/api/v1/transcriptions/{transcription_id}")
+async def delete_transcription_endpoint(transcription_id: str):
+    """
+    Delete a transcription by ID.
+    
+    **Note:** If there are SOAP notes linked to this transcription, they will remain in the database
+    but will have a dangling reference. Consider deleting linked SOAP notes separately if needed.
+    
+    **Parameters:**
+    - transcription_id: MongoDB document ID of the transcription
+    
+    **Returns:**
+    - Success message with information about linked SOAP notes (if any)
+    
+    **Example:**
+    - DELETE `/api/v1/transcriptions/507f1f77bcf86cd799439011`
+    """
+    try:
+        # Check if there are linked SOAP notes
+        linked_soap_notes = await get_all_soap_notes_by_transcription_id(transcription_id)
+        linked_soap_count = len(linked_soap_notes) if linked_soap_notes else 0
+        
+        # Delete transcription
+        success = await delete_transcription_in_db(transcription_id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Transcription not found: {transcription_id}"
+            )
+        
+        # Prepare response message
+        response_message = "Transcription deleted successfully"
+        if linked_soap_count > 0:
+            response_message += f". Warning: {linked_soap_count} SOAP note(s) are still linked to this transcription. Consider deleting them separately if needed."
+        
+        return JSONResponse({
+            "message": response_message,
+            "transcription_id": transcription_id,
+            "linked_soap_notes_count": linked_soap_count,
+            "linked_soap_note_ids": [soap.get("_id") for soap in linked_soap_notes] if linked_soap_notes else []
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting transcription: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error deleting transcription: {str(e)}"
         )
 
 

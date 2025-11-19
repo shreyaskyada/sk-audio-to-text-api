@@ -148,6 +148,39 @@ async def get_soap_note_by_transcription_id(transcription_id: str) -> Optional[D
         raise
 
 
+async def get_all_soap_notes_by_transcription_id(transcription_id: str) -> List[Dict]:
+    """
+    Retrieve all SOAP notes by transcription_id
+    
+    Args:
+        transcription_id: The MongoDB transcription document ID as string
+        
+    Returns:
+        List of dictionaries with SOAP note data (sorted by created_at descending)
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+        
+        # Find all documents by transcription_id (most recent first)
+        cursor = db[SOAP_NOTES_COLLECTION].find(
+            {"transcription_id": transcription_id}
+        ).sort("created_at", -1)
+        docs = await cursor.to_list(None)
+        
+        # Convert ObjectId to string
+        for doc in docs:
+            doc["_id"] = str(doc["_id"])
+        
+        logger.info(f"Retrieved {len(docs)} SOAP note(s) for transcription_id: {transcription_id}")
+        return docs
+        
+    except Exception as e:
+        logger.error(f"Error retrieving SOAP notes by transcription_id: {e}")
+        raise
+
+
 async def get_all_soap_notes(limit: int = 100, skip: int = 0) -> List[Dict]:
     """
     Get all SOAP notes with pagination

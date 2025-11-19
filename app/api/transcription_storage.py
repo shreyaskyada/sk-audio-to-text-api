@@ -154,3 +154,97 @@ async def get_transcriptions_count() -> int:
         logger.error(f"Error getting transcriptions count: {e}")
         raise
 
+
+async def update_transcription_in_db(transcription_id: str, update_data: dict) -> bool:
+    """
+    Update a transcription in MongoDB
+    
+    Args:
+        transcription_id: The MongoDB ObjectId as string
+        update_data: Dictionary with fields to update. Can include:
+            - text: Updated transcription text
+            - confidence: Updated confidence score
+            - language: Updated language
+            - duration: Updated duration
+            - filename: Updated filename
+            - username: Updated username
+            
+    Returns:
+        True if updated successfully, False otherwise
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+        
+        # Convert string ID to ObjectId
+        try:
+            object_id = ObjectId(transcription_id)
+        except Exception:
+            logger.error(f"Invalid ObjectId format: {transcription_id}")
+            return False
+        
+        # Prevent updating protected fields
+        protected_fields = ['_id', 'created_at']
+        update_data = {k: v for k, v in update_data.items() if k not in protected_fields}
+        
+        # Add updated_at timestamp
+        update_data["updated_at"] = datetime.utcnow()
+        
+        # Update document
+        result = await db[TRANSCRIPTIONS_COLLECTION].update_one(
+            {"_id": object_id},
+            {"$set": update_data}
+        )
+        
+        if result.modified_count > 0:
+            logger.info(f"✅ Transcription updated: {transcription_id}")
+            return True
+        elif result.matched_count > 0:
+            logger.warning(f"Transcription found but not modified: {transcription_id}")
+            return False
+        else:
+            logger.warning(f"Transcription not found: {transcription_id}")
+            return False
+        
+    except Exception as e:
+        logger.error(f"Error updating transcription: {e}")
+        raise
+
+
+async def delete_transcription_in_db(transcription_id: str) -> bool:
+    """
+    Delete a transcription from MongoDB
+    
+    Args:
+        transcription_id: The MongoDB ObjectId as string
+        
+    Returns:
+        True if deleted successfully, False otherwise
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+        
+        # Convert string ID to ObjectId
+        try:
+            object_id = ObjectId(transcription_id)
+        except Exception:
+            logger.error(f"Invalid ObjectId format: {transcription_id}")
+            return False
+        
+        # Delete document
+        result = await db[TRANSCRIPTIONS_COLLECTION].delete_one({"_id": object_id})
+        
+        if result.deleted_count > 0:
+            logger.info(f"✅ Transcription deleted: {transcription_id}")
+            return True
+        else:
+            logger.warning(f"Transcription not found: {transcription_id}")
+            return False
+        
+    except Exception as e:
+        logger.error(f"Error deleting transcription: {e}")
+        raise
+
