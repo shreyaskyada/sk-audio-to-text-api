@@ -6,6 +6,7 @@ import logging
 import os
 import json
 import tempfile
+import re
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from datetime import datetime
@@ -323,7 +324,7 @@ def calc_checkboxes(
     }
 
 
-def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Build Section A: Request for Authorization (RFA)
     
     Per data mapping requirements:
@@ -351,6 +352,51 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             # Note: This would need additional parsing logic to extract structured RFA items
             # For now, we rely on explicit rfa_items field
     
+    # Extract from formatted_soap_note Plan section or transcription if not found in structured fields
+    if not rfa_items:
+        doc = soap_doc or {}
+        formatted_soap = doc.get("formatted_soap_note")
+        transcription_text = doc.get("transcription") or doc.get("corrected_transcription")
+        
+        # First try to extract Plan section from formatted_soap_note
+        if formatted_soap and isinstance(formatted_soap, str):
+            # Look for Plan section specifically
+            plan_match = re.search(r'## P – PLAN\s*\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+            if plan_match:
+                plan_text = plan_match.group(1).strip()
+                logger.info("Attempting GPT extraction of RFA items from Plan section...")
+                extracted_rfa = extract_rfa_items_from_text(plan_text)
+                if extracted_rfa:
+                    rfa_items = extracted_rfa
+                    logger.info(f"✓ Found {len(rfa_items)} RFA items from Plan section GPT extraction")
+            
+            # If not found in Plan section, try entire formatted_soap_note
+            if not rfa_items:
+                logger.info("Attempting GPT extraction of RFA items from formatted_soap_note...")
+                extracted_rfa = extract_rfa_items_from_text(formatted_soap)
+                if extracted_rfa:
+                    rfa_items = extracted_rfa
+                    logger.info(f"✓ Found {len(rfa_items)} RFA items from formatted_soap_note GPT extraction")
+        
+        # Try transcription if still not found
+        if not rfa_items and transcription_text and isinstance(transcription_text, str):
+            logger.info("Attempting GPT extraction of RFA items from transcription...")
+            extracted_rfa = extract_rfa_items_from_text(transcription_text)
+            if extracted_rfa:
+                rfa_items = extracted_rfa
+                logger.info(f"✓ Found {len(rfa_items)} RFA items from transcription GPT extraction")
+    
+    # Extract patient name using pick_name helper
+    doc = soap_doc or {}
+    patient_name = pick_name(intake_doc, soap_doc) or ""
+    
+    # Extract general request text (if available)
+    doc = soap_doc or {}
+    general_request_text = doc.get("general_request_text") or doc.get("generalRequestText") or ""
+    
+    # Build requests array in the exact format required
+    requests = []
+    
     for it in rfa_items:
         # Handle both dict and Pydantic model
         if hasattr(it, 'model_dump'):
@@ -358,58 +404,112 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         elif not isinstance(it, dict):
             continue
         
-        # Handle field name variations: service_or_good, service_good_name, service_or_good_name
-        service_or_good = (
-            it.get("service_or_good") or 
-            it.get("service_good_name") or 
-            it.get("service_or_good_name") or
-            it.get("service") or
-            it.get("good")
-        )
+        # Determine type: "treatment" or "drug"
+        # Check for type field first, then is_drug
+        request_type = it.get("type", "").lower()
+        is_drug = request_type == "drug" or it.get("is_drug") or False
         
-        # Handle CPT/HCPCS code variations
-        cpt_hcpcs = (
-            it.get("cpt_or_hcpcs") or 
-            it.get("CPT_HCPCS_codes") or
-            it.get("cpt_hcpcs") or
-            it.get("cpt") or
-            it.get("hcpcs")
-        )
-        
-        # Handle diagnosis code variations
-        diagnosis_code = (
-            it.get("diagnosis_icd10") or 
-            it.get("diagnosis_codes") or
-            it.get("diagnosis_code") or
-            it.get("icd10")
-        )
-        
-        base = {
-            "diagnosis": diagnosis_code,
-            "service_or_good": service_or_good,
-            "cpt_hcpcs": cpt_hcpcs,
-            "mtus_consistent": it.get("mtus_consistent"),  # MTUS alignment (MTUS Engine validates)
-            "justification": it.get("justification")  # MTUS justification
-        }
-        
-        if it.get("is_drug"):
-            drugs.append({
-                **base,
-                "drug": it.get("drug_name"),
-                "dose_form": it.get("dose_form"),
-                "frequency": it.get("frequency"),
-                "length_or_qty": it.get("length_or_qty"),
-                "exempt_drug_review_requested": it.get("exempt_drug_review_requested", False)
-            })
+        if is_drug:
+            # Drug request format - use exact field names
+            drug_name = (
+                it.get("drug") or
+                it.get("drug_name") or
+                ""
+            )
+            diagnosis = (
+                it.get("diagnosis") or 
+                it.get("diagnosis_name") or
+                ""
+            )
+            diagnosis_code = (
+                it.get("diagnosisCode") or
+                it.get("diagnosis_code") or
+                it.get("diagnosis_icd10") or 
+                it.get("diagnosis_codes") or
+                it.get("icd10") or
+                it.get("icd10_code") or
+                ""
+            )
+            dose_form = (
+                it.get("doseForm") or
+                it.get("dose_form") or
+                ""
+            )
+            quantity = (
+                it.get("quantity") or
+                it.get("length_or_qty") or
+                it.get("qty") or
+                ""
+            )
+            
+            if drug_name:  # Only add if drug name exists
+                requests.append({
+                    "type": "drug",
+                    "diagnosis": diagnosis,
+                    "diagnosisCode": diagnosis_code,
+                    "drug": drug_name,
+                    "doseForm": dose_form,
+                    "quantity": quantity
+                })
         else:
-            items.append(base)
+            # Treatment request format - use exact field names
+            service_requested = (
+                it.get("serviceRequested") or
+                it.get("service_requested") or
+                it.get("service_or_good") or 
+                it.get("service_good_name") or 
+                it.get("service_or_good_name") or
+                it.get("service") or
+                it.get("good") or
+                ""
+            )
+            diagnosis = (
+                it.get("diagnosis") or 
+                it.get("diagnosis_name") or
+                ""
+            )
+            diagnosis_code = (
+                it.get("diagnosisCode") or
+                it.get("diagnosis_code") or
+                it.get("diagnosis_icd10") or 
+                it.get("diagnosis_codes") or
+                it.get("icd10") or
+                it.get("icd10_code") or
+                ""
+            )
+            cpt = (
+                it.get("cpt") or
+                it.get("cpt_or_hcpcs") or 
+                it.get("CPT_HCPCS_codes") or
+                it.get("cpt_hcpcs") or
+                it.get("hcpcs") or
+                ""
+            )
+            frequency_duration = (
+                it.get("frequencyDuration") or
+                it.get("frequency_duration") or
+                it.get("frequency") or
+                it.get("duration") or
+                ""
+            )
+            
+            if service_requested:  # Only add if service requested exists
+                requests.append({
+                    "type": "treatment",
+                    "diagnosis": diagnosis,
+                    "diagnosisCode": diagnosis_code,
+                    "serviceRequested": service_requested,
+                    "cpt": cpt,
+                    "frequencyDuration": frequency_duration
+                })
     
-    if items or drugs:
-        logger.info(f"RFA Section A: {len(items)} medical treatment requests, {len(drugs)} drug requests (from SOAP dictation)")
+    if requests:
+        logger.info(f"RFA Section A: {len(requests)} requests extracted (from SOAP dictation)")
     
     return {
-        "medical_treatment_requests": items,  # maps to PR-1 Sec A "Request for Medical Treatment (Non-Drug)"
-        "drug_requests": drugs  # maps to PR-1 Sec A "Request for Drug"
+        "patientName": patient_name,
+        "generalRequestText": general_request_text,
+        "requests": requests
     }
 
 
@@ -791,9 +891,40 @@ def build_section_b(
                 physical_exam_parts.append(objective_text)
                 logger.info("Including Objective Findings from SOAP dictation (clinical_information.physical_exam)")
     
-    # If neither field exists, log a warning
+    # Extract from formatted_soap_note Objective section or transcription if not found in structured fields
     if not physical_exam_parts:
-        logger.warning("No objective findings found in SOAP dictation (neither 'physical_exam' nor 'objective' field present)")
+        formatted_soap = doc.get("formatted_soap_note")
+        transcription_text = doc.get("transcription") or doc.get("corrected_transcription")
+        
+        # First try to extract Objective section from formatted_soap_note
+        if formatted_soap and isinstance(formatted_soap, str):
+            # Look for Objective section specifically
+            objective_match = re.search(r'## O – OBJECTIVE\s*\n(.*?)(?=## A – ASSESSMENT|## P – PLAN|---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+            if objective_match:
+                objective_text = objective_match.group(1).strip()
+                if objective_text:
+                    physical_exam_parts.append(objective_text)
+                    logger.info("✓ Found Objective Findings from formatted_soap_note Objective section")
+            
+            # If not found in Objective section, try entire formatted_soap_note with GPT extraction
+            if not physical_exam_parts:
+                logger.info("Attempting GPT extraction of objective findings from formatted_soap_note...")
+                extracted_objective = extract_objective_findings_from_text(formatted_soap)
+                if extracted_objective:
+                    physical_exam_parts.append(extracted_objective)
+                    logger.info("✓ Found Objective Findings from formatted_soap_note GPT extraction")
+        
+        # Try transcription if still not found
+        if not physical_exam_parts and transcription_text and isinstance(transcription_text, str):
+            logger.info("Attempting GPT extraction of objective findings from transcription...")
+            extracted_objective = extract_objective_findings_from_text(transcription_text)
+            if extracted_objective:
+                physical_exam_parts.append(extracted_objective)
+                logger.info("✓ Found Objective Findings from transcription GPT extraction")
+    
+    # If still no objective findings found, log a warning
+    if not physical_exam_parts:
+        logger.warning("No objective findings found in SOAP dictation (neither 'physical_exam' nor 'objective' field present, and extraction from text failed)")
     
     # Get vitals from intake form Section I (required per mapping - must include both)
     if intake_doc:
@@ -1020,6 +1151,39 @@ def build_section_b(
                     current_treatment_parts.append(treatment_text)
                     logger.info("Including Current Treatment Plans from SOAP dictation (clinical_information.plan.current_treatments)")
     
+    # Extract from formatted_soap_note Plan section or transcription if not found in structured fields
+    if not current_treatment_parts:
+        formatted_soap = doc.get("formatted_soap_note")
+        transcription_text = doc.get("transcription") or doc.get("corrected_transcription")
+        
+        # First try to extract Plan section from formatted_soap_note
+        if formatted_soap and isinstance(formatted_soap, str):
+            # Look for Plan section specifically
+            plan_match = re.search(r'## P – PLAN\s*\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+            if plan_match:
+                plan_text = plan_match.group(1).strip()
+                logger.info("Attempting GPT extraction of current treatments from Plan section...")
+                extracted_data = extract_treatment_and_outcomes_from_text(plan_text)
+                if extracted_data and extracted_data.get("current_treatments_and_meds"):
+                    current_treatment_parts.append(extracted_data.get("current_treatments_and_meds"))
+                    logger.info("✓ Found Current Treatments from Plan section GPT extraction")
+            
+            # If not found in Plan section, try entire formatted_soap_note
+            if not current_treatment_parts:
+                logger.info("Attempting GPT extraction of current treatments from formatted_soap_note...")
+                extracted_data = extract_treatment_and_outcomes_from_text(formatted_soap)
+                if extracted_data and extracted_data.get("current_treatments_and_meds"):
+                    current_treatment_parts.append(extracted_data.get("current_treatments_and_meds"))
+                    logger.info("✓ Found Current Treatments from formatted_soap_note GPT extraction")
+        
+        # Try transcription if still not found
+        if not current_treatment_parts and transcription_text and isinstance(transcription_text, str):
+            logger.info("Attempting GPT extraction of current treatments from transcription...")
+            extracted_data = extract_treatment_and_outcomes_from_text(transcription_text)
+            if extracted_data and extracted_data.get("current_treatments_and_meds"):
+                current_treatment_parts.append(extracted_data.get("current_treatments_and_meds"))
+                logger.info("✓ Found Current Treatments from transcription GPT extraction")
+    
     # Combine all current treatment sources
     current_treatment_and_meds = " | ".join(filter(None, current_treatment_parts)) if current_treatment_parts else None
     
@@ -1049,6 +1213,39 @@ def build_section_b(
                 if not is_duplicate:
                     outcomes_parts.append(outcomes_text)
                     logger.info("Including Outcomes ADL from SOAP dictation (clinical_information.plan.outcomes)")
+    
+    # Extract from formatted_soap_note Plan section or transcription if not found in structured fields
+    if not outcomes_parts:
+        formatted_soap = doc.get("formatted_soap_note")
+        transcription_text = doc.get("transcription") or doc.get("corrected_transcription")
+        
+        # First try to extract Plan section from formatted_soap_note
+        if formatted_soap and isinstance(formatted_soap, str):
+            # Look for Plan section specifically
+            plan_match = re.search(r'## P – PLAN\s*\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+            if plan_match:
+                plan_text = plan_match.group(1).strip()
+                logger.info("Attempting GPT extraction of outcomes ADL from Plan section...")
+                extracted_data = extract_treatment_and_outcomes_from_text(plan_text)
+                if extracted_data and extracted_data.get("outcomes_adl"):
+                    outcomes_parts.append(extracted_data.get("outcomes_adl"))
+                    logger.info("✓ Found Outcomes ADL from Plan section GPT extraction")
+            
+            # If not found in Plan section, try entire formatted_soap_note
+            if not outcomes_parts:
+                logger.info("Attempting GPT extraction of outcomes ADL from formatted_soap_note...")
+                extracted_data = extract_treatment_and_outcomes_from_text(formatted_soap)
+                if extracted_data and extracted_data.get("outcomes_adl"):
+                    outcomes_parts.append(extracted_data.get("outcomes_adl"))
+                    logger.info("✓ Found Outcomes ADL from formatted_soap_note GPT extraction")
+        
+        # Try transcription if still not found
+        if not outcomes_parts and transcription_text and isinstance(transcription_text, str):
+            logger.info("Attempting GPT extraction of outcomes ADL from transcription...")
+            extracted_data = extract_treatment_and_outcomes_from_text(transcription_text)
+            if extracted_data and extracted_data.get("outcomes_adl"):
+                outcomes_parts.append(extracted_data.get("outcomes_adl"))
+                logger.info("✓ Found Outcomes ADL from transcription GPT extraction")
     
     # Combine all outcomes sources
     outcomes_adl = " | ".join(filter(None, outcomes_parts)) if outcomes_parts else None
@@ -1151,6 +1348,8 @@ def build_section_b(
         },
         "chief_complaint_and_history": chief_complaint,
         "physical_exam": physical_exam,
+        "Physical Examination": physical_exam,  # Also include as "Physical Examination" for compatibility
+        "objective_findings": physical_exam,  # Also include as "objective_findings" for compatibility
         "current_treatment_and_meds": current_treatment_and_meds,  # Field 3: Current Treatment Plans including Medication
         "outcomes_adl": outcomes_adl,  # Field 4: Outcomes ADL
         "adl_goal_next_visit": adl_goal_next_visit,  # ADL Goal for next visit/treatment period
@@ -1200,6 +1399,448 @@ def build_section_b(
     }
 
 
+def extract_objective_findings_from_text(text: str) -> Optional[str]:
+    """Extract objective findings (physical examination) from transcription or SOAP text using GPT"""
+    if not text or not str(text).strip():
+        return None
+    
+    try:
+        openai_api_key = get_openai_api_key()
+        if not openai_api_key:
+            logger.warning("OpenAI API key not available, skipping objective findings extraction")
+            return None
+        
+        client = create_openai_client()
+        
+        system_prompt = """You are a medical documentation assistant specializing in extracting objective findings (physical examination) from clinical transcriptions and SOAP notes.
+
+Your task is to analyze the provided medical text and extract ONLY the objective findings/physical examination section. This includes:
+- Physical exam findings (tenderness, swelling, range of motion, etc.)
+- Clinical observations
+- Test results mentioned (e.g., anterior drawer test, talar tilt test)
+- Neurovascular status
+- Any objective clinical observations
+
+Return ONLY the objective findings text as a string. Do not include subjective complaints, assessment, or plan sections.
+If objective findings are not present in the text, return null.
+
+Return ONLY the text content, no JSON wrapper, no additional explanation."""
+
+        # Limit text length to avoid token limits
+        text_to_analyze = str(text)[:5000] if len(str(text)) > 5000 else str(text)
+        
+        user_prompt = f"""Extract objective findings (physical examination) from the following medical text. Return ONLY the objective findings, not subjective complaints, assessment, or plan:
+
+{text_to_analyze}
+
+Return ONLY the objective findings text."""
+
+        logger.info("Calling GPT API to extract objective findings from text...")
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1,
+            max_tokens=1500
+        )
+        
+        result = response.choices[0].message.content.strip()
+        if result and result.lower() not in ["null", "none", "not found", "no objective findings"]:
+            logger.info("Successfully extracted objective findings from text")
+            return result
+        else:
+            logger.info("No objective findings found in text")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error extracting objective findings from text with GPT: {e}")
+        return None
+
+
+def extract_rfa_items_from_text(text: str) -> Optional[List[Dict[str, Any]]]:
+    """Extract RFA items (treatment requests and drug requests) from transcription or SOAP text using GPT"""
+    if not text or not str(text).strip():
+        return None
+    
+    try:
+        openai_api_key = get_openai_api_key()
+        if not openai_api_key:
+            logger.warning("OpenAI API key not available, skipping RFA items extraction")
+            return None
+        
+        client = create_openai_client()
+        
+        system_prompt = """You are a medical documentation assistant specializing in extracting Request for Authorization (RFA) items from clinical transcriptions and SOAP notes.
+
+Your task is to analyze the provided medical text and extract ALL treatment requests and drug requests that require authorization. This includes:
+- Medical treatments (physical therapy, injections, imaging, surgery, DME, etc.)
+- Medications/drugs prescribed
+- Services or goods requested
+
+For each RFA item, extract:
+- Type: "treatment" or "drug"
+- Diagnosis: The diagnosis/condition this treatment/drug is for
+- ICD-10 Code: If mentioned
+- Treatment Requested / Drug Requested: Name of the treatment or drug
+- CPT/HCPCS Code: If mentioned (for treatments)
+- Strength & Form: For drugs (e.g., "500mg tablet", "10mg/ml injection")
+- Frequency/Duration: For treatments (e.g., "3x/week for 4 weeks", "1 session")
+- Quantity: For drugs (e.g., "30 tablets", "1 vial")
+- Justification: Any medical justification mentioned
+
+Return a JSON object with an "rfa_items" array containing all extracted items. Use EXACT field names as shown:
+{
+  "rfa_items": [
+    {
+      "type": "treatment",
+      "diagnosis": "Lower back pain",
+      "diagnosisCode": "M54.5",
+      "serviceRequested": "Physical Therapy",
+      "cpt": "97110",
+      "frequencyDuration": "3x/week for 6 weeks"
+    },
+    {
+      "type": "drug",
+      "diagnosis": "Lower back pain",
+      "diagnosisCode": "M54.5",
+      "drug": "Ibuprofen",
+      "doseForm": "600mg tablet",
+      "quantity": "90 tablets"
+    }
+  ]
+}
+
+CRITICAL: Use EXACT field names (camelCase):
+- For treatments: type="treatment", diagnosis, diagnosisCode, serviceRequested, cpt, frequencyDuration
+- For drugs: type="drug", diagnosis, diagnosisCode, drug, doseForm, quantity
+- Do NOT use snake_case or other variations
+
+Extract ALL treatments and medications mentioned that would require authorization.
+If no RFA items are found, return {"rfa_items": []}.
+
+Return ONLY valid JSON, no additional text."""
+
+        # Limit text length to avoid token limits
+        text_to_analyze = str(text)[:5000] if len(str(text)) > 5000 else str(text)
+        
+        user_prompt = f"""Extract all Request for Authorization (RFA) items from the following medical text. Include ALL treatments and medications that require authorization:
+
+{text_to_analyze}
+
+Return a JSON object with rfa_items array."""
+
+        logger.info("Calling GPT API to extract RFA items from text...")
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+            max_tokens=2000
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        
+        # Extract rfa_items array from response
+        rfa_items = result.get("rfa_items") or []
+        
+        if rfa_items and isinstance(rfa_items, list) and len(rfa_items) > 0:
+            logger.info(f"Successfully extracted {len(rfa_items)} RFA items from text")
+            return rfa_items
+        else:
+            logger.info("No RFA items found in text")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error extracting RFA items from text with GPT: {e}")
+        return None
+
+
+def extract_treatment_and_outcomes_from_text(text: str) -> Optional[Dict[str, Any]]:
+    """Extract current treatments/medications and outcomes ADL from transcription or SOAP text using GPT"""
+    if not text or not str(text).strip():
+        return None
+    
+    try:
+        openai_api_key = get_openai_api_key()
+        if not openai_api_key:
+            logger.warning("OpenAI API key not available, skipping treatment/outcomes extraction")
+            return None
+        
+        client = create_openai_client()
+        
+        system_prompt = """You are a medical documentation assistant specializing in extracting treatment plans and outcomes from clinical transcriptions and SOAP notes.
+
+Your task is to analyze the provided medical text and extract:
+1. Current Treatment Plans including Medications - Extract ALL medications mentioned with dose and frequency, treatments, devices provided (e.g., CAM boot, crutches), exercises, therapy, injections, imaging orders, etc. Include everything mentioned in the Plan section or treatment discussions.
+2. Outcomes ADL - Extract functional improvements, changes in Activities of Daily Living, progress notes, positive/negative changes related to treatment, improvements in function, changes in pain levels, mobility improvements, etc.
+
+Return a JSON object with:
+{
+  "current_treatments_and_meds": "Complete list of all current treatments and medications with doses and frequencies if mentioned. Format as a clear list or paragraph.",
+  "outcomes_adl": "Functional improvements, ADL changes, progress notes, positive/negative changes related to treatment. Include any mention of improvements, worsening, or no changes."
+}
+
+EXAMPLES:
+- If text mentions "treated with CAM boot and crutches", extract: "CAM boot and crutches provided"
+- If text mentions "begin gentle ankle range-of-motion exercises", extract: "Gentle ankle range-of-motion exercises"
+- If text mentions "weight bearing is allowed as tolerated", extract: "Weight bearing as tolerated"
+- If text mentions "follow-up in three weeks", extract: "Follow-up recommended in three weeks"
+- If text mentions functional improvements or ADL changes, extract those details
+
+Extract information from the Plan section, treatment discussions, medication mentions, and outcomes discussions.
+If information is not present, use null or empty strings.
+
+Return ONLY valid JSON, no additional text."""
+
+        # Limit text length to avoid token limits
+        text_to_analyze = str(text)[:5000] if len(str(text)) > 5000 else str(text)
+        
+        user_prompt = f"""Extract current treatments/medications and outcomes ADL from the following medical text:
+
+{text_to_analyze}
+
+Return a JSON object with current_treatments_and_meds and outcomes_adl fields."""
+
+        logger.info("Calling GPT API to extract treatments and outcomes from text...")
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+            max_tokens=1500
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        logger.info(f"Successfully extracted treatments/outcomes from text")
+        return result
+            
+    except Exception as e:
+        logger.error(f"Error extracting treatments/outcomes from text with GPT: {e}")
+        return None
+
+
+def extract_work_status_from_text(text: str) -> Optional[Dict[str, Any]]:
+    """Extract work status and restrictions from transcription or SOAP text using GPT"""
+    if not text or not str(text).strip():
+        return None
+    
+    try:
+        openai_api_key = get_openai_api_key()
+        if not openai_api_key:
+            logger.warning("OpenAI API key not available, skipping work status extraction")
+            return None
+        
+        client = create_openai_client()
+        
+        system_prompt = """You are a medical documentation assistant specializing in extracting work status and restrictions from clinical transcriptions and SOAP notes.
+
+Your task is to analyze the provided medical text and extract work status information including:
+- Work status/capacity (Full Duty, Modified Duty, TTD/Temporary Total Disability, etc.)
+- Work restrictions (lifting limits, standing/walking/sitting tolerances, activity limitations)
+- Return to work dates
+- Any other work-related information
+
+Return a JSON object with the following structure:
+{
+  "work_status": "Full Duty" | "Modified Duty" | "TTD" | "Temporary Total Disability" | etc.,
+  "restrictions": "Text description of restrictions if any",
+  "restrictions_details": {
+    "liftCarryPounds": "weight limit if mentioned",
+    "standing": "standing tolerance if mentioned",
+    "walking": "walking tolerance if mentioned",
+    "sitting": "sitting tolerance if mentioned",
+    "climbing": "climbing restrictions if mentioned",
+    "forwardBending": "forward bending restrictions if mentioned",
+    "kneeling": "kneeling restrictions if mentioned",
+    "crawling": "crawling restrictions if mentioned",
+    "twisting": "twisting restrictions if mentioned",
+    "keyboarding": "keyboarding restrictions if mentioned",
+    "graspingRight": true/false,
+    "graspingLeft": true/false,
+    "graspingBilateral": true/false,
+    "graspingHours": "hours if mentioned",
+    "pushingPullingRight": true/false,
+    "pushingPullingLeft": true/false,
+    "pushingPullingBilateral": true/false,
+    "pushingPullingHours": "hours if mentioned"
+  },
+  "return_full_duty_date": "date if mentioned",
+  "unable_to_return_start_date": "date if mentioned",
+  "unable_to_return_end_date": "date if mentioned",
+  "unable_to_return_reason": "reason if mentioned"
+}
+
+CRITICAL RULES:
+1. Extract ONLY restrictions that are EXPLICITLY mentioned in the text. Do NOT infer or assume restrictions.
+2. If "restricted from" or "restrictions" or "restricted" is mentioned along with specific activities, set returnToWorkWithRestrictions to true.
+3. Extract ALL restrictions that ARE mentioned (e.g., if both "avoid prolonged standing" AND "limit walking" are mentioned, extract BOTH).
+4. If a restriction is NOT mentioned, use empty string "" for text fields and false for boolean fields in restrictions_details.
+
+Extract all work status information mentioned in the text. If information is not present, use null or empty strings.
+For dates, normalize to MM/DD/YYYY format if possible.
+For restrictions_details:
+- Extract ONLY explicitly mentioned restrictions
+- If you see "restricted from prolonged standing", extract standing: "Avoid prolonged standing"
+- If you see "limit walking to short distances only", extract walking: "Limit walking to short distances only"
+- If a restriction is NOT mentioned, use empty string ""
+- Preserve the exact wording or create a clear, concise summary
+
+Examples:
+- Text: "restricted from prolonged standing and should limit walking to short distances only"
+  → returnToWorkWithRestrictions: true
+  → restrictions_details: {standing: "Avoid prolonged standing", walking: "Limit walking to short distances only", all others: "" or false}
+
+Return ONLY valid JSON, no additional text."""
+
+        # Limit text length to avoid token limits
+        text_to_analyze = str(text)[:5000] if len(str(text)) > 5000 else str(text)
+        
+        user_prompt = f"""Extract work status and restrictions from the following medical text:
+
+{text_to_analyze}
+
+IMPORTANT: Extract ONLY restrictions that are EXPLICITLY mentioned. 
+- If you see "restricted from prolonged standing", extract standing: "Avoid prolonged standing"
+- If you see "limit walking to short distances only", extract walking: "Limit walking to short distances only"
+- If restrictions are mentioned, set work_status to "Modified Duty" or similar
+- If a restriction is NOT mentioned, use empty string "" for text fields and false for boolean fields
+
+Return a JSON object with work status information."""
+
+        logger.info("Calling GPT API to extract work status from text...")
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+            max_tokens=1500
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        logger.info(f"Successfully extracted work status from text: {result.get('work_status', 'Not found')}")
+        return result
+            
+    except Exception as e:
+        logger.error(f"Error extracting work status from text with GPT: {e}")
+        return None
+
+
+def parse_restrictions_from_text(restrictions_text: str) -> Optional[Dict[str, Any]]:
+    """Parse restrictions text and extract detailed restriction fields using GPT"""
+    if not restrictions_text or not str(restrictions_text).strip():
+        return None
+    
+    try:
+        openai_api_key = get_openai_api_key()
+        if not openai_api_key:
+            logger.warning("OpenAI API key not available, skipping restrictions parsing")
+            return None
+        
+        client = create_openai_client()
+        
+        system_prompt = """You are a medical documentation assistant specializing in parsing work restrictions from medical text.
+
+Your task is to extract detailed work restriction information from the provided text and return it as a structured JSON object.
+
+CRITICAL RULES:
+1. Extract ONLY restrictions that are EXPLICITLY mentioned in the text. Do NOT infer or assume restrictions.
+2. If a restriction is NOT mentioned, use empty string "" for text fields and false for boolean fields.
+3. Extract ALL restrictions that ARE mentioned (e.g., if both "avoid prolonged standing" AND "limit walking" are mentioned, extract BOTH).
+4. Preserve the exact wording or create a clear, concise summary of what was stated.
+
+Extract the following fields from the restrictions text:
+- liftCarryPounds: Weight limit ONLY if explicitly mentioned (e.g., "20", "10", "50", "no lifting over 10 lbs"). If not mentioned, use "".
+- liftCarryHeight: Height restriction ONLY if explicitly mentioned. If not mentioned, use "".
+- standing: Extract ONLY if standing restrictions are mentioned. Examples:
+  * "avoid prolonged standing" → "Avoid prolonged standing"
+  * "restricted from prolonged standing" → "Avoid prolonged standing"
+  * "no prolonged standing" → "Avoid prolonged standing"
+  * "standing limited to 4 hours" → "4 hours"
+  * If NOT mentioned, use "".
+- walking: Extract ONLY if walking restrictions are mentioned. Examples:
+  * "limit walking to short distances only" → "Limit walking to short distances only"
+  * "limit walking" → "Limit walking"
+  * "walking limited to short distances" → "Limit walking to short distances only"
+  * "no walking" → "Avoid walking"
+  * If NOT mentioned, use "".
+- sitting: Extract ONLY if sitting restrictions are mentioned. If NOT mentioned, use "".
+- climbing: Extract ONLY if climbing restrictions are explicitly mentioned (e.g., "no climbing", "avoid climbing"). If NOT mentioned, use "".
+- forwardBending: Extract ONLY if forward bending restrictions are explicitly mentioned. If NOT mentioned, use "".
+- kneeling: Extract ONLY if kneeling restrictions are explicitly mentioned. If NOT mentioned, use "".
+- crawling: Extract ONLY if crawling restrictions are explicitly mentioned. If NOT mentioned, use "".
+- twisting: Extract ONLY if twisting restrictions are explicitly mentioned. If NOT mentioned, use "".
+- keyboarding: Extract ONLY if keyboarding restrictions are explicitly mentioned. If NOT mentioned, use "".
+- graspingRight: Boolean - true ONLY if right hand grasping is explicitly mentioned as allowed, false if restricted, false if not mentioned.
+- graspingLeft: Boolean - true ONLY if left hand grasping is explicitly mentioned as allowed, false if restricted, false if not mentioned.
+- graspingBilateral: Boolean - true ONLY if bilateral grasping is explicitly mentioned as allowed, false if restricted, false if not mentioned.
+- graspingHours: Extract ONLY if grasping hours are explicitly mentioned. If NOT mentioned, use "".
+- pushingPullingRight: Boolean - true ONLY if right hand pushing/pulling is explicitly mentioned as allowed, false if restricted, false if not mentioned.
+- pushingPullingLeft: Boolean - true ONLY if left hand pushing/pulling is explicitly mentioned as allowed, false if restricted, false if not mentioned.
+- pushingPullingBilateral: Boolean - true ONLY if bilateral pushing/pulling is explicitly mentioned as allowed, false if restricted, false if not mentioned.
+- pushingPullingHours: Extract ONLY if pushing/pulling hours are explicitly mentioned. If NOT mentioned, use "".
+
+EXAMPLES:
+- Text: "restricted from prolonged standing and should limit walking to short distances only"
+  → standing: "Avoid prolonged standing", walking: "Limit walking to short distances only", all others: "" or false
+
+- Text: "no lifting over 20 pounds"
+  → liftCarryPounds: "20", all others: "" or false
+
+- Text: "avoid climbing and kneeling"
+  → climbing: "Avoid", kneeling: "Avoid", all others: "" or false
+
+Return ONLY valid JSON with the restrictions object, no additional text."""
+
+        user_prompt = f"""Extract detailed work restrictions from the following text. Extract ONLY restrictions that are EXPLICITLY mentioned. If a restriction is NOT mentioned, use empty string "" for text fields and false for boolean fields:
+
+{restrictions_text}
+
+Return a JSON object with the restrictions fields. Extract ONLY explicitly mentioned restrictions. Use empty strings "" for text fields that are NOT mentioned, and false for boolean fields that are NOT mentioned."""
+
+        logger.info("Calling GPT API to parse restrictions text...")
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+            max_tokens=1000
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        
+        # Extract restrictions object if nested, otherwise use the root
+        if "restrictions" in result:
+            return result["restrictions"]
+        elif any(key in result for key in ["liftCarryPounds", "standing", "walking", "sitting"]):
+            return result
+        else:
+            logger.warning("GPT returned unexpected structure for restrictions parsing")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error parsing restrictions text with GPT: {e}")
+        return None
+
+
 def build_section_c(
     intake_doc: Optional[Dict[str, Any]],
     follow_doc: Optional[Dict[str, Any]],
@@ -1216,18 +1857,24 @@ def build_section_c(
     doc = soap_doc or {}
     
     # Work Status (Mandatory) - Data Source: Providers' Dictation (SOAP)
-    # Handle nested work_status structure: work_status.work_status
+    # Comprehensive extraction from multiple sources
     work_status_obj = doc.get("work_status")
     work_status = None
     restrictions = None
     restrictions_duration = None
     meds_affect_alertness = None
     meds_effect_description = None
+    work_status_source = None  # Track where work_status was found
     
+    # Extract detailed restrictions if available
+    detailed_restrictions = None
+    
+    # Priority 1: Check nested work_status structure
     if isinstance(work_status_obj, dict):
         # Extract from nested work_status dict
-        work_status = work_status_obj.get("work_status") or work_status_obj.get("status")
+        work_status = work_status_obj.get("work_status") or work_status_obj.get("status") or work_status_obj.get("workStatus")
         restrictions = work_status_obj.get("restrictions")
+        detailed_restrictions = work_status_obj.get("restrictions")  # Could be dict or string
         
         # Handle nested dates structure
         dates_obj = work_status_obj.get("dates")
@@ -1235,71 +1882,323 @@ def build_section_c(
             restrictions_duration = dates_obj.get("duration")
         
         # Handle medication effects
-        meds_obj = work_status_obj.get("medication_effects")
+        meds_obj = work_status_obj.get("medication_effects") or work_status_obj.get("medicationEffects")
         if isinstance(meds_obj, dict):
-            meds_affect_alertness = meds_obj.get("affect_alertness")
+            meds_affect_alertness = meds_obj.get("affect_alertness") or meds_obj.get("affectAlertness")
             meds_effect_description = meds_obj.get("description")
         elif isinstance(meds_obj, str):
             meds_effect_description = meds_obj
-        logger.info("Including Work Status from SOAP dictation (nested work_status structure)")
+        
+        if work_status:
+            work_status_source = "SOAP dictation (nested work_status structure)"
+            logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
     elif isinstance(work_status_obj, str):
         work_status = work_status_obj
-        logger.info("Including Work Status from SOAP dictation (work_status as string)")
+        work_status_source = "SOAP dictation (work_status as string)"
+        logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
     
-    # Fallback to flat fields if nested structure not found
+    # Priority 2: Check flat work_status field
     if not work_status:
-        work_status = doc.get("work_status")
+        work_status = doc.get("work_status") or doc.get("workStatus")
+        if work_status:
+            work_status_source = "SOAP dictation (flat work_status field)"
+            logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+    
+    # Priority 3: Check page7 structure
+    page7 = doc.get("page7")
+    if not work_status and isinstance(page7, dict):
+        # page7 might have work status info
+        page7_work_status = page7.get("workStatus") or page7.get("work_status")
+        if page7_work_status:
+            work_status = page7_work_status
+            work_status_source = "SOAP dictation (page7 structure)"
+            logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+    elif not page7:
+        page7 = None  # Ensure page7 is defined even if not found
+    
+    # Priority 4: Check plan section
+    plan = doc.get("plan")
+    if not work_status and isinstance(plan, dict):
+        plan_work_status = plan.get("work_status") or plan.get("workStatus")
+        if plan_work_status:
+            if isinstance(plan_work_status, str):
+                work_status = plan_work_status
+                work_status_source = "SOAP dictation (plan.work_status)"
+                logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+    
+    # Priority 5: Check clinical_information nested structure
+    clinical_info = doc.get("clinical_information") or doc.get("clinicalInformation")
+    if not work_status and isinstance(clinical_info, dict):
+        plan_section = clinical_info.get("plan")
+        if isinstance(plan_section, dict):
+            plan_work_status = plan_section.get("work_status") or plan_section.get("workStatus")
+            if plan_work_status:
+                work_status = plan_work_status
+                work_status_source = "SOAP dictation (clinical_information.plan.work_status)"
+                logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+    
+    # Priority 6: Extract from formatted_soap_note text using GPT
+    formatted_soap = doc.get("formatted_soap_note")
+    if not work_status and formatted_soap and isinstance(formatted_soap, str):
+        # First try regex patterns for quick extraction
+        work_status_patterns = [
+            r'(?:WORK STATUS|Work Status|Work Capacity)[:\s]*([^\n]+)',
+            r'(?:RTW status|Return to Work)[:\s]*([^\n]+)',
+            r'(?:Work Capacity|Capacity)[:\s]*([^\n]+)',
+            r'(?:Full Duty|Modified Duty|TTD|Temporary Total)[^\n]*'
+        ]
+        for pattern in work_status_patterns:
+            work_status_match = re.search(pattern, formatted_soap, re.IGNORECASE)
+            if work_status_match:
+                extracted_status = work_status_match.group(1).strip() if work_status_match.lastindex else work_status_match.group(0).strip()
+                # Clean up the extracted text
+                extracted_status = re.sub(r'[:\-]', '', extracted_status).strip()
+                if extracted_status and len(extracted_status) > 2:
+                    work_status = extracted_status
+                    work_status_source = "SOAP dictation (formatted_soap_note text extraction)"
+                    logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+                    break
+        
+        # If not found with regex, use GPT to extract from text
+        if not work_status:
+            logger.info("Attempting GPT extraction of work status from formatted_soap_note...")
+            extracted_work_status = extract_work_status_from_text(formatted_soap)
+            if extracted_work_status and extracted_work_status.get("work_status"):
+                work_status = extracted_work_status.get("work_status")
+                work_status_source = "SOAP dictation (formatted_soap_note GPT extraction)"
+                logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+                
+                # Also extract restrictions if available
+                if not restrictions and extracted_work_status.get("restrictions"):
+                    restrictions = extracted_work_status.get("restrictions")
+                if not detailed_restrictions and extracted_work_status.get("restrictions_details"):
+                    detailed_restrictions = extracted_work_status.get("restrictions_details")
+    
+    # Priority 6b: Extract from transcription text if available
+    transcription_text = doc.get("transcription") or doc.get("corrected_transcription")
+    if not work_status and transcription_text and isinstance(transcription_text, str):
+        logger.info("Attempting GPT extraction of work status from transcription...")
+        extracted_work_status = extract_work_status_from_text(transcription_text)
+        if extracted_work_status and extracted_work_status.get("work_status"):
+            work_status = extracted_work_status.get("work_status")
+            work_status_source = "SOAP dictation (transcription GPT extraction)"
+            logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+            
+            # Also extract restrictions if available
+            if not restrictions and extracted_work_status.get("restrictions"):
+                restrictions = extracted_work_status.get("restrictions")
+            if not detailed_restrictions and extracted_work_status.get("restrictions_details"):
+                detailed_restrictions = extracted_work_status.get("restrictions_details")
+    
+    # Priority 7: Check intake form (fallback)
+    if not work_status and intake_doc:
+        intake_prior_treatment = intake_doc.get("section_e")  # PriorTreatment section
+        if isinstance(intake_prior_treatment, dict):
+            intake_work_status = intake_prior_treatment.get("work_status")
+            if intake_work_status:
+                work_status = intake_work_status
+                work_status_source = "Intake form (section_e.work_status)"
+                logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+    
+    # Extract restrictions and other fields
     if not restrictions:
         restrictions = doc.get("restrictions")
+    if not detailed_restrictions:
+        detailed_restrictions = doc.get("restrictions")
     if not restrictions_duration:
-        restrictions_duration = doc.get("restrictions_duration")
+        restrictions_duration = doc.get("restrictions_duration") or doc.get("restrictionsDuration")
     if not meds_affect_alertness:
-        meds_affect_alertness = doc.get("meds_affect_alertness")
+        meds_affect_alertness = doc.get("meds_affect_alertness") or doc.get("medsAffectAlertness")
     if not meds_effect_description:
-        meds_effect_description = doc.get("meds_effect_description")
+        meds_effect_description = doc.get("meds_effect_description") or doc.get("medsEffectDescription")
     
-    # Priority: SOAP dictation > follow-up form (fallback)
-    if work_status:
-        logger.info("Including Work Status from SOAP dictation (Providers' Dictation)")
-    elif b.get("work_status_perception"):
-        work_status = b.get("work_status_perception")
-        logger.info("Including Work Status from follow-up form (fallback)")
-    else:
+    # Check for detailed restrictions in page7 or restrictions object
+    # Note: page7 was already checked above for work_status, ensure it's defined
+    if not isinstance(detailed_restrictions, dict):
+        # Ensure page7 is defined
+        if page7 is None:
+            page7 = doc.get("page7")
+        if isinstance(page7, dict) and isinstance(page7.get("restrictions"), dict):
+            detailed_restrictions = page7.get("restrictions")
+        # Try to get from restrictions field directly if it's a dict
+        elif isinstance(doc.get("restrictions"), dict):
+            detailed_restrictions = doc.get("restrictions")
+        # If restrictions is text, try to parse it
+        elif restrictions and isinstance(restrictions, str) and restrictions.strip():
+            logger.info("Parsing restrictions text to extract detailed fields...")
+            parsed_restrictions = parse_restrictions_from_text(restrictions)
+            if parsed_restrictions:
+                detailed_restrictions = parsed_restrictions
+                logger.info("Successfully parsed restrictions text")
+    
+    # Also check formatted_soap_note or plan section for restrictions text
+    if not isinstance(detailed_restrictions, dict):
+        # Check plan section for restrictions
+        plan = doc.get("plan")
+        if isinstance(plan, dict):
+            plan_work_status = plan.get("work_status")
+            if plan_work_status and isinstance(plan_work_status, str) and plan_work_status.strip():
+                logger.info("Parsing restrictions from plan.work_status...")
+                parsed_restrictions = parse_restrictions_from_text(plan_work_status)
+                if parsed_restrictions:
+                    detailed_restrictions = parsed_restrictions
+        
+        # Check formatted_soap_note for restrictions text
+        formatted_soap = doc.get("formatted_soap_note")
+        if formatted_soap and isinstance(formatted_soap, str):
+            # Look for work status or restrictions section
+            work_status_match = re.search(r'(?:WORK STATUS|Work Status|Restrictions)[:\s]*(.*?)(?=\n\n|\n[A-Z]|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+            if work_status_match:
+                restrictions_text = work_status_match.group(1).strip()
+                if restrictions_text and len(restrictions_text) > 10:  # Only parse if substantial text
+                    logger.info("Parsing restrictions from formatted_soap_note...")
+                    parsed_restrictions = parse_restrictions_from_text(restrictions_text)
+                    if parsed_restrictions:
+                        detailed_restrictions = parsed_restrictions
+    
+    # Priority 8: Check follow-up form (final fallback)
+    if not work_status:
+        followup_work_status = b.get("work_status_perception") or b.get("workStatusPerception")
+        if followup_work_status:
+            work_status = followup_work_status
+            work_status_source = "Follow-up form (section_b.work_status_perception)"
+            logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+    
+    # Final check: if still no work_status found, log warning and set default
+    if not work_status:
         work_status = "[Not documented]"
-        logger.warning("Work Status not found in SOAP dictation (mandatory per mapping)")
+        logger.warning(f"⚠ Work Status not found in any source (mandatory per mapping). Checked: SOAP dictation, page7, plan, clinical_information, formatted_soap_note, intake form, follow-up form")
+    else:
+        logger.info(f"✅ Work Status successfully extracted from: {work_status_source}")
+    
+    # Normalize work_status to determine boolean flags
+    work_status_lower = str(work_status).lower() if work_status else ""
+    return_to_full_duty = "full duty" in work_status_lower or "full" in work_status_lower
+    unable_to_return_to_work = "ttd" in work_status_lower or "temporary total" in work_status_lower or "unable" in work_status_lower
+    
+    # Check if restrictions exist - either as text or detailed restrictions object
+    has_restrictions_text = restrictions and str(restrictions).strip()
+    has_detailed_restrictions = False
+    if isinstance(detailed_restrictions, dict):
+        # Check if any restriction field has a non-empty value
+        has_detailed_restrictions = any(
+            (isinstance(v, str) and v.strip()) or (isinstance(v, bool) and v) or (v and v != "")
+            for v in detailed_restrictions.values()
+        )
+    
+    return_to_work_with_restrictions = (
+        "modified" in work_status_lower or 
+        "restriction" in work_status_lower or 
+        "restricted" in work_status_lower or
+        has_restrictions_text or 
+        has_detailed_restrictions
+    )
     
     # Extract patientStatus object if available
     patient_status = doc.get("patientStatus")
     if isinstance(patient_status, dict):
         # Use patientStatus dates if available, otherwise fall back to flat fields
         return_full_duty_date = to_mmddyyyy(patient_status.get("returnToFullDutyDate") or doc.get("return_full_duty_date"))
-        return_modified_duty_date = to_mmddyyyy(patient_status.get("returnToModifiedDutyDate") or doc.get("return_modified_duty_date"))
-        mmi_date = to_mmddyyyy(patient_status.get("maxMedicalImprovementDate") or doc.get("mmi_date"))
-        next_visit_date = to_mmddyyyy(patient_status.get("nextVisitDate") or doc.get("next_visit_date"))
-        discharged_date = to_mmddyyyy(patient_status.get("dischargedFromCareDate") or doc.get("discharged_date"))
+        unable_to_return_start_date = to_mmddyyyy(patient_status.get("unableToReturnStartDate") or doc.get("unable_to_return_start_date"))
+        unable_to_return_end_date = to_mmddyyyy(patient_status.get("unableToReturnEndDate") or doc.get("unable_to_return_end_date"))
+        unable_to_return_reason = patient_status.get("unableToReturnReason") or doc.get("unable_to_return_reason") or ""
         logger.info("Using patientStatus object for date extraction")
     else:
         # Fall back to flat fields
-        return_full_duty_date = to_mmddyyyy(doc.get("return_full_duty_date"))
-        return_modified_duty_date = to_mmddyyyy(doc.get("return_modified_duty_date"))
-        mmi_date = to_mmddyyyy(doc.get("mmi_date"))
-        next_visit_date = to_mmddyyyy(doc.get("next_visit_date"))
-        discharged_date = to_mmddyyyy(doc.get("discharged_date"))
+        return_full_duty_date = to_mmddyyyy(doc.get("return_full_duty_date") or doc.get("returnToFullDutyDate"))
+        unable_to_return_start_date = to_mmddyyyy(doc.get("unable_to_return_start_date") or doc.get("unableToReturnStartDate"))
+        unable_to_return_end_date = to_mmddyyyy(doc.get("unable_to_return_end_date") or doc.get("unableToReturnEndDate"))
+        unable_to_return_reason = doc.get("unable_to_return_reason") or doc.get("unableToReturnReason") or ""
+    
+    # Check page7 for dates and flags if not found
+    page7 = doc.get("page7")
+    if isinstance(page7, dict):
+        if not return_full_duty_date:
+            return_full_duty_date = to_mmddyyyy(page7.get("returnToFullDutyDate"))
+        if not unable_to_return_start_date:
+            unable_to_return_start_date = to_mmddyyyy(page7.get("unableToReturnStartDate"))
+        if not unable_to_return_end_date:
+            unable_to_return_end_date = to_mmddyyyy(page7.get("unableToReturnEndDate"))
+        if not unable_to_return_reason:
+            unable_to_return_reason = page7.get("unableToReturnReason") or ""
+        if not isinstance(detailed_restrictions, dict):
+            detailed_restrictions = page7.get("restrictions")
+        # Use page7 boolean flags if explicitly set, otherwise keep derived values
+        if "returnToFullDuty" in page7:
+            return_to_full_duty = bool(page7.get("returnToFullDuty", False))
+        if "unableToReturnToWork" in page7:
+            unable_to_return_to_work = bool(page7.get("unableToReturnToWork", False))
+        if "returnToWorkWithRestrictions" in page7:
+            return_to_work_with_restrictions = bool(page7.get("returnToWorkWithRestrictions", False))
+    
+    # Build restrictions object with defaults
+    # Merge restrictions from all sources - prioritize non-empty values
+    restrictions_obj = {
+        "liftCarryPounds": "",
+        "liftCarryHeight": "",
+        "standing": "",
+        "walking": "",
+        "sitting": "",
+        "climbing": "",
+        "forwardBending": "",
+        "kneeling": "",
+        "crawling": "",
+        "twisting": "",
+        "keyboarding": "",
+        "graspingRight": False,
+        "graspingLeft": False,
+        "graspingBilateral": False,
+        "graspingHours": "",
+        "pushingPullingRight": False,
+        "pushingPullingLeft": False,
+        "pushingPullingBilateral": False,
+        "pushingPullingHours": ""
+    }
+    
+    if isinstance(detailed_restrictions, dict):
+        # Merge restrictions - only update fields that have values
+        for key in restrictions_obj.keys():
+            if key in detailed_restrictions:
+                value = detailed_restrictions.get(key)
+                if value is not None and value != "":
+                    if isinstance(restrictions_obj[key], bool):
+                        restrictions_obj[key] = bool(value)
+                    else:
+                        restrictions_obj[key] = str(value) if value else ""
+                elif isinstance(restrictions_obj[key], bool) and value is False:
+                    restrictions_obj[key] = False
+    
+    # Get otherRestrictions from page7 or restrictions text
+    other_restrictions = ""
+    if isinstance(page7, dict):
+        other_restrictions = page7.get("otherRestrictions") or ""
+    if not other_restrictions and restrictions and isinstance(restrictions, str):
+        other_restrictions = restrictions
+    
+    # Extract patient name for page7 structure
+    patient_name = None
+    if isinstance(page7, dict):
+        patient_name = page7.get("patientName") or page7.get("patient_name")
+    if not patient_name:
+        patient_name = pick_name(intake_doc, doc)
+    if not patient_name:
+        # Try from SOAP patient_info
+        patient_info = doc.get("patient_info") or doc.get("patient_information")
+        if isinstance(patient_info, dict):
+            patient_name = patient_info.get("name") or patient_info.get("patientName")
+    patient_name = patient_name or ""  # Default to empty string if not found
     
     return {
-        "instruction": work_status,
-        "return_full_duty_date": return_full_duty_date,
-        "unable_to_work_from": None,  # optional: populate if you track ranges
-        "unable_to_work_to": None,
-        "restrictions_text": restrictions,  # From SOAP dictation (nested or flat)
-        "restrictions_duration": restrictions_duration,  # From SOAP dictation (nested or flat)
-        "meds_affect_alertness": meds_affect_alertness,  # From SOAP dictation (nested or flat)
-        "meds_effect_description": meds_effect_description,  # From SOAP dictation (nested or flat)
-        "anticipate_full_duty_date": return_full_duty_date,
-        "anticipate_modified_duty_date": return_modified_duty_date,
-        "anticipate_mmi_date": mmi_date,
-        "next_visit_date": next_visit_date,
-        "discharged_from_care_date": discharged_date
+        "patientName": patient_name,
+        "returnToFullDuty": return_to_full_duty,
+        "returnToFullDutyDate": return_full_duty_date or "",
+        "unableToReturnToWork": unable_to_return_to_work,
+        "unableToReturnStartDate": unable_to_return_start_date or "",
+        "unableToReturnEndDate": unable_to_return_end_date or "",
+        "unableToReturnReason": unable_to_return_reason or "",
+        "returnToWorkWithRestrictions": return_to_work_with_restrictions,
+        "restrictions": restrictions_obj,
+        "otherRestrictions": other_restrictions or ""
     }
 
 
@@ -1430,14 +2329,16 @@ def build_pr1_payload(
     """Build complete PR-1 payload structure"""
     header = normalize_pr1_header(intake_doc, soap_doc)
     checkboxes = calc_checkboxes(soap_doc, follow_doc, flags)
-    section_a = build_section_a_rfa(soap_doc)
+    section_a = build_section_a_rfa(soap_doc, intake_doc)
     # Pass intake_doc to build_section_b so it can extract HPI and Objective Findings
     section_b = build_section_b(soap_doc, intake_doc)
     section_c = build_section_c(intake_doc, follow_doc, soap_doc)
     
     # Page 2 signature block
+    # Check if section_a has any requests (new format uses "requests" array)
+    has_requests = bool(section_a.get("requests") and len(section_a.get("requests", [])) > 0)
     signature_block = {
-        "include_section_a": bool(section_a["medical_treatment_requests"] or section_a["drug_requests"]),
+        "include_section_a": has_requests,
         "include_section_b": True,
         "include_section_c": True,
         "physician_signature": (soap_doc or {}).get("examiner"),
@@ -1744,6 +2645,36 @@ The JSON structure should include:
 - Secondary physician reports (secondary_physician_reports) - MANDATORY if applicable: Reports from other physicians, discuss and incorporate findings if appropriate
 - RFA items (requests for authorization - services, goods, drugs with CPT/HCPCS codes)
 - Work status (work_status, restrictions, dates, medication effects) - MANDATORY: RTW status (Full Duty / Modified Duty / TTD)
+  Extract work status from any mention in the document including:
+  - "Work Status" or "Work Capacity" sections
+  - "Return to Work" or "RTW" mentions
+  - "Full Duty", "Modified Duty", "TTD", "Temporary Total Disability" mentions
+  - Any work restrictions or limitations mentioned
+- Detailed work restrictions (page7.restrictions object) - Extract detailed restriction fields from work status text:
+  - liftCarryPounds: Weight limit (e.g., "20", "10", "50")
+  - liftCarryHeight: Height restriction if mentioned
+  - standing: Standing tolerance (e.g., "4 hours", "2 hours", "Unlimited")
+  - walking: Walking tolerance (e.g., "2 hours", "1 hour", "Unlimited")
+  - sitting: Sitting tolerance (e.g., "6 hours", "4 hours", "Unlimited")
+  - climbing: Climbing restrictions (e.g., "Limited", "Avoid", "Unlimited")
+  - forwardBending: Forward bending restrictions (e.g., "Avoid", "Limited", "Unlimited")
+  - kneeling: Kneeling restrictions (e.g., "Avoid", "Limited", "Unlimited")
+  - crawling: Crawling restrictions (e.g., "Avoid", "Limited", "Unlimited")
+  - twisting: Twisting restrictions (e.g., "Limited", "Avoid", "Unlimited")
+  - keyboarding: Keyboarding restrictions (e.g., "Unlimited", "Limited", "4 hours")
+  - graspingRight, graspingLeft, graspingBilateral: Boolean flags for grasping ability
+  - graspingHours: Hours for grasping activities
+  - pushingPullingRight, pushingPullingLeft, pushingPullingBilateral: Boolean flags for pushing/pulling ability
+  - pushingPullingHours: Hours for pushing/pulling activities
+- Work status flags (page7 object):
+  - returnToFullDuty: Boolean - patient can return to full duty
+  - returnToFullDutyDate: Date string
+  - unableToReturnToWork: Boolean - patient unable to return to work
+  - unableToReturnStartDate: Date string
+  - unableToReturnEndDate: Date string
+  - unableToReturnReason: Reason text
+  - returnToWorkWithRestrictions: Boolean - patient can return with restrictions
+  - otherRestrictions: Any additional restrictions text
 - Patient status (patientStatus object) - Extract patient status information with checked flags and dates:
   - returnToFullDutyChecked (boolean) and returnToFullDutyDate (date string)
   - returnToModifiedDutyChecked (boolean) and returnToModifiedDutyDate (date string)
