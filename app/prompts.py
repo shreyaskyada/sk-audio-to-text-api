@@ -39,6 +39,15 @@ Your task is to convert the transcription into a SOAP note that follows EXACTLY 
 
 {patient_context}
 
+{intake_form_data}
+
+**IMPORTANT INTAKE FORM DATA INSTRUCTIONS:**
+If intake form data is provided above (marked with "from intake form"), you MUST use that data in the corresponding SOAP sections:
+- Use "Past Medical History (from intake form)" data in the Past Medical History section
+- Use "Current Medications (from intake form)" data in the Medications section  
+- Use "Social/Occupational History (from intake form)" data in the Social/Occupational History section
+Do NOT use "As per chart" if intake form data is provided above.
+
 TRANSCRIPTION TO CONVERT:
 {transcription}
 
@@ -69,13 +78,13 @@ History of Present Illness (HPI):
  = [Write a narrative paragraph describing the patient's presentation, including: onset date, mechanism of injury, context, pain scale, aggravating/reducing factors, functional limitations, progression, and any relevant clinical findings. Format as a flowing paragraph similar to: "The patient is a [age]-year-old [gender] presenting with [chief complaint] after [mechanism/context]. [Additional relevant clinical details, examination findings, imaging results, etc.]"]  
 
 Past Medical History:  
- = [Key comorbidities or “As per chart”]  
+ = [CRITICAL: If intake form data is provided below with "Past Medical History (from intake form)", you MUST use that exact data. Do NOT use "As per chart" if intake form data is provided. List the specific comorbidities exactly as shown in the intake form data (e.g., "Hypertension, Diabetes"). Only use "As per chart" if NO intake form data is provided for this section.]  
 
 Medications:  
- = [List current medications or “As per chart”]  
+ = [CRITICAL: If intake form data is provided below with "Current Medications (from intake form)", you MUST use that exact data. Do NOT use "As per chart" if intake form data is provided. List the specific medications exactly as shown in the intake form data. Only use "As per chart" if NO intake form data is provided for this section.]  
 
 Social / Occupational History:  
- = [Living conditions, aids, occupation, work demands, social support]  
+ = [CRITICAL: If intake form data is provided below with "Social/Occupational History (from intake form)", you MUST use that exact data. Do NOT use "As per chart" if intake form data is provided. Format the information from the intake form data. Only use "As per chart" if NO intake form data is provided for this section or if the intake form data is completely empty.]  
 
 Review of Systems (ROS):  
  = [Write a narrative paragraph format: "Positive for [specific positive findings mentioned]. Denies [specific symptoms explicitly denied such as numbness, tingling, skin changes, etc.]. All other systems negative unless stated." Adapt the content based on what is actually mentioned in the transcription.]  
