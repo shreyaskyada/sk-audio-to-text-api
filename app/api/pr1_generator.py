@@ -485,6 +485,23 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                 it.get("hcpcs") or
                 ""
             )
+            # Extract supportive CPTs - handle both array and string formats
+            supportive_cpts_raw = (
+                it.get("supportiveCpts") or
+                it.get("supportive_cpts") or
+                it.get("supportiveCPTs") or
+                it.get("supportiveCPTs") or
+                []
+            )
+            # Normalize supportive CPTs to a list
+            if isinstance(supportive_cpts_raw, str):
+                # If it's a comma-separated string, split it
+                supportive_cpts = [code.strip() for code in supportive_cpts_raw.split(",") if code.strip()]
+            elif isinstance(supportive_cpts_raw, list):
+                supportive_cpts = [str(code).strip() for code in supportive_cpts_raw if code and str(code).strip()]
+            else:
+                supportive_cpts = []
+            
             frequency_duration = (
                 it.get("frequencyDuration") or
                 it.get("frequency_duration") or
@@ -494,14 +511,19 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
             )
             
             if service_requested:  # Only add if service requested exists
-                requests.append({
+                request_item = {
                     "type": "treatment",
                     "diagnosis": diagnosis,
                     "diagnosisCode": diagnosis_code,
                     "serviceRequested": service_requested,
                     "cpt": cpt,
                     "frequencyDuration": frequency_duration
-                })
+                }
+                # Add supportive CPTs if present
+                if supportive_cpts:
+                    request_item["supportiveCpts"] = supportive_cpts
+                    logger.info(f"RFA item '{service_requested}': Found {len(supportive_cpts)} supportive CPTs: {', '.join(supportive_cpts)}")
+                requests.append(request_item)
     
     if requests:
         logger.info(f"RFA Section A: {len(requests)} requests extracted (from SOAP dictation)")
@@ -1485,7 +1507,14 @@ For each RFA item, extract:
 - Diagnosis: The diagnosis/condition this treatment/drug is for
 - ICD-10 Code: If mentioned
 - Treatment Requested / Drug Requested: Name of the treatment or drug
-- CPT/HCPCS Code: If mentioned (for treatments)
+- Primary CPT/HCPCS Code: The main procedure code (for treatments)
+- Supportive CPTs: CRITICAL - Extract ALL supportive CPT/HCPCS codes that are typically required with the primary procedure. This includes:
+  * Fluoroscopic guidance codes (77003, 77002, etc.) for injections
+  * Ultrasound guidance codes (76942, etc.) for procedures
+  * DME/Supplies codes (L-codes for braces, boots, crutches, etc.)
+  * Anesthesia codes if mentioned
+  * Any other supportive services, devices, or supplies mentioned
+  Supportive CPTs should be an array of codes. If multiple supportive codes are mentioned or typically required, include ALL of them.
 - Strength & Form: For drugs (e.g., "500mg tablet", "10mg/ml injection")
 - Frequency/Duration: For treatments (e.g., "3x/week for 4 weeks", "1 session")
 - Quantity: For drugs (e.g., "30 tablets", "1 vial")
@@ -1498,9 +1527,28 @@ Return a JSON object with an "rfa_items" array containing all extracted items. U
       "type": "treatment",
       "diagnosis": "Lower back pain",
       "diagnosisCode": "M54.5",
+      "serviceRequested": "Epidural steroid injection",
+      "cpt": "62311",
+      "supportiveCpts": ["77003"],
+      "frequencyDuration": "1 injection"
+    },
+    {
+      "type": "treatment",
+      "diagnosis": "Knee pain",
+      "diagnosisCode": "M25.561",
       "serviceRequested": "Physical Therapy",
       "cpt": "97110",
+      "supportiveCpts": [],
       "frequencyDuration": "3x/week for 6 weeks"
+    },
+    {
+      "type": "treatment",
+      "diagnosis": "Ankle fracture",
+      "diagnosisCode": "S82.001A",
+      "serviceRequested": "Walking boot",
+      "cpt": "L4361",
+      "supportiveCpts": [],
+      "frequencyDuration": "1 unit"
     },
     {
       "type": "drug",
@@ -1513,8 +1561,15 @@ Return a JSON object with an "rfa_items" array containing all extracted items. U
   ]
 }
 
+CRITICAL RULES FOR SUPPORTIVE CPTs:
+1. For injection procedures, ALWAYS include fluoroscopic guidance (77003) or ultrasound guidance (76942) if the procedure typically requires it, even if not explicitly mentioned
+2. For procedures involving imaging guidance, extract the guidance code as a supportive CPT
+3. For DME/Supplies, if a device is mentioned (boot, brace, crutches), include the appropriate HCPCS L-code
+4. Supportive CPTs should be an array: ["77003", "L4361"] or [] if none
+5. Be thorough - supportive CPTs are CRITICAL for accurate billing and authorization
+
 CRITICAL: Use EXACT field names (camelCase):
-- For treatments: type="treatment", diagnosis, diagnosisCode, serviceRequested, cpt, frequencyDuration
+- For treatments: type="treatment", diagnosis, diagnosisCode, serviceRequested, cpt, supportiveCpts (array), frequencyDuration
 - For drugs: type="drug", diagnosis, diagnosisCode, drug, doseForm, quantity
 - Do NOT use snake_case or other variations
 

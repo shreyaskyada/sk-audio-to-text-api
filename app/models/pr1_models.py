@@ -17,6 +17,7 @@ class SOAPRFAItem(BaseModel):
     """Request for Authorization (RFA) item"""
     service_or_good: Optional[str] = None
     cpt_or_hcpcs: Optional[str] = None
+    supportive_cpts: Optional[List[str]] = None  # List of supportive CPT/HCPCS codes (e.g., fluoro guidance, DME, supplies)
     diagnosis_icd10: Optional[str] = None
     mtus_consistent: Optional[bool] = None
     justification: Optional[str] = None

@@ -329,6 +329,142 @@ def extract_intake_form_values(intake_doc: Optional[dict]) -> dict:
     return values
 
 
+def validate_and_correct_cpt_codes(soap_note: str, transcription: str, openai_client) -> str:
+    """
+    Post-process SOAP note to validate and correct CPT codes.
+    Uses AI to generate CPT codes for procedures not in the mapping, making the system unlimited.
+    Replaces "Not documented" with actual CPT codes when procedures are mentioned.
+    """
+    import re
+    
+    if not soap_note or not transcription:
+        return soap_note
+    
+    result = soap_note
+    changes_made = []
+    
+    # Extract procedures/treatments from transcription
+    transcription_lower = transcription.lower()
+    
+    # Check for common procedure keywords
+    procedure_keywords = [
+        "injection", "physical therapy", "pt", "mri", "x-ray", "xray", "ct scan",
+        "walking boot", "cam boot", "brace", "crutches", "walker", "cane",
+        "surgery", "arthroscopy", "epidural", "facet", "trigger point",
+        "therapy", "imaging", "procedure", "surgery"
+    ]
+    
+    has_procedures = any(keyword in transcription_lower for keyword in procedure_keywords)
+    
+    if not has_procedures:
+        return soap_note  # No procedures mentioned, no need to correct
+    
+    # Pattern to find CPT sections with "Not documented"
+    cpt_patterns = [
+        # Primary Procedure
+        (r'(Primary Procedure:\s*\[)(Not documented|\[Not documented\])(\]\s*—\s*\[Procedure Name\])', 
+         lambda m: _generate_cpt_for_procedure(transcription, openai_client, m)),
+        # Supportive CPTs
+        (r'(Supportive CPTs:\s*\[)(Not documented|\[Not documented\])(\])',
+         lambda m: _generate_supportive_cpts(transcription, openai_client, m)),
+        # RFA Primary CPT
+        (r'(Primary CPT:\s*\[)(Not documented|\[Not documented\]|Code)(\])',
+         lambda m: _generate_cpt_for_rfa(transcription, openai_client, m)),
+        # RFA Supportive CPTs
+        (r'(Supportive CPTs:\s*\[)(Not documented|\[Not documented\]|Codes)(\])',
+         lambda m: _generate_supportive_cpts_rfa(transcription, openai_client, m)),
+    ]
+    
+    for pattern, replacement_func in cpt_patterns:
+        matches = list(re.finditer(pattern, result, re.IGNORECASE | re.MULTILINE))
+        for match in matches:
+            try:
+                replacement = replacement_func(match)
+                if replacement and replacement != match.group(0):
+                    result = result.replace(match.group(0), replacement)
+                    changes_made.append(f"Corrected CPT: {match.group(0)[:50]}...")
+            except Exception as e:
+                logger.warning(f"Error correcting CPT code: {e}")
+                continue
+    
+    if changes_made:
+        logger.info(f"✅ CPT code corrections made: {len(changes_made)} changes")
+    
+    return result
+
+
+def _generate_cpt_for_procedure(transcription: str, openai_client, match) -> str:
+    """Generate CPT code for a procedure mentioned in transcription - fully AI-driven"""
+    from app.cpt_mappings import generate_cpt_with_ai
+    
+    # Try to extract procedure name from context
+    procedure_text = _extract_procedure_from_transcription(transcription)
+    
+    if procedure_text and openai_client:
+        primary, supportive = generate_cpt_with_ai(procedure_text, openai_client)
+        if primary:
+            return f"{match.group(1)}{primary}{match.group(3)}"
+    
+    return match.group(0)  # Return original if can't generate
+
+
+def _generate_supportive_cpts(transcription: str, openai_client, match) -> str:
+    """Generate supportive CPT codes - can be multiple codes - fully AI-driven"""
+    from app.cpt_mappings import generate_cpt_with_ai
+    
+    procedure_text = _extract_procedure_from_transcription(transcription)
+    
+    if procedure_text and openai_client:
+        primary, supportive = generate_cpt_with_ai(procedure_text, openai_client)
+        if supportive and len(supportive) > 0:
+            # Format multiple codes as comma-separated string
+            codes_str = ", ".join(supportive) if isinstance(supportive, list) else str(supportive)
+            return f"{match.group(1)}{codes_str}{match.group(3)}"
+    
+    return match.group(0)
+
+
+def _generate_cpt_for_rfa(transcription: str, openai_client, match) -> str:
+    """Generate CPT code for RFA section"""
+    return _generate_cpt_for_procedure(transcription, openai_client, match)
+
+
+def _generate_supportive_cpts_rfa(transcription: str, openai_client, match) -> str:
+    """Generate supportive CPT codes for RFA section"""
+    return _generate_supportive_cpts(transcription, openai_client, match)
+
+
+def _extract_procedure_from_transcription(transcription: str) -> str:
+    """Extract procedure name from transcription using simple heuristics"""
+    transcription_lower = transcription.lower()
+    
+    # Look for common procedure patterns
+    procedure_patterns = [
+        r"(epidural[^.]*)",
+        r"(injection[^.]*)",
+        r"(physical therapy[^.]*)",
+        r"(\bpt\b[^.]*)",
+        r"(mri[^.]*)",
+        r"(x-ray[^.]*)",
+        r"(walking boot[^.]*)",
+        r"(cam boot[^.]*)",
+        r"(brace[^.]*)",
+        r"(surgery[^.]*)",
+        r"(arthroscopy[^.]*)",
+    ]
+    
+    import re
+    for pattern in procedure_patterns:
+        match = re.search(pattern, transcription_lower, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    
+    # Return a snippet if no specific pattern found
+    if len(transcription) > 200:
+        return transcription[:200]  # Use first 200 chars for context
+    return transcription
+
+
 def inject_intake_data_into_soap(soap_note: str, intake_values: dict) -> str:
     """Post-process SOAP note to inject intake form data, replacing 'As per chart'"""
     if not intake_values:
@@ -607,9 +743,9 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
                     "content": user_prompt
                 }
             ],
-            temperature=0.2,
+            temperature=0.1,  # Lower temperature for more consistent CPT code generation
             max_tokens=6000,
-            top_p=1.0
+            top_p=0.95  # Slightly lower for more deterministic output
         )
         
         formatted_soap_note = response.choices[0].message.content.strip()
@@ -620,6 +756,9 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
             if intake_values:
                 logger.info(f"🔧 Post-processing SOAP note to inject intake form data: {intake_values}")
                 formatted_soap_note = inject_intake_data_into_soap(formatted_soap_note, intake_values)
+        
+        # Post-process: Validate and correct CPT codes using AI-enhanced system
+        formatted_soap_note = validate_and_correct_cpt_codes(formatted_soap_note, corrected_transcription, client)
         
         # Extract sections from the formatted note (simple parsing)
         # This is a best-effort extraction for structured access
