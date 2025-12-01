@@ -86,6 +86,41 @@ def str_or_nd(val: Optional[str]) -> str:
     return val if (val is not None and str(val).strip() != "") else "[Not documented]"
 
 
+def generate_supportive_cpts_for_request(primary_cpt: str, service_description: str, openai_client=None) -> List[str]:
+    """
+    Generate supportive CPT codes for a request based on primary CPT and service description.
+    Returns a list of supportive CPT codes, or empty list if unable to generate.
+    """
+    if not primary_cpt or not primary_cpt.strip():
+        return []
+    
+    if not openai_client:
+        try:
+            openai_client = create_openai_client()
+        except Exception:
+            logger.warning("Could not create OpenAI client for supportive CPT generation")
+            return []
+    
+    try:
+        from app.cpt_mappings import generate_cpt_with_ai
+        
+        # Build procedure description from service and CPT
+        procedure_description = f"{service_description} (CPT: {primary_cpt})"
+        
+        # Use the existing AI function to generate CPTs
+        # It will return both primary and supportive, but we only need supportive
+        _, supportive_cpts = generate_cpt_with_ai(procedure_description, openai_client)
+        
+        if supportive_cpts and isinstance(supportive_cpts, list):
+            # Filter out empty strings and normalize
+            return [str(code).strip() for code in supportive_cpts if code and str(code).strip()]
+        
+        return []
+    except Exception as e:
+        logger.warning(f"Error generating supportive CPTs for CPT {primary_cpt}: {e}")
+        return []
+
+
 def to_mmddyyyy(s: Optional[str]) -> Optional[str]:
     """Convert date string to MM/DD/YYYY format"""
     if not s:
@@ -519,10 +554,31 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                     "cpt": cpt,
                     "frequencyDuration": frequency_duration
                 }
-                # Add supportive CPTs if present
-                if supportive_cpts:
-                    request_item["supportiveCpts"] = supportive_cpts
-                    logger.info(f"RFA item '{service_requested}': Found {len(supportive_cpts)} supportive CPTs: {', '.join(supportive_cpts)}")
+                
+                # Auto-fetch supportive CPTs if we have a primary CPT but no supportive CPTs
+                if cpt and cpt.strip() and (not supportive_cpts or len(supportive_cpts) == 0):
+                    try:
+                        openai_client = create_openai_client()
+                        generated_supportive = generate_supportive_cpts_for_request(
+                            cpt, 
+                            service_requested, 
+                            openai_client
+                        )
+                        if generated_supportive:
+                            supportive_cpts = generated_supportive
+                            logger.info(f"RFA item '{service_requested}': Auto-generated {len(supportive_cpts)} supportive CPTs: {', '.join(supportive_cpts)}")
+                    except Exception as e:
+                        logger.warning(f"Could not auto-generate supportive CPTs for '{service_requested}' (CPT: {cpt}): {e}")
+                
+                # Always add supportive CPTs as an array (even if empty) when there's a primary CPT
+                # This ensures proper array format in the PR1 form
+                if cpt and cpt.strip():
+                    request_item["supportiveCpts"] = supportive_cpts if supportive_cpts else []
+                    if supportive_cpts:
+                        logger.info(f"RFA item '{service_requested}': Using {len(supportive_cpts)} supportive CPTs: {', '.join(supportive_cpts)}")
+                    else:
+                        logger.debug(f"RFA item '{service_requested}': No supportive CPTs found (empty array)")
+                
                 requests.append(request_item)
     
     if requests:
