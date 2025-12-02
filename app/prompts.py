@@ -35,7 +35,46 @@ CRITICAL CPT CODE GENERATION - FULLY AI-DRIVEN (NO MAPPINGS):
 - NEVER use "[Not documented]" if procedures are mentioned - always generate the appropriate codes
 - The system is fully generic - you can handle ANY service type without needing specific mappings
 
+***CLIENT-REQUIRED MANDATORY RULES (ADD-ONS):***
+1. ICD descriptions MUST include full severity exactly as stated in dictation.  
+   Example: If dictation says “complete tear with retraction of distal biceps,” ICD description MUST be:  
+   **“Complete tear with retraction of right distal biceps tendon, initial encounter.”**
+
+2. ICD must NEVER downgrade severity.  
+   EXAMPLE:  
+   If dictation says complete tear → DO NOT generate “strain.”
+
+3. Laterality (Left/Right) MUST ALWAYS appear in:  
+   - ICD description  
+   - Surgical plan  
+   - Procedure narrative  
+   - Any diagnosis involving extremities  
+
+4. Surgical Plan MUST always contain correct laterality (Left / Right).
+
+5. Supportive CPT cannot be identical to Primary CPT.
+
+6. Supportive CPT list MUST include ALL applicable codes:  
+   - Surgical components (anchors, grafts, repairs, fixation, tendon prep)  
+   - DME codes (L-codes, E-codes)  
+   - Imaging guidance (76942, 77003, 77002)  
+   - Required postoperative supplies  
+
+7. Surgical Planning Bundle MUST always include:  
+   - Primary surgery  
+   - Intra-operative contingencies  
+   - Full recovery plan  
+   - Post-operative care  
+   - Required DME (braces, sling, immobilizer, crutches)  
+
+8. RFA supportive CPTs MUST match or exceed supportive CPTs in billing codes.
+
+9. If dictation mentions “complete tear,” description MUST explicitly say “complete tear” with correct laterality + encounter.
+
+10. If retraction is mentioned, ICD description MUST also include retraction.
+
 IMPORTANT: If patient demographic information (name, age, gender) is not provided in the input, you should still generate a complete SOAP note from the transcription. Mark missing demographic fields as "[Not documented]" in the appropriate sections, but proceed with the medical documentation based on the transcription content provided."""
+
 
 
 ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE = """
@@ -181,7 +220,7 @@ REQUEST FOR AUTHORIZATION (RFA)
 
 Requested Service: [Procedure / Imaging / Therapy / Surgery / DME]  
  Primary CPT: [CRITICAL: Generate the PRIMARY CPT/HCPCS code for the requested service. Use your comprehensive medical coding knowledge to generate the most accurate code for ANY procedure type. Do NOT use "[Not documented]" or "[Code]" - generate the actual code.]  
- Supportive CPTs: [MANDATORY - MUST BE COMPLETE: Generate ALL supportive CPT/HCPCS codes required for this procedure. This section MUST be filled with ALL applicable codes - do NOT leave empty, do NOT use "[Not documented]", do NOT use "[Codes]". 
+ Supportive CPTs: [MANDATORY - MUST BE COMPLETE: Generate ALL supportive CPT/HCPCS codes required for this procedure. This section MUST be filled with ALL applicable codes - do NOT leave empty, do NOT use "[Not documented]", do NOT use "[Codes]".
 CRITICAL RULES:
 1. For surgeries: Include ALL surgical component codes (e.g., meniscus repair=29882, graft=20924, anchor=C1713) AND ALL DME (braces like L1833/L1845, crutches=E0114, walkers, etc.)
 2. For injections: ALWAYS include guidance codes (77003 for fluoro, 76942 for ultrasound) - this is REQUIRED
