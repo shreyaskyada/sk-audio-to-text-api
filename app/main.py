@@ -40,7 +40,7 @@ from app.schemas import (
 from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
-from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_generator
+from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_generator, work_status_forms
 from app.api.soap_storage import (
     save_soap_note_to_db, 
     get_soap_note_by_transcription_id,
@@ -885,6 +885,11 @@ async def root():
             "pr1_generator": {
                 "generate": "/api/v1/pr1/generate",
                 "generate_from_soap": "/api/v1/pr1/generate-from-soap"
+            },
+            "work_status_forms": {
+                "create": "/api/v1/work-status-form",
+                "latest": "/api/v1/work-status-form/latest",
+                "get_by_id": "/api/v1/work-status-form/{id}"
             }
         }
     }
@@ -1855,6 +1860,9 @@ app.include_router(followup_forms.router, prefix="/api/v1", tags=["followup-form
 
 # Include PR-1 generator router
 app.include_router(pr1_generator.router, prefix="/api/v1", tags=["pr1-generator"])
+
+# Include work status forms router
+app.include_router(work_status_forms.router, prefix="/api/v1", tags=["work-status-forms"])
 
 
 # ============================================
