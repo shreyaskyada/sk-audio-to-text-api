@@ -136,6 +136,21 @@ def to_mmddyyyy(s: Optional[str]) -> Optional[str]:
     return s  # leave as-is if unknown format
 
 
+def to_yyyy_mm_dd(s: Optional[str]) -> Optional[str]:
+    """Convert date string to YYYY-MM-DD format (ISO 8601)"""
+    if not s:
+        return None
+    
+    # Accept common formats and normalize to YYYY-MM-DD
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y", "%m-%d-%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except Exception:
+            continue
+    
+    return s  # leave as-is if unknown format
+
+
 async def fetch_if_needed(
     payload_obj: Optional[BaseModel],
     oid: Optional[str],
@@ -2313,6 +2328,425 @@ def build_section_c(
     }
 
 
+def to_yyyy_mm_dd(s: Optional[str]) -> Optional[str]:
+    """Convert date string to YYYY-MM-DD format (ISO 8601 date format)"""
+    if not s:
+        return None
+    
+    # Accept common formats and normalize to YYYY-MM-DD
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y", "%m-%d-%Y", "%Y/%m/%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except Exception:
+            continue
+    
+    return None  # Return None if unknown format
+
+
+def extract_body_parts_from_diagnoses(
+    soap_doc: Optional[Dict[str, Any]],
+    section_b: Optional[Dict[str, Any]]
+) -> str:
+    """Extract body parts injured from diagnoses or assessment"""
+    body_parts = []
+    
+    # Try to extract from SOAP diagnoses
+    if soap_doc:
+        diagnoses = soap_doc.get("diagnoses") or []
+        if isinstance(diagnoses, list):
+            for diag in diagnoses:
+                if isinstance(diag, dict):
+                    condition = diag.get("condition") or diag.get("diagnosis") or ""
+                    if condition:
+                        # Try to extract body part from condition name
+                        # Common patterns: "lower back", "right shoulder", "knee", etc.
+                        condition_lower = condition.lower()
+                        body_part_keywords = {
+                            "back": "back", "spine": "back", "lumbar": "lower back",
+                            "neck": "neck", "cervical": "neck",
+                            "shoulder": "shoulder", "arm": "arm", "elbow": "elbow",
+                            "wrist": "wrist", "hand": "hand", "finger": "finger",
+                            "knee": "knee", "leg": "leg", "ankle": "ankle", "foot": "foot",
+                            "hip": "hip", "thigh": "thigh"
+                        }
+                        for keyword, part in body_part_keywords.items():
+                            if keyword in condition_lower and part not in body_parts:
+                                body_parts.append(part)
+        
+        # Also try assessment/discussion_assessment
+        assessment = soap_doc.get("discussion_assessment") or soap_doc.get("assessment") or ""
+        if assessment and isinstance(assessment, str):
+            assessment_lower = assessment.lower()
+            for keyword, part in body_part_keywords.items():
+                if keyword in assessment_lower and part not in body_parts:
+                    body_parts.append(part)
+    
+    # Try to extract from section B diagnoses
+    if section_b:
+        primary_dx = section_b.get("primary_diagnosis") or ""
+        secondary_dx = section_b.get("secondary_diagnosis") or ""
+        additional_dx_list = section_b.get("additional_diagnoses") or []
+        
+        if primary_dx:
+            body_parts.append(primary_dx)
+        if secondary_dx:
+            body_parts.append(secondary_dx)
+        if isinstance(additional_dx_list, list):
+            body_parts.extend([dx for dx in additional_dx_list if dx])
+    
+    # Remove duplicates and format
+    body_parts = list(dict.fromkeys(body_parts))  # Preserves order while removing duplicates
+    
+    if body_parts:
+        return ", ".join(body_parts)
+    
+    return ""
+
+
+def extract_work_status_format(
+    pr1_payload: Dict[str, Any],
+    intake_doc: Optional[Dict[str, Any]] = None,
+    soap_doc: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Extract work status data from PR1 payload and format it according to the Work Status Form structure.
+    
+    Args:
+        pr1_payload: Complete PR1 payload structure from build_pr1_payload()
+        intake_doc: Optional intake document for additional data
+        soap_doc: Optional SOAP document for additional data
+    
+    Returns:
+        Dictionary with work_status_data structure matching the Work Status Form API format
+    """
+    header = pr1_payload.get("header_admin") or {}
+    section_c = pr1_payload.get("section_c_work_status") or {}
+    section_b = pr1_payload.get("section_b_evaluation_management") or {}
+    
+    # Extract Employee Information
+    employee_name = header.get("patient_name") or ""
+    claim_number = header.get("claim_number") or ""
+    date_of_injury = to_yyyy_mm_dd(header.get("date_of_injury")) or ""
+    date_of_evaluation = to_yyyy_mm_dd(header.get("date_of_first_examination")) or ""
+    body_parts_injured = extract_body_parts_from_diagnoses(soap_doc, section_b)
+    
+    # Extract next follow-up appointment from SOAP or section C
+    next_follow_up = ""
+    if soap_doc:
+        next_visit = soap_doc.get("next_visit_date") or soap_doc.get("mmi_date")
+        if not next_visit:
+            patient_status = soap_doc.get("patientStatus")
+            if isinstance(patient_status, dict):
+                next_visit = patient_status.get("nextVisitDate")
+        if next_visit:
+            next_follow_up = to_yyyy_mm_dd(next_visit) or ""
+    
+    employee_info = {
+        "employeeName": employee_name,
+        "claimNumber": claim_number,
+        "dateOfInjury": date_of_injury,
+        "dateOfEvaluation": date_of_evaluation,
+        "bodyPartsInjured": body_parts_injured,
+        "nextFollowUpAppointment": next_follow_up
+    }
+    
+    # Extract Work Status
+    return_to_full_duty = section_c.get("returnToFullDuty", False)
+    return_to_full_duty_date = section_c.get("returnToFullDutyDate") or ""
+    unable_to_return = section_c.get("unableToReturnToWork", False)
+    unable_to_return_start = section_c.get("unableToReturnStartDate") or ""
+    unable_to_return_end = section_c.get("unableToReturnEndDate") or ""
+    return_with_restrictions = section_c.get("returnToWorkWithRestrictions", False)
+    
+    # Determine work status value
+    work_status_value = ""
+    full_duty_date = ""
+    modified_duty_from = ""
+    modified_duty_to = ""
+    off_work_from = ""
+    off_work_to = ""
+    permanent_stationary_date = ""
+    
+    if return_to_full_duty:
+        work_status_value = "fullDuty"
+        full_duty_date = to_yyyy_mm_dd(return_to_full_duty_date) or ""
+    elif unable_to_return:
+        work_status_value = "offWork"
+        off_work_from = to_yyyy_mm_dd(unable_to_return_start) or ""
+        off_work_to = to_yyyy_mm_dd(unable_to_return_end) or ""
+    elif return_with_restrictions:
+        work_status_value = "modifiedDuty"
+        # Use date_of_evaluation as modified duty start date
+        modified_duty_from = date_of_evaluation
+        # Try to extract end date from restrictions duration or return full duty date
+        if return_to_full_duty_date:
+            modified_duty_to = to_yyyy_mm_dd(return_to_full_duty_date) or ""
+        elif unable_to_return_end:
+            modified_duty_to = to_yyyy_mm_dd(unable_to_return_end) or ""
+    
+    # Check for Permanent & Stationary / MMI
+    if soap_doc:
+        mmi_date = soap_doc.get("mmi_date")
+        patient_status = soap_doc.get("patientStatus")
+        if isinstance(patient_status, dict):
+            mmi_checked = patient_status.get("maxMedicalImprovementChecked", False)
+            mmi_date = patient_status.get("maxMedicalImprovementDate") or mmi_date
+        
+        if mmi_date:
+            work_status_value = "permanentStationary"
+            permanent_stationary_date = to_yyyy_mm_dd(mmi_date) or ""
+    
+    work_status = {
+        "status": work_status_value,
+        "fullDutyEffectiveDate": full_duty_date,
+        "modifiedDutyFrom": modified_duty_from,
+        "modifiedDutyTo": modified_duty_to,
+        "offWorkFrom": off_work_from,
+        "offWorkTo": off_work_to,
+        "permanentStationaryDate": permanent_stationary_date
+    }
+    
+    # Extract Functional Restrictions
+    restrictions = section_c.get("restrictions") or {}
+    other_restrictions_text = section_c.get("otherRestrictions") or ""
+    
+    # Map PR1 restrictions to new format
+    functional_restrictions = map_pr1_restrictions_to_new_format(restrictions, other_restrictions_text)
+    
+    # Extract Provider Information
+    physician_info = header.get("physician") or {}
+    provider_name = physician_info.get("physician_name") or ""
+    clinic = physician_info.get("practice_name") or ""
+    phone = physician_info.get("telephone") or ""
+    signature_date = to_yyyy_mm_dd(pr1_payload.get("page2_signature_and_included_sections", {}).get("signature_date")) or date_of_evaluation
+    
+    provider_info = {
+        "providerName": provider_name,
+        "clinic": clinic,
+        "phone": phone,
+        "signature": provider_name,  # Use provider name as signature
+        "date": signature_date
+    }
+    
+    return {
+        "employeeInfo": employee_info,
+        "workStatus": work_status,
+        "functionalRestrictions": functional_restrictions,
+        "providerInfo": provider_info
+    }
+
+
+def map_pr1_restrictions_to_new_format(
+    restrictions: Dict[str, Any],
+    other_restrictions_text: str
+) -> Dict[str, Any]:
+    """
+    Map PR1 restrictions format to the new functional restrictions structure.
+    
+    PR1 restrictions structure:
+    {
+        "liftCarryPounds": "",
+        "liftCarryHeight": "",
+        "standing": "",
+        "walking": "",
+        "sitting": "",
+        "climbing": "",
+        "forwardBending": "",
+        "kneeling": "",
+        "crawling": "",
+        "twisting": "",
+        "keyboarding": "",
+        "graspingRight": False,
+        "graspingLeft": False,
+        "graspingBilateral": False,
+        "graspingHours": "",
+        "pushingPullingRight": False,
+        "pushingPullingLeft": False,
+        "pushingPullingBilateral": False,
+        "pushingPullingHours": ""
+    }
+    """
+    # Initialize all restriction categories
+    functional_restrictions = {
+        "liftingPushingPulling": {
+            "noLiftingOver": False,
+            "weightLimit": "",
+            "customWeight": ""
+        },
+        "upperExtremity": {
+            "noAboveShoulderReaching": False,
+            "aboveShoulderRight": False,
+            "aboveShoulderLeft": False,
+            "useLimited": False,
+            "useLimitedSide": "",
+            "useLimitedHours": "",
+            "noRepetitiveGripping": False,
+            "noRepetitiveGrippingRight": False,
+            "noRepetitiveGrippingLeft": False
+        },
+        "lowerExtremity": {
+            "noRepetitiveKneeling": False,
+            "walkingLimited": False,
+            "walkingLimit": "",
+            "walkingCustomMin": "",
+            "walkingOther": "",
+            "noClimbingStairs": False
+        },
+        "spinalTrunk": {
+            "noRepetitiveBending": False,
+            "noRepetitiveTwisting": False,
+            "twistingNeck": False,
+            "twistingWaist": False
+        },
+        "positionTolerance": {
+            "alternateSittingStanding": False,
+            "alternateInterval": "",
+            "alternateOther": "",
+            "standingLimited": False,
+            "standingLimit": "",
+            "standingCustomMin": "",
+            "sittingLimited": False,
+            "sittingLimit": "",
+            "sittingCustomMin": ""
+        },
+        "handFineMotor": {
+            "productiveUseEnabled": False,
+            "productiveUseMinutes": "",
+            "productiveUseRight": False,
+            "productiveUseLeft": False
+        },
+        "workplaceConditions": {
+            "noWorkingAtHeights": False,
+            "noSafetySensitiveDuties": False
+        },
+        "otherRestrictions": ""
+    }
+    
+    # Map lifting/pushing/pulling
+    lift_pounds = restrictions.get("liftCarryPounds", "")
+    if lift_pounds:
+        functional_restrictions["liftingPushingPulling"]["noLiftingOver"] = True
+        # Try to match standard weights
+        lift_pounds_str = str(lift_pounds).strip().lower()
+        if lift_pounds_str in ["5", "10", "15", "25"]:
+            functional_restrictions["liftingPushingPulling"]["weightLimit"] = lift_pounds_str
+        else:
+            functional_restrictions["liftingPushingPulling"]["weightLimit"] = "custom"
+            functional_restrictions["liftingPushingPulling"]["customWeight"] = lift_pounds_str
+    
+    # Map upper extremity - pushing/pulling
+    if restrictions.get("pushingPullingRight") == False or restrictions.get("pushingPullingLeft") == False:
+        functional_restrictions["upperExtremity"]["useLimited"] = True
+        if restrictions.get("pushingPullingRight") == False:
+            functional_restrictions["upperExtremity"]["useLimitedSide"] = "right"
+        elif restrictions.get("pushingPullingLeft") == False:
+            functional_restrictions["upperExtremity"]["useLimitedSide"] = "left"
+        
+        push_pull_hours = restrictions.get("pushingPullingHours", "")
+        if push_pull_hours:
+            functional_restrictions["upperExtremity"]["useLimitedHours"] = str(push_pull_hours)
+    
+    # Map upper extremity - grasping
+    if restrictions.get("graspingRight") == False or restrictions.get("graspingLeft") == False:
+        functional_restrictions["upperExtremity"]["noRepetitiveGripping"] = True
+        if restrictions.get("graspingRight") == False:
+            functional_restrictions["upperExtremity"]["noRepetitiveGrippingRight"] = True
+        if restrictions.get("graspingLeft") == False:
+            functional_restrictions["upperExtremity"]["noRepetitiveGrippingLeft"] = True
+    
+    # Map lower extremity - kneeling
+    if restrictions.get("kneeling", ""):
+        functional_restrictions["lowerExtremity"]["noRepetitiveKneeling"] = True
+    
+    # Map lower extremity - walking
+    walking = restrictions.get("walking", "")
+    if walking:
+        functional_restrictions["lowerExtremity"]["walkingLimited"] = True
+        walking_lower = str(walking).lower()
+        if "2" in walking_lower or "two" in walking_lower:
+            functional_restrictions["lowerExtremity"]["walkingLimit"] = "2hrs"
+        elif "4" in walking_lower or "four" in walking_lower:
+            functional_restrictions["lowerExtremity"]["walkingLimit"] = "4hrs"
+        else:
+            functional_restrictions["lowerExtremity"]["walkingLimit"] = "other"
+            functional_restrictions["lowerExtremity"]["walkingOther"] = walking
+    
+    # Map lower extremity - climbing
+    climbing = restrictions.get("climbing", "")
+    if climbing and ("avoid" in str(climbing).lower() or "no" in str(climbing).lower()):
+        functional_restrictions["lowerExtremity"]["noClimbingStairs"] = True
+    
+    # Map spinal/trunk - bending
+    if restrictions.get("forwardBending", ""):
+        functional_restrictions["spinalTrunk"]["noRepetitiveBending"] = True
+    
+    # Map spinal/trunk - twisting
+    twisting = restrictions.get("twisting", "")
+    if twisting:
+        functional_restrictions["spinalTrunk"]["noRepetitiveTwisting"] = True
+        # Try to determine if neck or waist (default to waist)
+        twisting_lower = str(twisting).lower()
+        if "neck" in twisting_lower or "cervical" in twisting_lower:
+            functional_restrictions["spinalTrunk"]["twistingNeck"] = True
+        else:
+            functional_restrictions["spinalTrunk"]["twistingWaist"] = True
+    
+    # Map position tolerance - standing
+    standing = restrictions.get("standing", "")
+    if standing:
+        functional_restrictions["positionTolerance"]["standingLimited"] = True
+        standing_lower = str(standing).lower()
+        if "2" in standing_lower:
+            functional_restrictions["positionTolerance"]["standingLimit"] = "2hrs"
+        elif "4" in standing_lower:
+            functional_restrictions["positionTolerance"]["standingLimit"] = "4hrs"
+        else:
+            functional_restrictions["positionTolerance"]["standingLimit"] = "custom"
+            functional_restrictions["positionTolerance"]["standingCustomMin"] = standing
+    
+    # Map position tolerance - sitting
+    sitting = restrictions.get("sitting", "")
+    if sitting:
+        functional_restrictions["positionTolerance"]["sittingLimited"] = True
+        sitting_lower = str(sitting).lower()
+        if "2" in sitting_lower:
+            functional_restrictions["positionTolerance"]["sittingLimit"] = "2hrs"
+        elif "4" in sitting_lower:
+            functional_restrictions["positionTolerance"]["sittingLimit"] = "4hrs"
+        else:
+            functional_restrictions["positionTolerance"]["sittingLimit"] = "custom"
+            functional_restrictions["positionTolerance"]["sittingCustomMin"] = sitting
+    
+    # Map hand/fine motor - keyboarding restrictions might indicate hand use limitations
+    keyboarding = restrictions.get("keyboarding", "")
+    if keyboarding:
+        functional_restrictions["handFineMotor"]["productiveUseEnabled"] = True
+        # Try to extract minutes/hours
+        keyboarding_str = str(keyboarding)
+        import re
+        minutes_match = re.search(r'(\d+)\s*(?:min|minute)', keyboarding_str, re.IGNORECASE)
+        if minutes_match:
+            functional_restrictions["handFineMotor"]["productiveUseMinutes"] = minutes_match.group(1)
+        else:
+            functional_restrictions["handFineMotor"]["productiveUseMinutes"] = "20"  # Default
+        # Default to both hands
+        functional_restrictions["handFineMotor"]["productiveUseRight"] = True
+        functional_restrictions["handFineMotor"]["productiveUseLeft"] = True
+    
+    # Map workplace conditions from other restrictions text
+    if other_restrictions_text:
+        other_lower = str(other_restrictions_text).lower()
+        if "height" in other_lower or "ladder" in other_lower or "scaffold" in other_lower:
+            functional_restrictions["workplaceConditions"]["noWorkingAtHeights"] = True
+        if "heavy equipment" in other_lower or "machinery" in other_lower or "safety-sensitive" in other_lower:
+            functional_restrictions["workplaceConditions"]["noSafetySensitiveDuties"] = True
+    
+    # Set other restrictions text
+    functional_restrictions["otherRestrictions"] = other_restrictions_text
+    
+    return functional_restrictions
+
+
 def normalize_pr1_header(
     intake_doc: Optional[Dict[str, Any]],
     soap_doc: Optional[Dict[str, Any]]
@@ -3205,5 +3639,220 @@ async def generate_pr1_from_soap(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to generate PR-1 from SOAP note: {str(e)}"
+        )
+
+
+@router.post("/pr1/extract-work-status")
+async def extract_work_status_from_pr1(payload: PR1GenerateRequest):
+    """
+    Extract work status data from PR1 in the Work Status Form format.
+    
+    This endpoint generates PR1 data (if not already provided) and then extracts
+    work status information in the standardized Work Status Form API format.
+    
+    **Workflow:**
+    1. Fetches/resolves intake, follow-up, and SOAP documents (same as /pr1/generate)
+    2. Generates complete PR1 payload structure
+    3. Extracts work status data in the new format:
+       - Employee Information
+       - Work Status (fullDuty/modifiedDuty/offWork/permanentStationary)
+       - Functional Restrictions (all categories)
+       - Provider Information
+    
+    **Parameters:**
+    Same as `/pr1/generate` endpoint - see PR1GenerateRequest model
+    
+    **Returns:**
+    - status: Success status
+    - work_status_data: Complete work status data in the new format
+    - metadata: Information about which documents were used
+    
+    **Example Request:**
+    ```json
+    {
+        "use_latest_intake": true,
+        "use_latest_followup": true,
+        "soap_id": "507f1f77bcf86cd799439013",
+        "flags": {
+            "progress_report": true
+        }
+    }
+    ```
+    
+    **Example Response:**
+    ```json
+    {
+        "status": "success",
+        "work_status_data": {
+            "employeeInfo": {
+                "employeeName": "John Doe",
+                "claimNumber": "CLM-12345",
+                "dateOfInjury": "2024-01-15",
+                "dateOfEvaluation": "2024-03-20",
+                "bodyPartsInjured": "Lower back, right shoulder",
+                "nextFollowUpAppointment": "2024-04-15"
+            },
+            "workStatus": {
+                "status": "modifiedDuty",
+                "modifiedDutyFrom": "2024-03-20",
+                "modifiedDutyTo": "2024-04-20"
+            },
+            "functionalRestrictions": {
+                "liftingPushingPulling": {
+                    "noLiftingOver": true,
+                    "weightLimit": "25"
+                },
+                ...
+            },
+            "providerInfo": {
+                "providerName": "Dr. Jane Smith",
+                "clinic": "Pilot Clinic",
+                "phone": "(555) 123-4567",
+                "signature": "Dr. Jane Smith",
+                "date": "2024-03-20"
+            }
+        },
+        "metadata": {
+            "intake_source": "latest",
+            "followup_source": "latest",
+            "soap_source": "id"
+        }
+    }
+    ```
+    """
+    try:
+        # Fetch/resolve data sources (same logic as /pr1/generate)
+        intake_doc = None
+        intake_source = None
+        if payload.intake:
+            intake_doc = payload.intake.model_dump(exclude_none=True)
+            intake_source = "embedded"
+            logger.info("Using embedded intake form data")
+        elif payload.intake_id:
+            intake_doc = await fetch_if_needed(None, payload.intake_id, COLL_INTAKE)
+            intake_source = "id"
+            logger.info(f"Fetched intake form with ID: {payload.intake_id}")
+        elif payload.use_latest_intake:
+            intake_doc = await fetch_latest_document(COLL_INTAKE)
+            if intake_doc:
+                intake_source = "latest"
+                logger.info(f"Using latest intake form with ID: {intake_doc.get('_id')}")
+            else:
+                logger.warning("No intake forms found in database (use_latest_intake=True)")
+        
+        follow_doc = None
+        followup_source = None
+        if payload.followup:
+            follow_doc = payload.followup.model_dump(exclude_none=True)
+            followup_source = "embedded"
+            logger.info("Using embedded follow-up form data")
+        elif payload.followup_id:
+            follow_doc = await fetch_if_needed(None, payload.followup_id, COLL_FOLLOWUP)
+            followup_source = "id"
+            logger.info(f"Fetched follow-up form with ID: {payload.followup_id}")
+        elif payload.use_latest_followup:
+            follow_doc = await fetch_latest_document(COLL_FOLLOWUP)
+            if follow_doc:
+                followup_source = "latest"
+                logger.info(f"Using latest follow-up form with ID: {follow_doc.get('_id')}")
+            else:
+                logger.warning("No follow-up forms found in database (use_latest_followup=True)")
+        
+        soap_doc = await fetch_if_needed(payload.soap, payload.soap_id, COLL_SOAP)
+        soap_source = "embedded" if payload.soap else ("id" if payload.soap_id else None)
+        if soap_doc:
+            logger.info(f"Using SOAP note data (source: {soap_source})")
+        
+        # Validate that we have at least one data source
+        if not (intake_doc or follow_doc or soap_doc):
+            raise HTTPException(
+                status_code=400,
+                detail="Provide at least one of: intake/followup/soap (object), intake_id/followup_id/soap_id (Mongo IDs), or use_latest_intake/use_latest_followup (boolean flags)."
+            )
+        
+        # Build PR-1 JSON structure
+        pr1 = build_pr1_payload(intake_doc, follow_doc, soap_doc, payload.flags or {})
+        
+        # Extract work status in new format
+        work_status_data = extract_work_status_format(pr1, intake_doc, soap_doc)
+        
+        # Prepare response with metadata
+        metadata = {
+            "intake_source": intake_source,
+            "followup_source": followup_source,
+            "soap_source": soap_source,
+            "intake_id": intake_doc.get("_id") if intake_doc else None,
+            "followup_id": follow_doc.get("_id") if follow_doc else None,
+            "soap_id": soap_doc.get("_id") if soap_doc else None
+        }
+        
+        return {
+            "status": "success",
+            "work_status_data": work_status_data,
+            "metadata": metadata
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting work status from PR1: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to extract work status from PR1: {str(e)}"
+        )
+
+
+@router.post("/pr1/extract-work-status-from-soap")
+async def extract_work_status_from_soap(
+    soap_id: str = Form(..., description="SOAP note MongoDB ID"),
+    use_latest_intake: bool = Form(False, description="Use latest intake form"),
+    use_latest_followup: bool = Form(False, description="Use latest follow-up form"),
+    flags: Optional[str] = Form(None, description="JSON string with PR-1 flags")
+):
+    """
+    Extract work status data from SOAP note in the Work Status Form format.
+    
+    This endpoint is a convenience wrapper that:
+    1. Fetches SOAP note by ID
+    2. Optionally fetches latest intake/follow-up forms
+    3. Generates PR1 data
+    4. Extracts work status in the new format
+    
+    **Parameters:**
+    - soap_id: MongoDB ObjectId string of the SOAP note (required)
+    - use_latest_intake: Boolean - If True, fetches latest intake form
+    - use_latest_followup: Boolean - If True, fetches latest follow-up form
+    - flags: Optional JSON string with PR-1 checkbox flags
+    
+    **Returns:**
+    Same format as `/pr1/extract-work-status` endpoint
+    """
+    try:
+        # Parse flags if provided
+        flags_dict = {}
+        if flags:
+            try:
+                flags_dict = json.loads(flags)
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid JSON in flags parameter: {flags}")
+        
+        # Create PR1GenerateRequest payload
+        payload = PR1GenerateRequest(
+            soap_id=soap_id,
+            use_latest_intake=use_latest_intake,
+            use_latest_followup=use_latest_followup,
+            flags=flags_dict
+        )
+        
+        # Use the same extraction logic
+        return await extract_work_status_from_pr1(payload)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting work status from SOAP note: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to extract work status from SOAP note: {str(e)}"
         )
 
