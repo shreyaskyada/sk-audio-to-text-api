@@ -202,16 +202,18 @@ CRITICAL RULES:
 1. Generate the PRIMARY CPT/HCPCS code for the procedure described
 2. Generate ALL SUPPORTIVE CPT codes that are typically required:
    - For surgeries: Include surgical component codes (e.g., 29882 for meniscus repair), graft codes (20924), anchor codes (C1713), AND DME (braces, crutches, etc.)
+   - **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE:** For EVERY surgery, you MUST include cryotherapy device code: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions.
    - For injections: ALWAYS include guidance codes (77003 for fluoro, 76942 for ultrasound)
    - For any procedure with DME: Include appropriate HCPCS codes (L-codes, E-codes, A-codes)
+   - **INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT code is mentioned in the procedure description, you MUST include it in the supportive codes list
 3. Return ONLY valid CPT/HCPCS codes (5-digit numeric codes or HCPCS codes starting with letters)
 4. Be specific and accurate - use the most appropriate code for the exact procedure described
 5. Handle ALL procedure types: surgeries, injections, imaging, therapy, DME, supplies, etc.
-6. Include ALL applicable supportive codes - don't miss any
+6. Include ALL applicable supportive codes - don't miss any. The goal is MAXIMUM CPT codes.
 
 EXAMPLES:
-- ACL reconstruction + meniscus repair: primary=29888, supportive=["29882", "20924", "C1713", "L1833", "L1845", "E0114"]
-- Epidural injection: primary=62311, supportive=["77003"]
+- ACL reconstruction + meniscus repair: primary=29888, supportive=["29881", "29882", "20924", "C1713", "L1833", "L1845", "E0114", "E0218"] (Note: includes all surgical components, DME, and MANDATORY cryotherapy device E0218)
+- Epidural injection: primary=62311, supportive=["77003"] (guidance code required)
 - Physical therapy: primary=97110, supportive=[]
 - MRI lumbar: primary=72141, supportive=[]
 - Walking boot: primary=L4361, supportive=[]
