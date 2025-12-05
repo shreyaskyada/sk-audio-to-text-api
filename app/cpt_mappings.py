@@ -2,6 +2,7 @@
 CPT/HCPCS Code Mappings for Orthopedic Procedures
 This ensures consistent and accurate CPT code generation in SOAP notes
 """
+import os
 
 # Common Orthopedic Procedure CPT Code Mappings
 # Format: procedure_keyword -> (primary_cpt, [supportive_cpts])
@@ -239,7 +240,7 @@ If you cannot determine an appropriate code, return:
 Return the JSON object with the primary CPT code and any supportive CPT codes required."""
 
         response = openai_client.chat.completions.create(
-            model="gpt-4o",
+            model='gpt-5.1',  # Latest GPT-5.1 model
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}

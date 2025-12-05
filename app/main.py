@@ -86,6 +86,13 @@ AUTH_USERNAME = os.getenv('AUTH_USERNAME', 'admin')
 AUTH_PASSWORD = os.getenv('AUTH_PASSWORD', 'admin')
 MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', 100))
 
+# OpenAI Model Configuration - Latest ChatGPT model for SOAP note generation
+OPENAI_MODEL = 'gpt-5.1'  # Latest GPT-5.1 model
+
+# OpenAI Model Configuration - Latest ChatGPT model for SOAP note generation
+# Options: 'gpt-4o' (latest GPT-4o), 'gpt-4o-2024-11-20' (specific version), 'gpt-4-turbo' (older)
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')  # Default to latest gpt-4o model
+
 # Medical keyterms for Deepgram
 MEDICAL_KEYTERMS = [
     "pes anserine", "antalgic gait", "corticosteroid injection",
@@ -617,7 +624,7 @@ def generate_soap_note_from_transcription(text: str) -> str:
         client = create_openai_client()
         
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -732,7 +739,7 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
         client = create_openai_client()
         
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {
                     "role": "system",

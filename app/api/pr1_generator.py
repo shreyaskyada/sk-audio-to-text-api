@@ -40,6 +40,9 @@ COLL_INTAKE = "intake_forms"
 COLL_FOLLOWUP = "followup_intake_forms"
 COLL_SOAP = "soap_notes"
 
+# OpenAI Model Configuration - Latest ChatGPT model for PR1 generation
+OPENAI_MODEL = 'gpt-5.1'  # Latest GPT-5.1 model
+
 
 def get_openai_api_key() -> Optional[str]:
     """Get OpenAI API key from environment (lazy loading)"""
@@ -1531,7 +1534,7 @@ Return ONLY the objective findings text."""
         logger.info("Calling GPT API to extract objective findings from text...")
         
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -1661,7 +1664,7 @@ Return a JSON object with rfa_items array."""
         logger.info("Calling GPT API to extract RFA items from text...")
         
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -1737,7 +1740,7 @@ Return a JSON object with current_treatments_and_meds and outcomes_adl fields.""
         logger.info("Calling GPT API to extract treatments and outcomes from text...")
         
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -1847,7 +1850,7 @@ Return a JSON object with work status information."""
         logger.info("Calling GPT API to extract work status from text...")
         
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -1941,7 +1944,7 @@ Return a JSON object with the restrictions fields. Extract ONLY explicitly menti
         logger.info("Calling GPT API to parse restrictions text...")
         
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -3259,7 +3262,7 @@ Return the JSON structure with all extracted fields. Use null for missing fields
         
         try:
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model=OPENAI_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
