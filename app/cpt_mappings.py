@@ -247,7 +247,7 @@ Return the JSON object with the primary CPT code and any supportive CPT codes re
             ],
             temperature=0.1,
             response_format={"type": "json_object"},
-            max_tokens=500
+            max_completion_tokens=500
         )
         
         result = response.choices[0].message.content

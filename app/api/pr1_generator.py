@@ -328,8 +328,10 @@ def primary_secondary_dx(soap_doc: Optional[Dict[str, Any]]) -> tuple:
     for dx in normalized_diagnoses:
         if dx:
             # Create a unique key from condition and ICD-10 code
-            condition = dx.get("condition", "").strip().lower()
-            icd10 = dx.get("icd10", "").strip().lower()
+            condition_val = dx.get("condition") or ""
+            condition = str(condition_val).strip().lower() if condition_val else ""
+            icd10_val = dx.get("icd10") or ""
+            icd10 = str(icd10_val).strip().lower() if icd10_val else ""
             key = f"{condition}|{icd10}"
             
             if key not in seen and condition:  # Only add if condition exists
@@ -416,9 +418,11 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
             # Look for Plan section specifically
             plan_match = re.search(r'## P – PLAN\s*\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
             if plan_match:
-                plan_text = plan_match.group(1).strip()
-                logger.info("Attempting GPT extraction of RFA items from Plan section...")
-                extracted_rfa = extract_rfa_items_from_text(plan_text)
+                plan_group = plan_match.group(1)
+                plan_text = plan_group.strip() if plan_group else ""
+                if plan_text:
+                    logger.info("Attempting GPT extraction of RFA items from Plan section...")
+                    extracted_rfa = extract_rfa_items_from_text(plan_text)
                 if extracted_rfa:
                     rfa_items = extracted_rfa
                     logger.info(f"✓ Found {len(rfa_items)} RFA items from Plan section GPT extraction")
@@ -549,7 +553,7 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
             # Normalize supportive CPTs to a list
             if isinstance(supportive_cpts_raw, str):
                 # If it's a comma-separated string, split it
-                supportive_cpts = [code.strip() for code in supportive_cpts_raw.split(",") if code.strip()]
+                supportive_cpts = [code.strip() for code in supportive_cpts_raw.split(",") if code and isinstance(code, str) and code.strip()]
             elif isinstance(supportive_cpts_raw, list):
                 supportive_cpts = [str(code).strip() for code in supportive_cpts_raw if code and str(code).strip()]
             else:
@@ -997,7 +1001,8 @@ def build_section_b(
             # Look for Objective section specifically
             objective_match = re.search(r'## O – OBJECTIVE\s*\n(.*?)(?=## A – ASSESSMENT|## P – PLAN|---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
             if objective_match:
-                objective_text = objective_match.group(1).strip()
+                objective_group = objective_match.group(1)
+                objective_text = objective_group.strip() if objective_group else ""
                 if objective_text:
                     physical_exam_parts.append(objective_text)
                     logger.info("✓ Found Objective Findings from formatted_soap_note Objective section")
@@ -1257,9 +1262,11 @@ def build_section_b(
             # Look for Plan section specifically
             plan_match = re.search(r'## P – PLAN\s*\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
             if plan_match:
-                plan_text = plan_match.group(1).strip()
-                logger.info("Attempting GPT extraction of current treatments from Plan section...")
-                extracted_data = extract_treatment_and_outcomes_from_text(plan_text)
+                plan_group = plan_match.group(1)
+                plan_text = plan_group.strip() if plan_group else ""
+                if plan_text:
+                    logger.info("Attempting GPT extraction of current treatments from Plan section...")
+                    extracted_data = extract_treatment_and_outcomes_from_text(plan_text)
                 if extracted_data and extracted_data.get("current_treatments_and_meds"):
                     current_treatment_parts.append(extracted_data.get("current_treatments_and_meds"))
                     logger.info("✓ Found Current Treatments from Plan section GPT extraction")
@@ -1320,9 +1327,11 @@ def build_section_b(
             # Look for Plan section specifically
             plan_match = re.search(r'## P – PLAN\s*\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
             if plan_match:
-                plan_text = plan_match.group(1).strip()
-                logger.info("Attempting GPT extraction of outcomes ADL from Plan section...")
-                extracted_data = extract_treatment_and_outcomes_from_text(plan_text)
+                plan_group = plan_match.group(1)
+                plan_text = plan_group.strip() if plan_group else ""
+                if plan_text:
+                    logger.info("Attempting GPT extraction of outcomes ADL from Plan section...")
+                    extracted_data = extract_treatment_and_outcomes_from_text(plan_text)
                 if extracted_data and extracted_data.get("outcomes_adl"):
                     outcomes_parts.append(extracted_data.get("outcomes_adl"))
                     logger.info("✓ Found Outcomes ADL from Plan section GPT extraction")
@@ -1540,10 +1549,14 @@ Return ONLY the objective findings text."""
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.1,
-            max_tokens=1500
+            max_completion_tokens=1500
         )
         
-        result = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        if not content:
+            logger.warning("GPT API returned empty content for objective findings")
+            return None
+        result = content.strip()
         if result and result.lower() not in ["null", "none", "not found", "no objective findings"]:
             logger.info("Successfully extracted objective findings from text")
             return result
@@ -1671,7 +1684,7 @@ Return a JSON object with rfa_items array."""
             ],
             temperature=0.1,
             response_format={"type": "json_object"},
-            max_tokens=2000
+            max_completion_tokens=2000
         )
         
         result = json.loads(response.choices[0].message.content)
@@ -1747,7 +1760,7 @@ Return a JSON object with current_treatments_and_meds and outcomes_adl fields.""
             ],
             temperature=0.1,
             response_format={"type": "json_object"},
-            max_tokens=1500
+            max_completion_tokens=1500
         )
         
         result = json.loads(response.choices[0].message.content)
@@ -1857,7 +1870,7 @@ Return a JSON object with work status information."""
             ],
             temperature=0.1,
             response_format={"type": "json_object"},
-            max_tokens=1500
+            max_completion_tokens=1500
         )
         
         result = json.loads(response.choices[0].message.content)
@@ -1951,7 +1964,7 @@ Return a JSON object with the restrictions fields. Extract ONLY explicitly menti
             ],
             temperature=0.1,
             response_format={"type": "json_object"},
-            max_tokens=1000
+            max_completion_tokens=1000
         )
         
         result = json.loads(response.choices[0].message.content)
@@ -2079,9 +2092,19 @@ def build_section_c(
         for pattern in work_status_patterns:
             work_status_match = re.search(pattern, formatted_soap, re.IGNORECASE)
             if work_status_match:
-                extracted_status = work_status_match.group(1).strip() if work_status_match.lastindex else work_status_match.group(0).strip()
-                # Clean up the extracted text
-                extracted_status = re.sub(r'[:\-]', '', extracted_status).strip()
+                # Safely extract match group, handling None values
+                if work_status_match.lastindex and work_status_match.lastindex >= 1:
+                    extracted_status = work_status_match.group(1)
+                else:
+                    extracted_status = work_status_match.group(0)
+                
+                # Check if extracted_status is None before calling strip()
+                if extracted_status:
+                    extracted_status = str(extracted_status).strip()
+                    # Clean up the extracted text
+                    extracted_status = re.sub(r'[:\-]', '', extracted_status).strip()
+                else:
+                    extracted_status = ""
                 if extracted_status and len(extracted_status) > 2:
                     work_status = extracted_status
                     work_status_source = "SOAP dictation (formatted_soap_note text extraction)"
@@ -2178,7 +2201,8 @@ def build_section_c(
             # Look for work status or restrictions section
             work_status_match = re.search(r'(?:WORK STATUS|Work Status|Restrictions)[:\s]*(.*?)(?=\n\n|\n[A-Z]|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
             if work_status_match:
-                restrictions_text = work_status_match.group(1).strip()
+                restrictions_group = work_status_match.group(1)
+                restrictions_text = restrictions_group.strip() if restrictions_group else ""
                 if restrictions_text and len(restrictions_text) > 10:  # Only parse if substantial text
                     logger.info("Parsing restrictions from formatted_soap_note...")
                     parsed_restrictions = parse_restrictions_from_text(restrictions_text)
@@ -3269,7 +3293,7 @@ Return the JSON structure with all extracted fields. Use null for missing fields
                 ],
                 temperature=0.1,
                 response_format={"type": "json_object"},
-                max_tokens=4000
+                max_completion_tokens=4000
             )
         except Exception as api_error:
             error_type = type(api_error).__name__
@@ -3305,7 +3329,11 @@ Return the JSON structure with all extracted fields. Use null for missing fields
             raise HTTPException(status_code=500, detail=error_msg)
         
         # Parse JSON response
-        json_response = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content
+        if not content:
+            logger.warning("GPT API returned empty content for PDF to SOAP conversion")
+            return {}
+        json_response = content.strip()
         
         if not json_response:
             error_msg = "Empty JSON response from OpenAI API"
