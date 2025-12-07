@@ -247,4 +247,3 @@ async def delete_transcription_in_db(transcription_id: str) -> bool:
     except Exception as e:
         logger.error(f"Error deleting transcription: {e}")
         raise
-

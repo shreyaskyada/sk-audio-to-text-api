@@ -85,8 +85,8 @@ def create_openai_client():
 # ============================================
 
 def str_or_nd(val: Optional[str]) -> str:
-    """Return value or '[Not documented]' if empty"""
-    return val if (val is not None and str(val).strip() != "") else "[Not documented]"
+    """Return value or empty string if empty"""
+    return val if (val is not None and str(val).strip() != "") else ""
 
 
 def generate_supportive_cpts_for_request(primary_cpt: str, service_description: str, openai_client=None) -> List[str]:
@@ -2219,7 +2219,7 @@ def build_section_c(
     
     # Final check: if still no work_status found, log warning and set default
     if not work_status:
-        work_status = "[Not documented]"
+        work_status = ""
         logger.warning(f"⚠ Work Status not found in any source (mandatory per mapping). Checked: SOAP dictation, page7, plan, clinical_information, formatted_soap_note, intake form, follow-up form")
     else:
         logger.info(f"✅ Work Status successfully extracted from: {work_status_source}")
