@@ -34,7 +34,7 @@ CRITICAL FORMATTING REQUIREMENT - ALL TITLES IN BOLD:
 - Do NOT use ** markdown syntax around titles - just write the title text normally
 - The PDF generator will detect section titles and format them as bold automatically
 - This includes: PATIENT DEMOGRAPHICS, S – SUBJECTIVE, O – OBJECTIVE/Physical Exam, A – ASSESSMENT, P – PLAN, CPT / BILLING CODES, REQUEST FOR AUTHORIZATION (RFA), WORK STATUS, SIGNATURE / PROVIDER INFORMATION
-- Also includes all subsection titles: Chief Complaint, History of Present Illness (HPI), Past Medical History, Medications, Social / Occupational History, General Exam, Local Musculoskeletal Exam, Imaging / Studies Review, Primary Diagnosis, Secondary Diagnosis, Associated / Contributing Diagnoses, Functional Impairment Statement, Medical Necessity & MTUS Compliance, Medical Decision Making (MDM), Immediate Treatment / Plan, Follow-Up Instructions, Surgical Plan, Patient Education, E/M Code, Primary Procedure, Supportive CPTs, Workers' Comp (CA), Requested Service, Primary CPT, Supportive CPTs, Justification, Guideline Basis, Intent, Work Capacity, Restrictions, Effective Date, Duration
+- Also includes all subsection titles: Chief Complaint, History of Present Illness (HPI), Past Medical History, Medications, Social / Occupational History, General Exam, Local Musculoskeletal Exam, Imaging / Studies Review, Primary Diagnosis, Secondary Diagnosis, Functional Impairment Statement, Medical Necessity & MTUS Compliance, Medical Decision Making (MDM), Immediate Treatment / Plan, Follow-Up Instructions, Surgical Plan, Patient Education, E/M Code, Primary Procedure, Supportive CPTs, Workers' Comp (CA), Requested Service, Primary CPT, Supportive CPTs, Justification, Guideline Basis, Intent, Work Capacity, Restrictions, Effective Date, Duration
 - Write all titles as plain text (e.g., "PATIENT DEMOGRAPHICS" not "**PATIENT DEMOGRAPHICS**") - they will be automatically bold in the final PDF
 
 CRITICAL DIAGNOSIS DESCRIPTION REQUIREMENT - INCLUDE MAXIMUM SEVERITY:
@@ -52,6 +52,45 @@ CRITICAL SURGICAL PLAN REQUIREMENT - CORRECT LATERALITY (LEFT/RIGHT):
 - Pay careful attention to the dictation to ensure the correct side is specified - do not assume or guess
 - If laterality is not clearly mentioned, infer from context (e.g., if diagnosis mentions "right arm", the surgical plan should also specify "right")
 
+CRITICAL HPI (HISTORY OF PRESENT ILLNESS) REQUIREMENT - PATIENT-REPORTED INFORMATION ONLY:
+- The HPI section should ONLY include patient-reported information, symptoms, and history. This applies to ANY transcription format, style, or structure.
+- **WHAT TO INCLUDE IN HPI - PATIENT-REPORTED INFORMATION:**
+  * Mechanism of injury (any format: "slip and pivot injury", "fell", "motor vehicle accident", "work injury", "lifting injury", "twisted knee", etc.)
+  * Onset date/timeline (any format: "injury occurred two weeks ago", "symptoms started 3 days ago", "approximately 2 weeks", "about a month ago", "yesterday", etc.)
+  * Patient-reported symptoms (any format: "swollen", "pain", "unable to weight bear", "instability", "patient reports", "patient states", "patient complains of", "patient describes", etc.)
+  * Pain scale (if mentioned by patient: "pain 8/10", "severe pain", "mild pain", etc.)
+  * Aggravating/reducing factors (if reported by patient: "worse with activity", "better with rest", etc.)
+  * Functional limitations reported by patient (any format: "unable to weight bear", "difficulty walking", "can't lift", "trouble with stairs", etc.)
+  * Progression of symptoms (if reported by patient: "getting worse", "improving", "same", etc.)
+  * Previous care/treatment (any format: "seen at primary care", "went to ER", "referred for X-ray", "had physical therapy", etc.)
+  * Patient's description of events leading to injury
+  * Patient's description of current symptoms and concerns
+- **CRITICAL - DO NOT INCLUDE IN HPI - EXAMINATION/OBJECTIVE FINDINGS (ANY FORMAT):**
+  * **Examination phrases (any variation):** "Examination reveals", "On exam", "On exam today", "Physical examination", "Clinical examination", "Physical exam", "Clinical exam", "Exam shows", "Exam demonstrates", "Examination shows", "Examination demonstrates", "On examination", "During examination", "Upon examination", "Exam reveals", "Exam today", "Today on exam", "On physical exam", "On clinical exam"
+  * **Imaging phrases (any variation):** "MRI confirms", "MRI shows", "MRI reveals", "MRI demonstrates", "On MRI", "MRI review", "On MRI review", "MRI indicates", "X-ray shows", "X-ray reveals", "X-ray demonstrates", "CT shows", "CT scan shows", "Imaging shows", "Imaging reveals", "Imaging demonstrates", "Imaging confirms", "Radiograph shows", "Study shows", "Study reveals", "Report shows", "Report reveals"
+  * **Test result phrases (any variation):** "test is positive", "test positive", "positive test", "test negative", "negative test", "test reveals", "test shows", "special test", "provocative test"
+  * **Observation phrases (any variation):** "walks with", "gait is", "range of motion is", "ROM is", "strength is", "neurovascular", "pulses are", "sensation is", "reflexes are", "inspection reveals", "palpation reveals", "auscultation reveals"
+  * **Any examination findings:** Test results (positive/negative), measurements (ROM, strength grades), observations (gait, appearance, etc.), physical exam findings
+  * **Any imaging results:** Specific findings from imaging studies (tears, fractures, abnormalities, etc.)
+  * **Any diagnostic test results:** Lab results, EMG results, etc.
+- **PATTERN RECOGNITION RULES FOR ANY TRANSCRIPTION:**
+  * If the sentence/paragraph describes what the DOCTOR observed, measured, or found → goes to Physical Exam, NOT HPI
+  * If the sentence/paragraph describes what the PATIENT reported, stated, or described → goes to HPI
+  * If the sentence/paragraph contains test results, measurements, or objective findings → goes to Physical Exam, NOT HPI
+  * If the sentence/paragraph contains imaging findings or diagnostic results → goes to Physical Exam AND Imaging/Studies Review, NOT HPI
+  * If the sentence/paragraph describes the mechanism of injury, timeline, or patient's subjective experience → goes to HPI
+- **ABSOLUTE RULE FOR ANY TRANSCRIPTION FORMAT:** 
+  * When you encounter ANY phrase indicating examination, testing, imaging, or objective findings (regardless of exact wording), that content MUST go to the "O – OBJECTIVE/Physical Exam" section, NOT in HPI
+  * HPI should flow naturally with patient-reported information only, regardless of how the transcription is structured
+  * If uncertain whether something is patient-reported or examination finding, err on the side of placing it in Physical Exam if it contains objective measurements, test results, or observations
+- **EXAMPLES FOR DIFFERENT TRANSCRIPTION STYLES:**
+  * Formal: "The patient reports a slip and pivot injury" → HPI ✓
+  * Informal: "Patient says he fell at work" → HPI ✓
+  * Dictation style: "22 year old male reports injury" → HPI ✓
+  * "On exam today, positive Lachman" → Physical Exam ✓, NOT HPI ✗
+  * "MRI shows complete tear" → Physical Exam ✓, NOT HPI ✗
+  * "Patient walks with antalgic gait" → Physical Exam ✓, NOT HPI ✗
+
 CRITICAL PHYSICAL EXAM REQUIREMENT - INCLUDE EXAMINATION FINDINGS AND DOCTOR-REVIEWED REPORTS:
 - The "O – OBJECTIVE/Physical Exam" section MUST include:
   1. All phrases that indicate examination findings, such as:
@@ -59,15 +98,31 @@ CRITICAL PHYSICAL EXAM REQUIREMENT - INCLUDE EXAMINATION FINDINGS AND DOCTOR-REV
      - "Physical examination shows..."
      - "Clinical examination demonstrates..."
      - "On examination, there is..."
+     - "On exam today..."
+     - "ACL drawer is positive"
+     - "Lachman is positive"
+     - "McMurray test is positive"
+     - "walks with antalgic gait"
+     - "range of motion is..."
+     - "gross neurovascular intact"
   2. All imaging/report findings that have been reviewed by the doctor, such as:
      - "MRI confirms..."
      - "X-ray shows..."
      - "MRI reveals..."
      - "Imaging demonstrates..."
      - "CT scan shows..."
+     - "On MRI review..."
+     - "complete tear of ACL"
+     - "bucket handle tear"
   3. These findings should be placed in the Physical Exam section under appropriate subsections (Special Tests, or as an "Imaging Review" subsection)
-- Example: If transcription says "Examination reveals a positive ACL drawer, Lachman, and McMurray test to the medial meniscus. MRI confirms a complete tear of the ACL and medial meniscus", BOTH should appear in the Physical Exam section, not just listed under Imaging/Studies
-- The Imaging/Studies section should only contain a summary of what studies were reviewed (e.g., "MRI of knee reviewed"), while the actual findings reviewed by the doctor go in Physical Exam
+  4. **CRITICAL - IMAGING FINDINGS MUST APPEAR IN BOTH PLACES:**
+     - Physical Exam section: Include the full imaging findings (e.g., "MRI confirms a complete tear of the ACL and medial meniscus")
+     - Imaging/Studies Review section: Include the actual findings in format "[Study Type]: [Findings]" (e.g., "MRI: Complete tear of ACL and medial meniscus with crandial tear")
+- Example: If transcription says "Examination reveals a positive ACL drawer, Lachman, and McMurray test to the medial meniscus. MRI confirms a complete tear of the ACL and medial meniscus", BOTH should appear:
+  - Physical Exam - Special Tests: "Examination reveals a positive ACL drawer, Lachman, and McMurray test to the medial meniscus."
+  - Physical Exam - Imaging Review: "MRI confirms a complete tear of the ACL and medial meniscus."
+  - Imaging/Studies Review: "MRI: Complete tear of ACL and medial meniscus"
+- The Imaging/Studies Review section should contain the ACTUAL findings in format "[Study Type]: [Findings]", NOT generic summaries like "MRI of knee reviewed"
 
 CRITICAL CPT CODE GENERATION - FULLY AI-DRIVEN (NO MAPPINGS) - MAXIMIZE CODES:
 - You have comprehensive knowledge of ALL CPT/HCPCS codes for orthopedic procedures, surgeries, injections, imaging, therapy, and DME
@@ -90,13 +145,14 @@ CRITICAL CPT CODE GENERATION - FULLY AI-DRIVEN (NO MAPPINGS) - MAXIMIZE CODES:
 - NEVER use "[Not documented]" if procedures are mentioned - always generate the appropriate codes
 - The system is fully generic - you can handle ANY service type without needing specific mappings
 - Example: For a knee surgery with meniscus repair, if dictation mentions "29881", you MUST include it along with: 29881, 29882, 20924, C1713, L1833, L1845, E0114, E0218 (or E0236) - include ALL codes that apply AND all codes mentioned in dictation. The goal is MAXIMUM CPT codes.
+- **CRITICAL REFERENCE - ACL RECONSTRUCTION WITH MEDIAL MENISCUS BUCKET HANDLE TEAR:** For ACL reconstruction with medial meniscus bucket handle tear procedures, refer to the comprehensive CPT code list in the RFA section (rule #10) which includes: Primary CPT 29888, and Supportive CPTs: 29882 (meniscus repair), 20924 (graft), C1713 (anchor), L1833/L1845 (braces), E0114 (crutches), E0218/E0236 (cryotherapy - MANDATORY), plus additional codes for any additional procedures performed (29877, 29879, 29884, etc.). Always include ALL applicable codes for maximum reimbursement.
 
 CRITICAL - OMIT UNDOCUMENTED SECTIONS - NEVER SHOW "NOT DOCUMENTED":
 - If information is not available or not mentioned in the transcription, DO NOT include that section or field in the output AT ALL
 - NEVER use "[Not documented]", "[Not available]", "Not documented", "Not available", "[Patient Name]", "[MM/DD/YYYY]", "[Provider Name]", "[If applicable]", or ANY similar placeholder text
 - Simply omit the entire section or field if the information is not present - do not show the section heading or label at all
 - Only include sections and fields that have actual content from the transcription
-- This applies to ALL sections including Patient Demographics (Name, Age/Gender, Date of Visit, Examiner, Claim/WC #, Employer/Carrier, Visit Type), Secondary Diagnosis, Associated / Contributing Diagnoses, Primary Procedure, Supportive CPTs, Workers' Comp, RFA sections, Imaging/Studies, etc.
+- This applies to ALL sections including Patient Demographics (Name, Age/Gender, Date of Visit, Examiner, Claim/WC #, Employer/Carrier, Visit Type), Secondary Diagnosis, Primary Procedure, Supportive CPTs, Workers' Comp, RFA sections, Imaging/Studies, etc.
 - For Patient Demographics: If a field is not available, omit that entire line completely (e.g., if name is not available, do not include "Name:" line at all)
 - For optional sections: If no information is available, do not include the section heading or any content - completely omit it from the output
 - For required sections, use the best available information from the transcription
@@ -149,7 +205,7 @@ Chief Complaint:
  = [Primary symptom or reason for visit]  
 
 History of Present Illness (HPI):  
- = [Write a narrative paragraph describing the patient's presentation, including: onset date, mechanism of injury, context, pain scale, aggravating/reducing factors, functional limitations, progression, and any relevant clinical findings. Format as a flowing paragraph similar to: "The patient is a [age]-year-old [gender] presenting with [chief complaint] after [mechanism/context]. [Additional relevant clinical details, examination findings, imaging results, etc.]"]  
+ = [Write a narrative paragraph describing the patient's presentation, including: onset date, mechanism of injury, context, pain scale, aggravating/reducing factors, functional limitations, progression, and symptoms reported by the patient. Format as a flowing paragraph similar to: "The patient is a [age]-year-old [gender] presenting with [chief complaint] after [mechanism/context]. [Additional relevant clinical details about symptoms, timeline, and patient-reported information.]" CRITICAL: HPI should ONLY include patient-reported information, symptoms, mechanism of injury, timeline, and functional limitations. DO NOT include examination findings (e.g., "ACL drawer is positive", "Lachman is positive", "McMurray test is positive") or imaging results (e.g., "MRI confirms", "MRI shows", "complete tear of ACL") in HPI - these belong in the Physical Exam section under O – OBJECTIVE/Physical Exam.]  
 
 Past Medical History:  
  = [CRITICAL: If intake form data is provided below with "Past Medical History (from intake form)", you MUST use that exact data. Do NOT use "As per chart" if intake form data is provided. List the specific comorbidities exactly as shown in the intake form data (e.g., "Hypertension, Diabetes"). Only use "As per chart" if NO intake form data is provided for this section.]  
@@ -176,7 +232,7 @@ Local Musculoskeletal Exam – [Joint / Region]:
  Special Tests: [CRITICAL: Include ALL special test findings here. Phrases like "Examination reveals", "Physical examination shows", "Clinical examination demonstrates" should be included in this section. Examples: "Examination reveals a positive ACL drawer, Lachman, and McMurray test to the medial meniscus." Include all positive and negative test findings mentioned in the transcription.]  
 
 Imaging / Studies Review:  
- = [CRITICAL: When reports (MRI, X-ray, CT, EMG, etc.) have been reviewed by the doctor and findings are mentioned (e.g., "MRI confirms", "X-ray shows", "MRI reveals", "Imaging demonstrates"), these findings MUST be included in the Physical Exam section above, NOT just listed here. This section should only contain a summary of what studies were reviewed. If the doctor has reviewed and discussed imaging findings, include those findings in the Physical Exam section under appropriate subsections (e.g., under Special Tests or as a separate "Imaging Review" subsection within Physical Exam). Example: If transcription says "MRI confirms a complete tear of the ACL and medial meniscus", this should appear in Physical Exam section, not just listed here. This section can list: "MRI of knee reviewed" or "X-ray of shoulder reviewed".]  
+ = [CRITICAL: This section should contain the ACTUAL imaging findings in the format: "[Study Type]: [Findings]". When reports (MRI, X-ray, CT, EMG, etc.) have been reviewed by the doctor and findings are mentioned, include the complete findings here. Examples: "MRI: Complete tear of ACL and medial meniscus with crandial tear" or "X-ray: No fractures noted" or "MRI: Complete tear of ACL, medial meniscus, bucket handle tear is noted". Format should be "[Study Type]: [Actual findings from the imaging report]". Do NOT use generic summaries like "MRI of knee reviewed" - always include the actual findings. If multiple studies are reviewed, list each on a separate line or in the same format.]  
  [CRITICAL: If no imaging or studies are mentioned in the transcription, OMIT this entire line - do not include "Imaging / Studies Review:" at all]  
 
 ---
@@ -186,14 +242,7 @@ A – ASSESSMENT
  Primary Diagnosis: [Generate actual ICD-10 code based on diagnosis] — [Description - CRITICAL: The ICD-10 code must be correct, but the description MUST include the maximum severity mentioned in the dictation. For example, if the dictation mentions "complete tear", "partial tear", "rupture", "severe strain", etc., incorporate that severity into the description. Example: If ICD code is S46.211A and dictation mentions "Complete tear with some retraction of distal bicep", the description should be "Complete tear of right distal biceps tendon, right arm, initial encounter" rather than just the generic ICD description.]  
  
  Secondary Diagnosis: [Generate actual ICD-10 code if applicable] — [Description - CRITICAL: Same as above - include maximum severity from dictation in the description]  
- [CRITICAL: If no secondary diagnosis is mentioned in the transcription, OMIT this entire line - do not include "Secondary Diagnosis:" at all]
- 
- Associated / Contributing Diagnoses: [CRITICAL: This section MUST be included if there are ANY associated or contributing diagnoses mentioned in the transcription. List all associated or contributing diagnoses with ICD-10 codes. Format each diagnosis on a separate line as: "ICD-10 code — Description". Examples:
-M25.561 — Pain in right knee
-R26.89 — Other abnormalities of gait
-M25.461 — Effusion, right knee
-Include all diagnoses that are associated with or contributing to the primary condition, such as pain, gait abnormalities, effusions, joint stiffness, muscle weakness, etc. Each diagnosis should have its ICD-10 code and description. Look for any secondary conditions, symptoms, or findings mentioned in the transcription that are related to the primary diagnosis. If the transcription mentions pain, effusion, gait issues, or any other associated findings, you MUST include them here with appropriate ICD-10 codes.]  
- [CRITICAL: Only omit this section if there are absolutely NO associated or contributing diagnoses mentioned in the transcription. If ANY related condition, symptom, or finding is mentioned (even if minor), you MUST include this section with the appropriate ICD-10 codes.]
+ [CRITICAL: Secondary Diagnosis MUST be included if there is ANY secondary diagnosis mentioned in the transcription (e.g., if transcription mentions multiple diagnoses, conditions, or injuries beyond the primary diagnosis). Look for any additional diagnoses, conditions, or injuries mentioned in the transcription. If no secondary diagnosis is mentioned in the transcription, OMIT this entire line - do not include "Secondary Diagnosis:" at all. However, if ANY secondary diagnosis, condition, or injury is mentioned (even if minor), you MUST include this section with the appropriate ICD-10 code.]
  
 Functional Impairment Statement:  
  = [Write a concise narrative sentence describing how the condition affects the patient's function: "[Condition] limits [specific functional limitations such as weightbearing, walking tolerance, functional mobility, ROM, strength, ADLs, work capacity, etc.]." Adapt based on what is mentioned in the transcription.]  
@@ -279,7 +328,51 @@ CRITICAL RULES:
 6. For any procedure with DME/supplies: Include ALL applicable HCPCS codes (L-codes, E-codes, A-codes)
 7. Format as comma-separated when multiple: "29881, 29882, 20924, C1713, L1833, L1845, E0114, E0218" or single: "77003" or "E0218"
 8. If the same procedure has supportive CPTs in the CPT/Billing Codes section, the RFA Supportive CPTs MUST match or be more complete
-9. Include ALL applicable codes - be thorough and complete. Do NOT miss any codes that are typically required. The goal is maximum CPT codes for the procedure. Remember: Primary CPT goes in Primary CPT field, all other supporting codes go in Supportive CPTs.]  
+9. Include ALL applicable codes - be thorough and complete. Do NOT miss any codes that are typically required. The goal is maximum CPT codes for the procedure. Remember: Primary CPT goes in Primary CPT field, all other supporting codes go in Supportive CPTs.
+10. **CRITICAL REFERENCE - ACL RECONSTRUCTION WITH MEDIAL MENISCUS BUCKET HANDLE TEAR - COMPREHENSIVE CPT CODES FOR MAXIMUM REIMBURSEMENT:**
+    For ACL reconstruction with medial meniscus bucket handle tear arthroscopy procedures, use this comprehensive list to ensure maximum reimbursement and coverage:
+    
+    **Primary CPT:** 29888 (Arthroscopically aided anterior cruciate ligament repair/augmentation or reconstruction)
+    
+    **Supportive CPTs - MUST INCLUDE ALL APPLICABLE:**
+    - **Meniscus Procedures:**
+      * 29882 - Arthroscopy, knee, surgical; with meniscus repair (medial OR lateral) - REQUIRED for bucket handle tear repair
+      * 29881 - Arthroscopy, knee, surgical; with meniscectomy (medial OR lateral, including any meniscal shaving) - if partial meniscectomy needed
+      * 29880 - Arthroscopy, knee, surgical; with meniscectomy (medial AND lateral, including any meniscal shaving) - if both sides
+      * 29883 - Arthroscopy, knee, surgical; with meniscus repair (medial AND lateral) - if both sides repaired
+    - **Graft/Allograft Codes:**
+      * 20924 - Tendon graft, from a distance (e.g., patellar tendon, hamstring, achilles) - REQUIRED for ACL graft
+      * 20926 - Tissue graft, allograft; soft tissue, packaged, without cpt code - if allograft used
+      * 20925 - Tendon graft, from a distance (e.g., patellar tendon, hamstring, achilles); allograft - if allograft tendon
+    - **Implant/Anchor Codes:**
+      * C1713 - Anchor/screw for opposing bone-to-bone or soft tissue-to-bone (implantable) - REQUIRED for ACL fixation
+      * 20924 - May also include bone-tendon-bone graft preparation
+    - **Additional Arthroscopic Procedures (if performed):**
+      * 29877 - Arthroscopy, knee, surgical; debridement/shaving of articular cartilage (chondroplasty) - if cartilage work done
+      * 29879 - Arthroscopy, knee, surgical; abrasion arthroplasty (includes chondroplasty where necessary) or multiple drilling or microfracture - if microfracture needed
+      * 29884 - Arthroscopy, knee, surgical; with lysis of adhesions, with or without manipulation - if adhesions present
+      * 29887 - Arthroscopy, knee, surgical; drilling for osteochondritis dissecans with bone grafting - if OCD lesion treated
+    - **DME (Durable Medical Equipment) - REQUIRED:**
+      * L1833 - ACL functional knee brace, adjustable knee joints (unicentric or polycentric), positional orthosis, rigid support, prefabricated item that has been trimmed, bent, molded, assembled, or otherwise customized - REQUIRED post-op
+      * L1845 - Knee orthosis, adjustable knee joints (unicentric or polycentric), positional orthosis, rigid support, prefabricated item that has been trimmed, bent, molded, assembled, or otherwise customized - alternative/additional brace
+      * L1832 - Knee orthosis, elastic with joints, prefabricated item that has been trimmed, bent, molded, assembled, or otherwise customized - if elastic brace needed
+      * L1830 - Knee orthosis, rigid, without joint(s), includes soft interface material, prefabricated, off-the-shelf - if rigid brace needed
+      * E0114 - Crutches, forearm, adjustable or fixed, pair, with tips and handgrips - REQUIRED post-op
+      * E0116 - Crutches, underarm, wood or aluminum, adjustable or fixed, pair - alternative crutches
+      * E0130 - Walker, rigid (pickup), adjustable or fixed height - if walker needed
+      * E0135 - Walker, wheeled, rigid, adjustable or fixed height - if wheeled walker needed
+    - **Cryotherapy Device - MANDATORY:**
+      * E0218 - Cryotherapy device - REQUIRED for ALL surgeries (MANDATORY)
+      * E0236 - Cold therapy pump - alternative cryotherapy device (MANDATORY if E0218 not used)
+    - **Surgical Supplies (if applicable):**
+      * A4566 - Sling or arm support, includes shoulder immobilizer - if needed
+      * Various surgical supply codes as applicable
+    
+    **EXAMPLE COMPLETE LIST FOR ACL RECONSTRUCTION + MEDIAL MENISCUS BUCKET HANDLE TEAR:**
+    Primary CPT: 29888
+    Supportive CPTs: 29882, 20924, C1713, L1833, L1845, E0114, E0218
+    
+    **NOTE:** Always include modifier -59 with 29882 when performed with 29888 to indicate distinct procedure. Include ALL applicable codes from above list based on what procedures are performed. The goal is MAXIMUM CPT codes for complete coverage and reimbursement.]  
  Justification: [Clinical rationale + ≥6 weeks failed conservative care]  
  Guideline Basis: [MTUS / ACOEM]  
  Intent: Submitted to DWC Utilization Review for necessary orthopedic care.  
@@ -307,28 +400,55 @@ Provider Name: _______________________
 
 INSTRUCTIONS FOR THE AI  
 • Replace bracketed fields using the transcription.  
+• **CRITICAL - HPI (HISTORY OF PRESENT ILLNESS) - PATIENT-REPORTED INFORMATION ONLY (WORKS WITH ANY TRANSCRIPTION FORMAT):**
+  - HPI should ONLY include patient-reported information, symptoms, and history. This applies to ANY transcription format, style, or structure (formal, informal, dictation style, etc.)
+  - **WHAT TO INCLUDE IN HPI - PATIENT-REPORTED INFORMATION (ANY FORMAT):**
+    * Mechanism of injury (any format: "slip and pivot injury", "fell", "motor vehicle accident", "work injury", "lifting injury", "twisted knee", etc.)
+    * Onset date/timeline (any format: "injury occurred two weeks ago", "symptoms started 3 days ago", "approximately 2 weeks", "about a month ago", "yesterday", etc.)
+    * Patient-reported symptoms (any format: "swollen", "pain", "unable to weight bear", "instability", "patient reports", "patient states", "patient complains of", "patient describes", etc.)
+    * Pain scale (if mentioned by patient: "pain 8/10", "severe pain", "mild pain", etc.)
+    * Aggravating/reducing factors (if reported by patient: "worse with activity", "better with rest", etc.)
+    * Functional limitations reported by patient (any format: "unable to weight bear", "difficulty walking", "can't lift", "trouble with stairs", etc.)
+    * Progression of symptoms (if reported by patient: "getting worse", "improving", "same", etc.)
+    * Previous care/treatment (any format: "seen at primary care", "went to ER", "referred for X-ray", "had physical therapy", etc.)
+    * Patient's description of events leading to injury
+    * Patient's description of current symptoms and concerns
+  - **ABSOLUTE RULE - DO NOT INCLUDE IN HPI - EXAMINATION/OBJECTIVE FINDINGS (ANY FORMAT OR VARIATION):**
+    * **Examination phrases (any variation):** "Examination reveals", "On exam", "On exam today", "Physical examination", "Clinical examination", "Physical exam", "Clinical exam", "Exam shows", "Exam demonstrates", "Examination shows", "Examination demonstrates", "On examination", "During examination", "Upon examination", "Exam reveals", "Exam today", "Today on exam", "On physical exam", "On clinical exam"
+    * **Imaging phrases (any variation):** "MRI confirms", "MRI shows", "MRI reveals", "MRI demonstrates", "On MRI", "MRI review", "On MRI review", "MRI indicates", "X-ray shows", "X-ray reveals", "X-ray demonstrates", "CT shows", "CT scan shows", "Imaging shows", "Imaging reveals", "Imaging demonstrates", "Imaging confirms", "Radiograph shows", "Study shows", "Study reveals", "Report shows", "Report reveals"
+    * **Test result phrases (any variation):** "test is positive", "test positive", "positive test", "test negative", "negative test", "test reveals", "test shows", "special test", "provocative test"
+    * **Observation phrases (any variation):** "walks with", "gait is", "range of motion is", "ROM is", "strength is", "neurovascular", "pulses are", "sensation is", "reflexes are", "inspection reveals", "palpation reveals", "auscultation reveals"
+    * **Any examination findings:** Test results (positive/negative), measurements (ROM, strength grades), observations (gait, appearance, etc.), physical exam findings
+    * **Any imaging results:** Specific findings from imaging studies (tears, fractures, abnormalities, etc.)
+    * **Any diagnostic test results:** Lab results, EMG results, etc.
+  - **PATTERN RECOGNITION RULES FOR ANY TRANSCRIPTION:**
+    * If the sentence/paragraph describes what the DOCTOR observed, measured, or found → goes to Physical Exam, NOT HPI
+    * If the sentence/paragraph describes what the PATIENT reported, stated, or described → goes to HPI
+    * If the sentence/paragraph contains test results, measurements, or objective findings → goes to Physical Exam, NOT HPI
+    * If the sentence/paragraph contains imaging findings or diagnostic results → goes to Physical Exam AND Imaging/Studies Review, NOT HPI
+    * If the sentence/paragraph describes the mechanism of injury, timeline, or patient's subjective experience → goes to HPI
+  - **ABSOLUTE RULE FOR ANY TRANSCRIPTION FORMAT:** 
+    * When you encounter ANY phrase indicating examination, testing, imaging, or objective findings (regardless of exact wording or format), that content MUST go to the "O – OBJECTIVE/Physical Exam" section, NOT in HPI
+    * HPI should flow naturally with patient-reported information only, regardless of how the transcription is structured
+    * If uncertain whether something is patient-reported or examination finding, err on the side of placing it in Physical Exam if it contains objective measurements, test results, or observations
+  - **EXAMPLES FOR DIFFERENT TRANSCRIPTION STYLES:**
+    * Formal: "The patient reports a slip and pivot injury" → HPI ✓
+    * Informal: "Patient says he fell at work" → HPI ✓
+    * Dictation style: "22 year old male reports injury" → HPI ✓
+    * "On exam today, positive Lachman" → Physical Exam ✓, NOT HPI ✗
+    * "MRI shows complete tear" → Physical Exam ✓, NOT HPI ✗
+    * "Patient walks with antalgic gait" → Physical Exam ✓, NOT HPI ✗
 • **CRITICAL - OMIT UNDOCUMENTED SECTIONS - NEVER SHOW "NOT DOCUMENTED":**
   - If information is not available or not mentioned in the transcription, DO NOT include that section or field in the output AT ALL
   - NEVER use "[Not documented]", "[Not available]", "Not documented", "Not available", "[Patient Name]", "[MM/DD/YYYY]", "[Provider Name]", "[If applicable]", or ANY similar placeholder text
   - Simply omit the entire section or field if the information is not present - do not show the section heading or label at all
   - Only include sections and fields that have actual content from the transcription
-  - This applies to ALL sections including Patient Demographics (Name, Age/Gender, Date of Visit, Examiner, Claim/WC #, Employer/Carrier, Visit Type), Secondary Diagnosis, Associated / Contributing Diagnoses, Primary Procedure, Supportive CPTs, Workers' Comp, RFA sections, Imaging/Studies, etc.
+  - This applies to ALL sections including Patient Demographics (Name, Age/Gender, Date of Visit, Examiner, Claim/WC #, Employer/Carrier, Visit Type), Secondary Diagnosis, Primary Procedure, Supportive CPTs, Workers' Comp, RFA sections, Imaging/Studies, etc.
   - For Patient Demographics: If a field is not available, omit that entire line completely (e.g., if name is not available, do not include "Name:" line at all)
   - For optional sections: If no information is available, do not include the section heading or any content - completely omit it from the output
   - For required sections, use the best available information from the transcription
   - **ABSOLUTE RULE: If you would write "Not documented" or "[Not documented]", instead write NOTHING - omit that entire section/field completely**
 • Generate actual ICD-10 codes based on the diagnosis mentioned in the transcription (do not use placeholder text like "[ICD-10 Code]").  
-• **CRITICAL - ASSOCIATED / CONTRIBUTING DIAGNOSES MUST BE INCLUDED:**
-  - The "Associated / Contributing Diagnoses" section MUST be included if there are ANY associated conditions, symptoms, or findings mentioned in the transcription
-  - Look for: pain codes (M25.5xx series for joint pain), effusion codes (M25.4xx series for joint effusion), gait abnormalities (R26.89), joint stiffness, muscle weakness, or any other related findings mentioned in the transcription
-  - If the transcription mentions ANY secondary condition, symptom, or finding related to the primary diagnosis (e.g., "knee pain", "effusion", "gait abnormality", "stiffness", "weakness"), you MUST include it in this section with the appropriate ICD-10 code
-  - Format each diagnosis on a separate line: "ICD-10 code — Description"
-  - Examples: 
-    * If transcription mentions "knee pain" → include "M25.561 — Pain in right knee" (or appropriate side)
-    * If transcription mentions "effusion" → include "M25.461 — Effusion, right knee" (or appropriate side)
-    * If transcription mentions "gait abnormality" → include "R26.89 — Other abnormalities of gait"
-  - Only omit this section if there are absolutely NO associated or contributing diagnoses mentioned in the transcription
-  - Be thorough - look for any related symptoms, findings, or conditions that are associated with the primary diagnosis
 • **CRITICAL FOR DIAGNOSIS DESCRIPTIONS - INCLUDE MAXIMUM SEVERITY:**
   - The ICD-10 code must be accurate and correct
   - However, the description MUST include the maximum severity mentioned in the dictation
@@ -345,11 +465,13 @@ INSTRUCTIONS FOR THE AI
 • **CRITICAL FOR PHYSICAL EXAM (O – OBJECTIVE/Physical Exam) - INCLUDE EXAMINATION FINDINGS AND DOCTOR-REVIEWED REPORTS:**
   - The Physical Exam section MUST include ALL examination findings and doctor-reviewed reports
   - Include phrases like "Examination reveals", "Physical examination shows", "Clinical examination demonstrates", "On examination, there is" in the Physical Exam section (typically under Special Tests or as appropriate)
-  - When reports (MRI, X-ray, CT, EMG, etc.) have been reviewed by the doctor and findings are mentioned (e.g., "MRI confirms", "X-ray shows", "MRI reveals", "Imaging demonstrates"), these findings MUST be included in the Physical Exam section, NOT just listed under Imaging/Studies
-  - Example: If transcription says "Examination reveals a positive ACL drawer, Lachman, and McMurray test to the medial meniscus. MRI confirms a complete tear of the ACL and medial meniscus", BOTH should appear in the Physical Exam section:
+  - When reports (MRI, X-ray, CT, EMG, etc.) have been reviewed by the doctor and findings are mentioned (e.g., "MRI confirms", "X-ray shows", "MRI reveals", "Imaging demonstrates", "On MRI review"), these findings MUST be included in BOTH:
+    1. Physical Exam section (under Special Tests or as an "Imaging Review" subsection) - include the full findings
+    2. Imaging/Studies Review section - include the actual findings in format "[Study Type]: [Findings]" (e.g., "MRI: Complete tear of ACL and medial meniscus with crandial tear")
+  - Example: If transcription says "Examination reveals a positive ACL drawer, Lachman, and McMurray test to the medial meniscus. MRI confirms a complete tear of the ACL and medial meniscus", BOTH should appear:
     - Special Tests: "Examination reveals a positive ACL drawer, Lachman, and McMurray test to the medial meniscus."
-    - Add an "Imaging Review" subsection or include in Special Tests: "MRI confirms a complete tear of the ACL and medial meniscus."
-  - The Imaging/Studies section should only contain a summary of what studies were reviewed (e.g., "MRI of knee reviewed"), while the actual findings reviewed by the doctor go in Physical Exam
+    - Imaging/Studies Review: "MRI: Complete tear of ACL and medial meniscus"
+  - The Imaging/Studies Review section should contain the ACTUAL findings in format "[Study Type]: [Findings]", NOT generic summaries like "MRI of knee reviewed"
   - This applies to both SOAP notes and PR-1 forms
 • Generate actual CPT/HCPCS codes based on visit type, procedures performed, and devices/supplies provided (do not use placeholder text like "[CPT Code]").  
 • **CRITICAL FOR ALL PROCEDURES - NO MAPPING REQUIRED - MAXIMIZE CODES:**
@@ -374,6 +496,7 @@ INSTRUCTIONS FOR THE AI
   - Do NOT leave RFA Supportive CPTs empty or incomplete - include ALL that apply
   - Format: Comma-separated when multiple: "29881, 29882, 20924, C1713, L1833, L1845, E0114, E0218" or single: "77003" or "E0218"
   - The goal is maximum CPT codes for the procedure - be thorough and comprehensive. Remember: Primary CPT = main procedure code (appears only in Primary CPT field), Supportive CPTs = all supporting codes (surgical components, DME, cryotherapy, guidance, etc.)
+  - **CRITICAL REFERENCE - ACL RECONSTRUCTION WITH MEDIAL MENISCUS BUCKET HANDLE TEAR:** For ACL reconstruction with medial meniscus bucket handle tear procedures, refer to the comprehensive CPT code list in the RFA template (rule #10) which includes ALL possible codes needed for maximum reimbursement: Primary CPT 29888, and Supportive CPTs including 29882 (meniscus repair), 20924 (graft), C1713 (anchor), L1833/L1845 (braces), E0114 (crutches), E0218/E0236 (cryotherapy - MANDATORY), plus additional codes for any additional procedures (29877, 29879, 29884, etc.). Always include ALL applicable codes from this comprehensive list.
   
 • **WORKERS' COMP (CA) CODE GENERATION:**
   - Format: "WC002 — New patient orthopedic consultation" or "WC003 — Established patient visit"
