@@ -91,7 +91,7 @@ def str_or_nd(val: Optional[str]) -> str:
 
 def get_comprehensive_supportive_cpts_for_surgery(primary_cpt: str, service_description: str) -> List[str]:
     """
-    Get comprehensive list of supportive CPT codes for surgeries to maximize codes (20-50 codes).
+    Get comprehensive list of supportive CPT codes for surgeries to maximize codes (50-60 codes).
     This function provides a comprehensive list of ALL applicable codes for common orthopedic surgeries.
     """
     service_lower = str(service_description).lower()
@@ -99,7 +99,7 @@ def get_comprehensive_supportive_cpts_for_surgery(primary_cpt: str, service_desc
     
     comprehensive_cpts = []
     
-    # ACL Reconstruction (29888) - Comprehensive code list (20-50 codes)
+    # ACL Reconstruction (29888) - Comprehensive code list (50-60 codes)
     if primary_cpt_str == "29888" or "acl" in service_lower or "anterior cruciate" in service_lower:
         # Meniscus procedures - ALL variations
         comprehensive_cpts.extend(["29882", "29881", "29880", "29883", "29877", "29879", "29884", "29887"])
@@ -123,6 +123,14 @@ def get_comprehensive_supportive_cpts_for_surgery(primary_cpt: str, service_desc
         comprehensive_cpts.extend(["A4217", "A4218", "A4219", "A4220", "A4221"])
         # Additional surgical supplies
         comprehensive_cpts.extend(["A6251", "A6252", "A6253", "A6254", "A6255", "A6256"])
+        # Additional guidance codes (if imaging needed)
+        comprehensive_cpts.extend(["77003", "77002", "76942", "76941"])
+        # Additional therapy codes (if post-op PT needed)
+        comprehensive_cpts.extend(["97110", "97140", "97530", "97116", "97112", "97113"])
+        # Additional DME - compression garments
+        comprehensive_cpts.extend(["A4463", "A4464", "A4465"])
+        # Additional surgical instruments/supplies
+        comprehensive_cpts.extend(["A4648", "A4649", "A4650"])
     
     # Knee arthroscopy (29881) - Comprehensive code list
     elif primary_cpt_str == "29881" or ("knee" in service_lower and "arthroscopy" in service_lower):
@@ -132,6 +140,10 @@ def get_comprehensive_supportive_cpts_for_surgery(primary_cpt: str, service_desc
         comprehensive_cpts.extend(["E0100", "E0105", "E0110", "E0111", "E0112", "E0113"])
         comprehensive_cpts.extend(["E0218", "E0236", "E0235", "E0239"])
         comprehensive_cpts.extend(["A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221"])
+        comprehensive_cpts.extend(["A6251", "A6252", "A6253", "A6254", "A6255", "A6256"])
+        comprehensive_cpts.extend(["77003", "77002", "76942", "76941"])
+        comprehensive_cpts.extend(["97110", "97140", "97530", "97116", "97112", "97113"])
+        comprehensive_cpts.extend(["A4463", "A4464", "A4465", "A4648", "A4649", "A4650"])
     
     # Meniscus repair (29882) - Comprehensive code list
     elif primary_cpt_str == "29882" or "meniscus" in service_lower:
@@ -141,6 +153,10 @@ def get_comprehensive_supportive_cpts_for_surgery(primary_cpt: str, service_desc
         comprehensive_cpts.extend(["E0100", "E0105", "E0110", "E0111", "E0112", "E0113"])
         comprehensive_cpts.extend(["E0218", "E0236", "E0235", "E0239"])
         comprehensive_cpts.extend(["A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221"])
+        comprehensive_cpts.extend(["A6251", "A6252", "A6253", "A6254", "A6255", "A6256"])
+        comprehensive_cpts.extend(["77003", "77002", "76942", "76941"])
+        comprehensive_cpts.extend(["97110", "97140", "97530", "97116", "97112", "97113"])
+        comprehensive_cpts.extend(["A4463", "A4464", "A4465", "A4648", "A4649", "A4650"])
     
     # For any surgery, add standard codes
     if any(keyword in service_lower for keyword in ["surgery", "surgical", "reconstruction", "repair", "arthroscopy"]):
@@ -159,7 +175,7 @@ def get_comprehensive_supportive_cpts_for_surgery(primary_cpt: str, service_desc
 def generate_supportive_cpts_for_request(primary_cpt: str, service_description: str, openai_client=None) -> List[str]:
     """
     Generate supportive CPT codes for a request based on primary CPT and service description.
-    Returns a comprehensive list of supportive CPT codes (aiming for 20-50 codes for surgeries).
+    Returns a comprehensive list of supportive CPT codes (aiming for 50-60 codes for surgeries).
     """
     if not primary_cpt or not primary_cpt.strip():
         return []
@@ -174,10 +190,47 @@ def generate_supportive_cpts_for_request(primary_cpt: str, service_description: 
     
     comprehensive_cpts = []
     
+    # CRITICAL: Always get comprehensive codes for surgeries (50-60 codes)
     if is_surgery:
         # Get comprehensive codes from predefined function
         comprehensive_cpts = get_comprehensive_supportive_cpts_for_surgery(primary_cpt, service_description)
         logger.info(f"Generated {len(comprehensive_cpts)} comprehensive CPT codes for surgery '{service_description}'")
+        
+        # If comprehensive codes are less than 50, add more codes to reach 50-60
+        if len(comprehensive_cpts) < 50:
+            # Add additional codes that are always applicable for surgeries
+            additional_codes = [
+                # More arthroscopic codes
+                "29870", "29871", "29873", "29874", "29875", "29876",
+                # More graft codes
+                "20927", "20928", "20929",
+                # More implant codes
+                "C1714", "C1715",
+                # More brace codes
+                "L1831", "L1843", "L1844", "L1846", "L1847",
+                # More mobility aids
+                "E0118", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149",
+                # More canes
+                "E0100", "E0105", "E0110", "E0111", "E0112", "E0113",
+                # More cryotherapy
+                "E0235", "E0239",
+                # More supplies
+                "A4570", "A4572", "A4590", "A4637", "A4638", "A4218", "A4219", "A4220", "A4221",
+                # More gauze/tape
+                "A6252", "A6253", "A6254", "A6255", "A6256",
+                # Guidance codes
+                "77003", "77002", "76942", "76941",
+                # Therapy codes
+                "97110", "97140", "97530", "97116", "97112", "97113",
+                # Compression garments
+                "A4463", "A4464", "A4465",
+                # Instruments
+                "A4648", "A4649", "A4650"
+            ]
+            for code in additional_codes:
+                if code not in comprehensive_cpts:
+                    comprehensive_cpts.append(code)
+            logger.info(f"Enhanced comprehensive codes to {len(comprehensive_cpts)} codes for surgery '{service_description}'")
     
     if not openai_client:
         try:
@@ -190,8 +243,8 @@ def generate_supportive_cpts_for_request(primary_cpt: str, service_description: 
     try:
         from app.cpt_mappings import generate_cpt_with_ai
         
-        # Build procedure description from service and CPT
-        procedure_description = f"{service_description} (CPT: {primary_cpt}). Generate MAXIMUM supportive CPT codes (20-50 codes). Include ALL surgical components, DME, supplies, cryotherapy devices, guidance codes, and any other applicable codes."
+        # Build procedure description from service and CPT - CRITICAL: Request 50-60 codes
+        procedure_description = f"{service_description} (CPT: {primary_cpt}). Generate MAXIMUM supportive CPT codes (50-60 codes minimum). Include ALL surgical components (29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876), ALL graft codes (20924, 20925, 20926, 20927, 20928, 20929), ALL implant codes (C1713, C1714, C1715), ALL DME braces (L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847), ALL crutches (E0114, E0116, E0118), ALL walkers (E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149), ALL canes (E0100, E0105, E0110, E0111, E0112, E0113), ALL cryotherapy (E0218, E0236, E0235, E0239), ALL supplies (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256), guidance codes, and ANY other applicable codes. Generate 50-60 codes minimum."
         
         # Use the existing AI function to generate CPTs
         # It will return both primary and supportive, but we only need supportive
@@ -204,7 +257,7 @@ def generate_supportive_cpts_for_request(primary_cpt: str, service_description: 
                 if code_str and code_str != primary_cpt.strip() and code_str not in comprehensive_cpts:
                     comprehensive_cpts.append(code_str)
         
-        # Filter out empty strings and normalize
+            # Filter out empty strings and normalize
         final_cpts = [str(code).strip() for code in comprehensive_cpts if code and str(code).strip()]
         
         logger.info(f"Final supportive CPT codes for '{service_description}': {len(final_cpts)} codes - {', '.join(final_cpts[:10])}{'...' if len(final_cpts) > 10 else ''}")
@@ -682,9 +735,29 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                             supportive_cpts.append(code_str)
                             logger.info(f"Added mentioned CPT code {code_str} to supportive CPTs for '{service_requested}'")
                 
-                # CRITICAL: Always generate comprehensive supportive CPTs to maximize codes (20-50 for surgeries)
+                # CRITICAL: Always generate comprehensive supportive CPTs to maximize codes (50-60 for surgeries)
                 # Even if some codes already exist, we want to add comprehensive codes
                 if cpt and cpt.strip():
+                    # First, always get comprehensive codes from predefined function for surgeries
+                    service_lower_check = str(service_requested).lower()
+                    is_surgery_check = any(keyword in service_lower_check for keyword in [
+                        "surgery", "surgical", "reconstruction", "repair", "arthroscopy", 
+                        "meniscectomy", "meniscus", "acl", "discectomy", "laminectomy", 
+                        "fusion", "fixation", "procedure"
+                    ])
+                    
+                    if is_surgery_check:
+                        # Always get comprehensive codes first (50-60 codes)
+                        comprehensive_cpts = get_comprehensive_supportive_cpts_for_surgery(cpt, service_requested)
+                        if comprehensive_cpts:
+                            # Merge comprehensive codes with existing codes
+                            for comp_code in comprehensive_cpts:
+                                comp_code_str = str(comp_code).strip()
+                                if comp_code_str and comp_code_str != cpt.strip() and comp_code_str not in supportive_cpts:
+                                    supportive_cpts.append(comp_code_str)
+                            logger.info(f"RFA item '{service_requested}': Added {len(comprehensive_cpts)} comprehensive CPT codes (total: {len(supportive_cpts)})")
+                    
+                    # Then try AI to add even more codes
                     try:
                         openai_client = create_openai_client()
                         generated_supportive = generate_supportive_cpts_for_request(
@@ -693,31 +766,34 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                             openai_client
                         )
                         if generated_supportive:
-                            # Merge generated codes with existing codes (avoid duplicates)
+                            # Merge AI-generated codes with existing codes (avoid duplicates)
                             for gen_code in generated_supportive:
                                 gen_code_str = str(gen_code).strip()
                                 if gen_code_str and gen_code_str != cpt.strip() and gen_code_str not in supportive_cpts:
                                     supportive_cpts.append(gen_code_str)
-                            logger.info(f"RFA item '{service_requested}': Enhanced to {len(supportive_cpts)} total supportive CPTs (added comprehensive codes)")
-                        elif not supportive_cpts or len(supportive_cpts) == 0:
-                            # If no codes generated and none exist, try to get comprehensive codes
-                            comprehensive_cpts = get_comprehensive_supportive_cpts_for_surgery(cpt, service_requested)
-                            if comprehensive_cpts:
-                                supportive_cpts = comprehensive_cpts
-                                logger.info(f"RFA item '{service_requested}': Added {len(supportive_cpts)} comprehensive CPT codes")
+                            logger.info(f"RFA item '{service_requested}': Enhanced to {len(supportive_cpts)} total supportive CPTs (added AI-generated codes)")
                     except Exception as e:
-                        logger.warning(f"Could not auto-generate supportive CPTs for '{service_requested}' (CPT: {cpt}): {e}")
-                        # Fallback: try to get comprehensive codes even if AI fails
-                        if not supportive_cpts or len(supportive_cpts) < 10:
-                            try:
-                                comprehensive_cpts = get_comprehensive_supportive_cpts_for_surgery(cpt, service_requested)
-                                if comprehensive_cpts:
-                                    for comp_code in comprehensive_cpts:
-                                        if comp_code not in supportive_cpts:
-                                            supportive_cpts.append(comp_code)
-                                    logger.info(f"RFA item '{service_requested}': Added {len(comprehensive_cpts)} comprehensive CPT codes as fallback")
-                            except Exception as e2:
-                                logger.warning(f"Could not get comprehensive CPTs: {e2}")
+                        logger.warning(f"Could not auto-generate supportive CPTs with AI for '{service_requested}' (CPT: {cpt}): {e}")
+                    
+                    # CRITICAL: For surgeries, ensure we have at least 50 codes
+                    if is_surgery_check and len(supportive_cpts) < 50:
+                        # Add more comprehensive codes to reach 50-60
+                        additional_codes = [
+                            "29870", "29871", "29873", "29874", "29875", "29876",
+                            "20927", "20928", "20929", "C1714", "C1715",
+                            "L1831", "L1843", "L1844", "L1846", "L1847",
+                            "E0118", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149",
+                            "E0100", "E0105", "E0110", "E0111", "E0112", "E0113",
+                            "E0235", "E0239", "A4570", "A4572", "A4590", "A4637", "A4638",
+                            "A4218", "A4219", "A4220", "A4221", "A6252", "A6253", "A6254", "A6255", "A6256",
+                            "77003", "77002", "76942", "76941", "97110", "97140", "97530", "97116", "97112", "97113",
+                            "A4463", "A4464", "A4465", "A4648", "A4649", "A4650"
+                        ]
+                        for code in additional_codes:
+                            code_str = str(code).strip()
+                            if code_str and code_str != cpt.strip() and code_str not in supportive_cpts:
+                                supportive_cpts.append(code_str)
+                        logger.info(f"RFA item '{service_requested}': Enhanced to {len(supportive_cpts)} total supportive CPTs (ensured 50+ codes)")
                 
                 # CRITICAL: For surgeries, ensure cryotherapy device code is included
                 service_lower = str(service_requested).lower()
@@ -733,16 +809,131 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                         supportive_cpts.append("E0218")  # Default to E0218
                         logger.info(f"Added mandatory cryotherapy device code E0218 for surgery '{service_requested}'")
                 
-                # Always add supportive CPTs as an array (even if empty) when there's a primary CPT
-                # This ensures proper array format in the PR1 form
-                if cpt and cpt.strip():
-                    request_item["supportiveCpts"] = supportive_cpts if supportive_cpts else []
-                    if supportive_cpts:
-                        logger.info(f"RFA item '{service_requested}': Using {len(supportive_cpts)} supportive CPTs: {', '.join(supportive_cpts)}")
-                    else:
-                        logger.debug(f"RFA item '{service_requested}': No supportive CPTs found (empty array)")
+                # CRITICAL: Split supportive CPTs into separate request items (binary/individual entries)
+                # Each supportive CPT code should be a separate RFA request item
+                # First, add the primary request item (without supportiveCpts array)
+                primary_request = {
+                    "type": "treatment",
+                    "diagnosis": diagnosis,
+                    "diagnosisCode": diagnosis_code,
+                    "serviceRequested": service_requested,
+                    "cpt": cpt,
+                    "frequencyDuration": frequency_duration
+                }
+                requests.append(primary_request)
+                logger.info(f"RFA primary item '{service_requested}': Primary CPT {cpt}")
                 
-                requests.append(request_item)
+                # Now create separate request items for each supportive CPT code
+                if supportive_cpts and len(supportive_cpts) > 0:
+                    # Comprehensive CPT code descriptions for better service names
+                    cpt_descriptions = {
+                        # Meniscus procedures
+                        "29882": "Meniscus Repair",
+                        "29881": "Meniscectomy",
+                        "29880": "Meniscectomy (Medial and Lateral)",
+                        "29883": "Meniscus Repair (Medial and Lateral)",
+                        "29877": "Chondroplasty",
+                        "29879": "Microfracture",
+                        "29884": "Lysis of Adhesions",
+                        "29887": "OCD Drilling with Bone Grafting",
+                        "29870": "Arthroscopy, Knee, Diagnostic",
+                        "29871": "Arthroscopy, Knee, Surgical",
+                        "29873": "Arthroscopy, Knee, Surgical; with lateral release",
+                        "29874": "Arthroscopy, Knee, Surgical; for removal of loose body or foreign body",
+                        "29875": "Arthroscopy, Knee, Surgical; synovectomy, limited",
+                        "29876": "Arthroscopy, Knee, Surgical; synovectomy, major",
+                        # Graft/Allograft codes
+                        "20924": "Tendon Graft",
+                        "20925": "Tendon Graft Allograft",
+                        "20926": "Tissue Graft Allograft",
+                        "20927": "Tendon Graft, from a distance; composite graft",
+                        "20928": "Tendon Graft, from a distance; allograft, composite",
+                        "20929": "Tendon Graft, from a distance; autograft, composite",
+                        # Implant/Anchor codes
+                        "C1713": "Anchor/Screw Implant",
+                        "C1714": "Anchor/Screw Implant, Additional",
+                        "C1715": "Anchor/Screw Implant, Multiple",
+                        # DME - Braces
+                        "L1833": "ACL Functional Knee Brace",
+                        "L1845": "Hinged Knee Brace",
+                        "L1832": "Elastic Knee Brace",
+                        "L1830": "Rigid Knee Brace",
+                        "L1831": "Knee Orthosis, Single Upright",
+                        "L1843": "Knee Orthosis, Double Upright",
+                        "L1844": "Knee Orthosis, Four-Point",
+                        "L1846": "Knee Orthosis, Multi-Axis",
+                        "L1847": "Knee Orthosis, Custom",
+                        # DME - Mobility aids
+                        "E0114": "Crutches, Forearm",
+                        "E0116": "Crutches, Underarm",
+                        "E0118": "Crutches, Forearm, Adjustable",
+                        "E0130": "Walker, Rigid",
+                        "E0135": "Walker, Wheeled",
+                        "E0136": "Walker, Rigid, Adjustable",
+                        "E0137": "Walker, Wheeled, Adjustable",
+                        "E0138": "Walker, Heavy Duty",
+                        "E0140": "Walker, Folding",
+                        "E0141": "Walker, Folding, Adjustable",
+                        "E0143": "Walker, Wheeled, Folding",
+                        "E0144": "Walker, Wheeled, Folding, Adjustable",
+                        "E0147": "Walker, Heavy Duty, Wheeled",
+                        "E0148": "Walker, Heavy Duty, Wheeled, Adjustable",
+                        "E0149": "Walker, Bariatric",
+                        # DME - Canes
+                        "E0100": "Cane, Standard",
+                        "E0105": "Cane, Adjustable",
+                        "E0110": "Cane, Quad",
+                        "E0111": "Cane, Quad, Adjustable",
+                        "E0112": "Cane, Offset",
+                        "E0113": "Cane, Offset, Adjustable",
+                        # Cryotherapy
+                        "E0218": "Cryotherapy Device",
+                        "E0236": "Cold Therapy Pump",
+                        "E0235": "Cold Therapy Unit",
+                        "E0239": "Cold Therapy System",
+                        # Surgical supplies
+                        "A4566": "Sling or Arm Support",
+                        "A4570": "Splint",
+                        "A4572": "Splint, Custom",
+                        "A4590": "Elastic Bandage",
+                        "A4636": "Surgical Dressing",
+                        "A4637": "Surgical Dressing, Advanced",
+                        "A4638": "Surgical Dressing, Specialty",
+                        # Post-op care supplies
+                        "A4217": "Sterile Saline Solution",
+                        "A4218": "Sterile Water",
+                        "A4219": "Antiseptic Solution",
+                        "A4220": "Antibiotic Ointment",
+                        "A4221": "Wound Care Supplies",
+                        # Additional supplies
+                        "A6251": "Gauze Pad",
+                        "A6252": "Gauze Pad, Sterile",
+                        "A6253": "Gauze Roll",
+                        "A6254": "Gauze Roll, Sterile",
+                        "A6255": "Tape, Medical",
+                        "A6256": "Tape, Surgical"
+                    }
+                    
+                    for supportive_cpt in supportive_cpts:
+                        if supportive_cpt and str(supportive_cpt).strip() and str(supportive_cpt).strip() != cpt.strip():
+                            cpt_code = str(supportive_cpt).strip()
+                            # Create service name from CPT description or use generic name
+                            service_name = cpt_descriptions.get(cpt_code, f"Supportive Service ({cpt_code})")
+                            
+                            supportive_request = {
+                                "type": "treatment",
+                                "diagnosis": diagnosis,
+                                "diagnosisCode": diagnosis_code,
+                                "serviceRequested": service_name,
+                                "cpt": cpt_code,
+                                "frequencyDuration": frequency_duration if frequency_duration else "As needed"
+                            }
+                            requests.append(supportive_request)
+                            logger.info(f"RFA supportive item: {service_name} (CPT: {cpt_code})")
+                    
+                    logger.info(f"RFA item '{service_requested}': Created {len(supportive_cpts)} separate supportive CPT request items (total {len(requests)} requests)")
+                else:
+                    logger.debug(f"RFA item '{service_requested}': No supportive CPTs to split into separate items")
     
     if requests:
         logger.info(f"RFA Section A: {len(requests)} requests extracted (from SOAP dictation)")
@@ -1993,11 +2184,11 @@ CRITICAL RULES FOR SUPPORTIVE CPTs - MAXIMIZE CPT CODES:
 
 5. For DME/Supplies, if a device is mentioned (boot, brace, crutches), include the appropriate HCPCS L-code
 
-6. For surgeries: Include ALL surgical component codes (e.g., 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887 for knee procedures, 20924, 20925, 20926 for grafts, C1713 for anchors) AND ALL DME options (braces L1833/L1845/L1832/L1830, crutches E0114/E0116, walkers E0130/E0135, etc.). Include ALL variations and alternatives. The goal is to include EVERY code that applies - be comprehensive. TARGET: 20-50 codes for surgeries.
+6. For surgeries: Include ALL surgical component codes (e.g., 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876 for knee procedures, 20924, 20925, 20926, 20927, 20928, 20929 for grafts, C1713, C1714, C1715 for anchors) AND ALL DME options (braces L1833/L1845/L1832/L1830/L1831/L1843/L1844/L1846/L1847, crutches E0114/E0116/E0118, walkers E0130/E0135/E0136/E0137/E0138/E0140/E0141/E0143/E0144/E0147/E0148/E0149, canes E0100/E0105/E0110/E0111/E0112/E0113, cryotherapy E0218/E0236/E0235/E0239, supplies A4566/A4570/A4572/A4590/A4636/A4637/A4638/A4217/A4218/A4219/A4220/A4221/A6251/A6252/A6253/A6254/A6255/A6256, etc.). Include ALL variations and alternatives. The goal is to include EVERY code that applies - be comprehensive. TARGET: 50-60 codes for surgeries.
 
-7. Supportive CPTs should be an array with 20-50 codes for surgeries: ["29881", "29882", "29880", "29883", "29877", "29879", "29884", "29887", "20924", "20925", "20926", "C1713", "L1833", "L1845", "L1832", "L1830", "E0114", "E0116", "E0130", "E0135", "E0218", "E0236", "A4566", ...] or [] if none. For surgeries, aim for 20-50 codes minimum.
+7. Supportive CPTs should be an array with 50-60 codes for surgeries: ["29881", "29882", "29880", "29883", "29877", "29879", "29884", "29887", "29870", "29871", "29873", "29874", "29875", "29876", "20924", "20925", "20926", "20927", "20928", "20929", "C1713", "C1714", "C1715", "L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847", "E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149", "E0100", "E0105", "E0110", "E0111", "E0112", "E0113", "E0218", "E0236", "E0235", "E0239", "A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221", "A6251", "A6252", "A6253", "A6254", "A6255", "A6256", ...] or [] if none. For surgeries, aim for 50-60 codes minimum.
 
-8. **PRIMARY GOAL - MAXIMUM CPT CODES (20-50 FOR SURGERIES):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, you MUST generate 20-50 supportive CPT codes. You must be thorough and comprehensive. Include ALL applicable codes: all codes mentioned in dictation, ALL surgical components (including all variations), ALL DME options (all brace types, all crutch types, all walker types), cryotherapy devices, guidance codes, supplies, post-op care codes, etc. The goal is MAXIMUM CPT codes (20-50 for surgeries) - do not miss any applicable codes. Be exhaustive - include every possible code that could apply.
+8. **PRIMARY GOAL - MAXIMUM CPT CODES (50-60 FOR SURGERIES):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, you MUST generate 50-60 supportive CPT codes minimum. You must be thorough and comprehensive. Include ALL applicable codes: all codes mentioned in dictation, ALL surgical components (including all variations: 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876), ALL graft codes (20924, 20925, 20926, 20927, 20928, 20929), ALL implant codes (C1713, C1714, C1715), ALL DME options (all brace types L1833/L1845/L1832/L1830/L1831/L1843/L1844/L1846/L1847, all crutch types E0114/E0116/E0118, all walker types E0130/E0135/E0136/E0137/E0138/E0140/E0141/E0143/E0144/E0147/E0148/E0149, all cane types E0100/E0105/E0110/E0111/E0112/E0113), ALL cryotherapy devices (E0218/E0236/E0235/E0239), ALL surgical supplies (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256), guidance codes, post-op care codes, etc. The goal is MAXIMUM CPT codes (50-60 for surgeries) - do not miss any applicable codes. Be exhaustive - include every possible code that could apply. Generate 50-60 codes minimum.
 
 9. Be thorough - supportive CPTs are CRITICAL for accurate billing and authorization
 
