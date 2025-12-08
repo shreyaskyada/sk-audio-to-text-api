@@ -89,39 +89,132 @@ def str_or_nd(val: Optional[str]) -> str:
     return val if (val is not None and str(val).strip() != "") else "[Not documented]"
 
 
+def get_comprehensive_supportive_cpts_for_surgery(primary_cpt: str, service_description: str) -> List[str]:
+    """
+    Get comprehensive list of supportive CPT codes for surgeries to maximize codes (20-50 codes).
+    This function provides a comprehensive list of ALL applicable codes for common orthopedic surgeries.
+    """
+    service_lower = str(service_description).lower()
+    primary_cpt_str = str(primary_cpt).strip()
+    
+    comprehensive_cpts = []
+    
+    # ACL Reconstruction (29888) - Comprehensive code list (20-50 codes)
+    if primary_cpt_str == "29888" or "acl" in service_lower or "anterior cruciate" in service_lower:
+        # Meniscus procedures - ALL variations
+        comprehensive_cpts.extend(["29882", "29881", "29880", "29883", "29877", "29879", "29884", "29887"])
+        # Graft/Allograft codes - ALL variations
+        comprehensive_cpts.extend(["20924", "20925", "20926", "20927", "20928", "20929"])
+        # Implant/Anchor codes - ALL variations
+        comprehensive_cpts.extend(["C1713", "C1714", "C1715"])
+        # Additional arthroscopic procedures
+        comprehensive_cpts.extend(["29870", "29871", "29873", "29874", "29875", "29876"])
+        # DME - Braces - ALL types
+        comprehensive_cpts.extend(["L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847"])
+        # DME - Mobility aids - ALL types
+        comprehensive_cpts.extend(["E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149"])
+        # DME - Canes and walkers
+        comprehensive_cpts.extend(["E0100", "E0105", "E0110", "E0111", "E0112", "E0113"])
+        # Cryotherapy - MANDATORY - ALL variations
+        comprehensive_cpts.extend(["E0218", "E0236", "E0235", "E0239"])
+        # Surgical supplies and accessories
+        comprehensive_cpts.extend(["A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638"])
+        # Post-op care supplies
+        comprehensive_cpts.extend(["A4217", "A4218", "A4219", "A4220", "A4221"])
+        # Additional surgical supplies
+        comprehensive_cpts.extend(["A6251", "A6252", "A6253", "A6254", "A6255", "A6256"])
+    
+    # Knee arthroscopy (29881) - Comprehensive code list
+    elif primary_cpt_str == "29881" or ("knee" in service_lower and "arthroscopy" in service_lower):
+        comprehensive_cpts.extend(["29882", "29880", "29883", "29877", "29879", "29884", "29887", "29870", "29871", "29873", "29874", "29875", "29876"])
+        comprehensive_cpts.extend(["L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847"])
+        comprehensive_cpts.extend(["E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149"])
+        comprehensive_cpts.extend(["E0100", "E0105", "E0110", "E0111", "E0112", "E0113"])
+        comprehensive_cpts.extend(["E0218", "E0236", "E0235", "E0239"])
+        comprehensive_cpts.extend(["A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221"])
+    
+    # Meniscus repair (29882) - Comprehensive code list
+    elif primary_cpt_str == "29882" or "meniscus" in service_lower:
+        comprehensive_cpts.extend(["29881", "29880", "29883", "29877", "29879", "29884", "29887", "29870", "29871", "29873", "29874", "29875", "29876"])
+        comprehensive_cpts.extend(["L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847"])
+        comprehensive_cpts.extend(["E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149"])
+        comprehensive_cpts.extend(["E0100", "E0105", "E0110", "E0111", "E0112", "E0113"])
+        comprehensive_cpts.extend(["E0218", "E0236", "E0235", "E0239"])
+        comprehensive_cpts.extend(["A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221"])
+    
+    # For any surgery, add standard codes
+    if any(keyword in service_lower for keyword in ["surgery", "surgical", "reconstruction", "repair", "arthroscopy"]):
+        # Always add cryotherapy (if not already added)
+        if "E0218" not in comprehensive_cpts:
+            comprehensive_cpts.append("E0218")
+        # Always add common DME if not already added
+        if "E0114" not in comprehensive_cpts:
+            comprehensive_cpts.append("E0114")
+        if "L1833" not in comprehensive_cpts and ("knee" in service_lower or "acl" in service_lower):
+            comprehensive_cpts.append("L1833")
+    
+    return list(set(comprehensive_cpts))  # Remove duplicates
+
+
 def generate_supportive_cpts_for_request(primary_cpt: str, service_description: str, openai_client=None) -> List[str]:
     """
     Generate supportive CPT codes for a request based on primary CPT and service description.
-    Returns a list of supportive CPT codes, or empty list if unable to generate.
+    Returns a comprehensive list of supportive CPT codes (aiming for 20-50 codes for surgeries).
     """
     if not primary_cpt or not primary_cpt.strip():
         return []
+    
+    # First, get comprehensive codes from predefined mappings for surgeries
+    service_lower = str(service_description).lower()
+    is_surgery = any(keyword in service_lower for keyword in [
+        "surgery", "surgical", "reconstruction", "repair", "arthroscopy", 
+        "meniscectomy", "meniscus", "acl", "discectomy", "laminectomy", 
+        "fusion", "fixation", "procedure"
+    ])
+    
+    comprehensive_cpts = []
+    
+    if is_surgery:
+        # Get comprehensive codes from predefined function
+        comprehensive_cpts = get_comprehensive_supportive_cpts_for_surgery(primary_cpt, service_description)
+        logger.info(f"Generated {len(comprehensive_cpts)} comprehensive CPT codes for surgery '{service_description}'")
     
     if not openai_client:
         try:
             openai_client = create_openai_client()
         except Exception:
             logger.warning("Could not create OpenAI client for supportive CPT generation")
-            return []
+            # Return comprehensive codes even if AI fails
+            return comprehensive_cpts
     
     try:
         from app.cpt_mappings import generate_cpt_with_ai
         
         # Build procedure description from service and CPT
-        procedure_description = f"{service_description} (CPT: {primary_cpt})"
+        procedure_description = f"{service_description} (CPT: {primary_cpt}). Generate MAXIMUM supportive CPT codes (20-50 codes). Include ALL surgical components, DME, supplies, cryotherapy devices, guidance codes, and any other applicable codes."
         
         # Use the existing AI function to generate CPTs
         # It will return both primary and supportive, but we only need supportive
-        _, supportive_cpts = generate_cpt_with_ai(procedure_description, openai_client)
+        _, ai_generated_cpts = generate_cpt_with_ai(procedure_description, openai_client)
         
-        if supportive_cpts and isinstance(supportive_cpts, list):
-            # Filter out empty strings and normalize
-            return [str(code).strip() for code in supportive_cpts if code and str(code).strip()]
+        # Merge comprehensive codes with AI-generated codes
+        if ai_generated_cpts and isinstance(ai_generated_cpts, list):
+            for code in ai_generated_cpts:
+                code_str = str(code).strip()
+                if code_str and code_str != primary_cpt.strip() and code_str not in comprehensive_cpts:
+                    comprehensive_cpts.append(code_str)
         
-        return []
+        # Filter out empty strings and normalize
+        final_cpts = [str(code).strip() for code in comprehensive_cpts if code and str(code).strip()]
+        
+        logger.info(f"Final supportive CPT codes for '{service_description}': {len(final_cpts)} codes - {', '.join(final_cpts[:10])}{'...' if len(final_cpts) > 10 else ''}")
+        
+        return final_cpts
+        
     except Exception as e:
         logger.warning(f"Error generating supportive CPTs for CPT {primary_cpt}: {e}")
-        return []
+        # Return comprehensive codes even if AI fails
+        return comprehensive_cpts
 
 
 def to_mmddyyyy(s: Optional[str]) -> Optional[str]:
@@ -577,8 +670,21 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                     "frequencyDuration": frequency_duration
                 }
                 
-                # Auto-fetch supportive CPTs if we have a primary CPT but no supportive CPTs
-                if cpt and cpt.strip() and (not supportive_cpts or len(supportive_cpts) == 0):
+                # CRITICAL: Extract CPT codes mentioned in the SOAP dictation text
+                soap_text = str(soap_doc.get("transcription") or soap_doc.get("corrected_transcription") or soap_doc.get("formatted_soap_note") or "")
+                mentioned_cpt_codes = extract_cpt_codes_from_text(soap_text)
+                
+                # Merge mentioned CPT codes into supportive CPTs (avoid duplicating primary CPT)
+                if mentioned_cpt_codes:
+                    for code in mentioned_cpt_codes:
+                        code_str = str(code).strip()
+                        if code_str and code_str != cpt.strip() and code_str not in supportive_cpts:
+                            supportive_cpts.append(code_str)
+                            logger.info(f"Added mentioned CPT code {code_str} to supportive CPTs for '{service_requested}'")
+                
+                # CRITICAL: Always generate comprehensive supportive CPTs to maximize codes (20-50 for surgeries)
+                # Even if some codes already exist, we want to add comprehensive codes
+                if cpt and cpt.strip():
                     try:
                         openai_client = create_openai_client()
                         generated_supportive = generate_supportive_cpts_for_request(
@@ -587,10 +693,45 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                             openai_client
                         )
                         if generated_supportive:
-                            supportive_cpts = generated_supportive
-                            logger.info(f"RFA item '{service_requested}': Auto-generated {len(supportive_cpts)} supportive CPTs: {', '.join(supportive_cpts)}")
+                            # Merge generated codes with existing codes (avoid duplicates)
+                            for gen_code in generated_supportive:
+                                gen_code_str = str(gen_code).strip()
+                                if gen_code_str and gen_code_str != cpt.strip() and gen_code_str not in supportive_cpts:
+                                    supportive_cpts.append(gen_code_str)
+                            logger.info(f"RFA item '{service_requested}': Enhanced to {len(supportive_cpts)} total supportive CPTs (added comprehensive codes)")
+                        elif not supportive_cpts or len(supportive_cpts) == 0:
+                            # If no codes generated and none exist, try to get comprehensive codes
+                            comprehensive_cpts = get_comprehensive_supportive_cpts_for_surgery(cpt, service_requested)
+                            if comprehensive_cpts:
+                                supportive_cpts = comprehensive_cpts
+                                logger.info(f"RFA item '{service_requested}': Added {len(supportive_cpts)} comprehensive CPT codes")
                     except Exception as e:
                         logger.warning(f"Could not auto-generate supportive CPTs for '{service_requested}' (CPT: {cpt}): {e}")
+                        # Fallback: try to get comprehensive codes even if AI fails
+                        if not supportive_cpts or len(supportive_cpts) < 10:
+                            try:
+                                comprehensive_cpts = get_comprehensive_supportive_cpts_for_surgery(cpt, service_requested)
+                                if comprehensive_cpts:
+                                    for comp_code in comprehensive_cpts:
+                                        if comp_code not in supportive_cpts:
+                                            supportive_cpts.append(comp_code)
+                                    logger.info(f"RFA item '{service_requested}': Added {len(comprehensive_cpts)} comprehensive CPT codes as fallback")
+                            except Exception as e2:
+                                logger.warning(f"Could not get comprehensive CPTs: {e2}")
+                
+                # CRITICAL: For surgeries, ensure cryotherapy device code is included
+                service_lower = str(service_requested).lower()
+                is_surgery = any(keyword in service_lower for keyword in [
+                    "surgery", "surgical", "reconstruction", "repair", "arthroscopy", 
+                    "meniscectomy", "meniscus", "acl", "discectomy", "laminectomy", 
+                    "fusion", "fixation", "procedure"
+                ])
+                
+                if is_surgery:
+                    # Ensure cryotherapy device code is included
+                    if "E0218" not in supportive_cpts and "E0236" not in supportive_cpts:
+                        supportive_cpts.append("E0218")  # Default to E0218
+                        logger.info(f"Added mandatory cryotherapy device code E0218 for surgery '{service_requested}'")
                 
                 # Always add supportive CPTs as an array (even if empty) when there's a primary CPT
                 # This ensures proper array format in the PR1 form
@@ -689,6 +830,145 @@ def extract_hpi_from_intake(intake_doc: Optional[Dict[str, Any]]) -> Optional[st
         return " | ".join(hpi_parts)
     
     return None
+
+
+def filter_examination_findings_from_hpi(text: str) -> tuple[str, str]:
+    """Filter out examination findings, imaging results, and test results from HPI text
+    
+    Removes sentences/phrases that contain:
+    - Examination phrases (Examination reveals, On exam, Physical examination, etc.)
+    - Imaging phrases (MRI confirms, MRI shows, X-ray shows, etc.)
+    - Test result phrases (test is positive, test reveals, etc.)
+    - Observation phrases (walks with, gait is, range of motion is, etc.)
+    
+    Returns:
+        tuple: (filtered_hpi_text, excluded_findings_text)
+        - filtered_hpi_text: Text with only patient-reported information
+        - excluded_findings_text: Text containing examination findings that should go to Objective section
+    """
+    if not text or not isinstance(text, str):
+        return (text or "", "")
+    
+    import re
+    
+    # Split text into sentences (handle multiple separators)
+    sentences = re.split(r'[.|!?]\s+', text)
+    
+    # Patterns that indicate examination/objective findings (case-insensitive)
+    examination_patterns = [
+        r'examination\s+reveals',
+        r'on\s+exam',
+        r'physical\s+examination',
+        r'clinical\s+examination',
+        r'physical\s+exam',
+        r'clinical\s+exam',
+        r'exam\s+shows',
+        r'exam\s+demonstrates',
+        r'examination\s+shows',
+        r'examination\s+demonstrates',
+        r'on\s+examination',
+        r'during\s+examination',
+        r'upon\s+examination',
+        r'exam\s+reveals',
+        r'exam\s+today',
+        r'today\s+on\s+exam',
+        r'on\s+physical\s+exam',
+        r'on\s+clinical\s+exam',
+    ]
+    
+    imaging_patterns = [
+        r'mri\s+confirms',
+        r'mri\s+shows',
+        r'mri\s+reveals',
+        r'mri\s+demonstrates',
+        r'on\s+mri',
+        r'mri\s+review',
+        r'on\s+mri\s+review',
+        r'mri\s+indicates',
+        r'x-ray\s+shows',
+        r'x-ray\s+reveals',
+        r'x-ray\s+demonstrates',
+        r'ct\s+shows',
+        r'ct\s+scan\s+shows',
+        r'imaging\s+shows',
+        r'imaging\s+reveals',
+        r'imaging\s+demonstrates',
+        r'imaging\s+confirms',
+        r'radiograph\s+shows',
+        r'study\s+shows',
+        r'study\s+reveals',
+        r'report\s+shows',
+        r'report\s+reveals',
+    ]
+    
+    test_patterns = [
+        r'test\s+is\s+positive',
+        r'test\s+positive',
+        r'positive\s+test',
+        r'test\s+negative',
+        r'negative\s+test',
+        r'test\s+reveals',
+        r'test\s+shows',
+        r'special\s+test',
+        r'provocative\s+test',
+        r'positive\s+\w+\s+test',  # e.g., "positive ACL drawer test"
+        r'positive\s+\w+\s+drawer',  # e.g., "positive ACL drawer"
+        r'positive\s+\w+\s+maneuver',  # e.g., "positive Lachman maneuver"
+    ]
+    
+    observation_patterns = [
+        r'walks\s+with',
+        r'gait\s+is',
+        r'range\s+of\s+motion\s+is',
+        r'rom\s+is',
+        r'strength\s+is',
+        r'neurovascular',
+        r'pulses\s+are',
+        r'sensation\s+is',
+        r'reflexes\s+are',
+        r'inspection\s+reveals',
+        r'palpation\s+reveals',
+        r'auscultation\s+reveals',
+    ]
+    
+    # Combine all patterns
+    all_patterns = examination_patterns + imaging_patterns + test_patterns + observation_patterns
+    
+    # Filter sentences
+    filtered_sentences = []
+    excluded_sentences = []
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        
+        # Check if sentence contains any of the exclusion patterns
+        should_exclude = False
+        sentence_lower = sentence.lower()
+        
+        for pattern in all_patterns:
+            if re.search(pattern, sentence_lower, re.IGNORECASE):
+                should_exclude = True
+                logger.info(f"Filtering out examination finding from HPI: {sentence[:100]}...")
+                break
+        
+        if should_exclude:
+            excluded_sentences.append(sentence)
+        else:
+            filtered_sentences.append(sentence)
+    
+    # Rejoin sentences
+    filtered_text = ". ".join(filtered_sentences)
+    excluded_text = ". ".join(excluded_sentences)
+    
+    # Clean up any double spaces or punctuation issues
+    filtered_text = re.sub(r'\s+', ' ', filtered_text)
+    filtered_text = re.sub(r'\.\s*\.', '.', filtered_text)
+    excluded_text = re.sub(r'\s+', ' ', excluded_text)
+    excluded_text = re.sub(r'\.\s*\.', '.', excluded_text)
+    
+    return (filtered_text.strip(), excluded_text.strip())
 
 
 def extract_objective_findings_from_intake(intake_doc: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -923,7 +1203,18 @@ def build_section_b(
                 logger.info("Including supplementary HPI from intake form (Sections G + H)")
     
     # Combine all HPI sources (SOAP dictation is primary)
-    chief_complaint = " | ".join(filter(None, chief_complaint_parts)) if chief_complaint_parts else None
+    chief_complaint_raw = " | ".join(filter(None, chief_complaint_parts)) if chief_complaint_parts else None
+    
+    # CRITICAL: Filter out examination findings from HPI (they should only be in Objective section)
+    # Store excluded findings to add to Objective section
+    excluded_findings_from_hpi = []
+    if chief_complaint_raw:
+        chief_complaint, excluded_findings = filter_examination_findings_from_hpi(chief_complaint_raw)
+        if excluded_findings:
+            excluded_findings_from_hpi.append(excluded_findings)
+            logger.info("Filtered examination findings from HPI - will be added to Objective section")
+    else:
+        chief_complaint = None
     
     # Log warning if no subjective data found
     if not chief_complaint:
@@ -1036,7 +1327,14 @@ def build_section_b(
         else:
             logger.warning("Intake form Section I (vitals) not found - Objective Findings should include both dictation and vitals per mapping requirements")
     
-    # Combine SOAP dictation + intake form vitals (both required per mapping)
+    # CRITICAL: Add examination findings that were filtered from HPI to Objective section
+    if excluded_findings_from_hpi:
+        for excluded in excluded_findings_from_hpi:
+            if excluded and excluded.strip():
+                physical_exam_parts.append(excluded.strip())
+                logger.info("Added examination findings filtered from HPI to Objective section")
+    
+    # Combine SOAP dictation + intake form vitals + excluded findings from HPI (all required per mapping)
     physical_exam = " | ".join(filter(None, physical_exam_parts)) if physical_exam_parts else None
     
     # DIAGNOSIS (Mandatory) - Data Source: Dictation + MTUS mapping
@@ -1569,6 +1867,42 @@ Return ONLY the objective findings text."""
         return None
 
 
+def extract_cpt_codes_from_text(text: str) -> List[str]:
+    """Extract all CPT/HCPCS codes mentioned in the text using regex patterns
+    
+    Returns a list of unique CPT/HCPCS codes found in the text.
+    CPT codes are 5-digit numbers, HCPCS codes start with letters (A-Z) followed by numbers.
+    """
+    if not text or not isinstance(text, str):
+        return []
+    
+    import re
+    
+    # Pattern for CPT codes: 5-digit numbers (e.g., 29881, 29882, 20924)
+    cpt_pattern = r'\b(\d{5})\b'
+    
+    # Pattern for HCPCS codes: Letter(s) followed by numbers (e.g., L1833, E0114, E0218, E0236, C1713)
+    hcpcs_pattern = r'\b([A-Z]\d{4,5})\b'
+    
+    found_codes = []
+    
+    # Find all CPT codes
+    cpt_matches = re.findall(cpt_pattern, text)
+    found_codes.extend(cpt_matches)
+    
+    # Find all HCPCS codes
+    hcpcs_matches = re.findall(hcpcs_pattern, text)
+    found_codes.extend(hcpcs_matches)
+    
+    # Remove duplicates and return
+    unique_codes = list(set(found_codes))
+    
+    if unique_codes:
+        logger.info(f"Extracted {len(unique_codes)} CPT/HCPCS codes from text: {', '.join(unique_codes)}")
+    
+    return unique_codes
+
+
 def extract_rfa_items_from_text(text: str) -> Optional[List[Dict[str, Any]]]:
     """Extract RFA items (treatment requests and drug requests) from transcription or SOAP text using GPT"""
     if not text or not str(text).strip():
@@ -1648,12 +1982,24 @@ Return a JSON object with an "rfa_items" array containing all extracted items. U
   ]
 }
 
-CRITICAL RULES FOR SUPPORTIVE CPTs:
-1. For injection procedures, ALWAYS include fluoroscopic guidance (77003) or ultrasound guidance (76942) if the procedure typically requires it, even if not explicitly mentioned
-2. For procedures involving imaging guidance, extract the guidance code as a supportive CPT
-3. For DME/Supplies, if a device is mentioned (boot, brace, crutches), include the appropriate HCPCS L-code
-4. Supportive CPTs should be an array: ["77003", "L4361"] or [] if none
-5. Be thorough - supportive CPTs are CRITICAL for accurate billing and authorization
+CRITICAL RULES FOR SUPPORTIVE CPTs - MAXIMIZE CPT CODES:
+1. **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT/HCPCS code is mentioned in the text (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in the supportiveCpts array, even if it seems redundant. Example: If text mentions "29881", it MUST appear in supportiveCpts. Do NOT omit any code that is explicitly mentioned in the dictation. Double-check the text carefully for any CPT codes mentioned.
+
+2. **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE (E0218/E0236):** For EVERY surgery mentioned, you MUST automatically include cryotherapy device code: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions. These are standard post-surgical DME items and must be included for ALL surgical procedures.
+
+3. For injection procedures, ALWAYS include fluoroscopic guidance (77003) or ultrasound guidance (76942) if the procedure typically requires it, even if not explicitly mentioned
+
+4. For procedures involving imaging guidance, extract the guidance code as a supportive CPT
+
+5. For DME/Supplies, if a device is mentioned (boot, brace, crutches), include the appropriate HCPCS L-code
+
+6. For surgeries: Include ALL surgical component codes (e.g., 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887 for knee procedures, 20924, 20925, 20926 for grafts, C1713 for anchors) AND ALL DME options (braces L1833/L1845/L1832/L1830, crutches E0114/E0116, walkers E0130/E0135, etc.). Include ALL variations and alternatives. The goal is to include EVERY code that applies - be comprehensive. TARGET: 20-50 codes for surgeries.
+
+7. Supportive CPTs should be an array with 20-50 codes for surgeries: ["29881", "29882", "29880", "29883", "29877", "29879", "29884", "29887", "20924", "20925", "20926", "C1713", "L1833", "L1845", "L1832", "L1830", "E0114", "E0116", "E0130", "E0135", "E0218", "E0236", "A4566", ...] or [] if none. For surgeries, aim for 20-50 codes minimum.
+
+8. **PRIMARY GOAL - MAXIMUM CPT CODES (20-50 FOR SURGERIES):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, you MUST generate 20-50 supportive CPT codes. You must be thorough and comprehensive. Include ALL applicable codes: all codes mentioned in dictation, ALL surgical components (including all variations), ALL DME options (all brace types, all crutch types, all walker types), cryotherapy devices, guidance codes, supplies, post-op care codes, etc. The goal is MAXIMUM CPT codes (20-50 for surgeries) - do not miss any applicable codes. Be exhaustive - include every possible code that could apply.
+
+9. Be thorough - supportive CPTs are CRITICAL for accurate billing and authorization
 
 CRITICAL: Use EXACT field names (camelCase):
 - For treatments: type="treatment", diagnosis, diagnosisCode, serviceRequested, cpt, supportiveCpts (array), frequencyDuration
@@ -1691,6 +2037,45 @@ Return a JSON object with rfa_items array."""
         
         # Extract rfa_items array from response
         rfa_items = result.get("rfa_items") or []
+        
+        # CRITICAL: Extract all CPT codes mentioned in the text and add them to supportive CPTs
+        mentioned_cpt_codes = extract_cpt_codes_from_text(text_to_analyze)
+        
+        # For each RFA item, merge mentioned CPT codes into supportive CPTs
+        if mentioned_cpt_codes and rfa_items:
+            for item in rfa_items:
+                if item.get("type") == "treatment":
+                    # Get existing supportive CPTs
+                    existing_supportive = item.get("supportiveCpts", [])
+                    if not isinstance(existing_supportive, list):
+                        existing_supportive = []
+                    
+                    # Get primary CPT to avoid duplicating it
+                    primary_cpt = item.get("cpt", "").strip()
+                    
+                    # Add all mentioned codes that aren't already in the list and aren't the primary CPT
+                    for code in mentioned_cpt_codes:
+                        code_str = str(code).strip()
+                        if code_str and code_str != primary_cpt and code_str not in existing_supportive:
+                            existing_supportive.append(code_str)
+                            logger.info(f"Added mentioned CPT code {code_str} to supportive CPTs for '{item.get('serviceRequested', 'unknown')}'")
+                    
+                    item["supportiveCpts"] = existing_supportive
+                    
+                    # CRITICAL: For surgeries, ensure cryotherapy device code is included
+                    service_requested = str(item.get("serviceRequested", "")).lower()
+                    is_surgery = any(keyword in service_requested for keyword in [
+                        "surgery", "surgical", "reconstruction", "repair", "arthroscopy", 
+                        "meniscectomy", "meniscus", "acl", "discectomy", "laminectomy", 
+                        "fusion", "fixation", "procedure"
+                    ])
+                    
+                    if is_surgery:
+                        # Ensure cryotherapy device code is included
+                        if "E0218" not in existing_supportive and "E0236" not in existing_supportive:
+                            existing_supportive.append("E0218")  # Default to E0218
+                            item["supportiveCpts"] = existing_supportive
+                            logger.info(f"Added mandatory cryotherapy device code E0218 for surgery '{item.get('serviceRequested', 'unknown')}'")
         
         if rfa_items and isinstance(rfa_items, list) and len(rfa_items) > 0:
             logger.info(f"Successfully extracted {len(rfa_items)} RFA items from text")
