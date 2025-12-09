@@ -124,32 +124,45 @@ CRITICAL PHYSICAL EXAM REQUIREMENT - INCLUDE EXAMINATION FINDINGS AND DOCTOR-REV
   - Imaging/Studies Review: "MRI: Complete tear of ACL and medial meniscus"
 - The Imaging/Studies Review section should contain the ACTUAL findings in format "[Study Type]: [Findings]", NOT generic summaries like "MRI of knee reviewed"
 
-CRITICAL CPT CODE GENERATION - FULLY AI-DRIVEN (NO MAPPINGS) - MAXIMIZE CODES:
+CRITICAL CPT CODE GENERATION - FULLY AI-DRIVEN (NO STATIC MAPPINGS) - DYNAMIC GENERATION:
 - You have comprehensive knowledge of ALL CPT/HCPCS codes for orthopedic procedures, surgeries, injections, imaging, therapy, and DME
-- Generate accurate CPT/HCPCS codes for ANY procedure mentioned - use your medical coding expertise, do NOT rely on predefined mappings
+- Generate accurate CPT/HCPCS codes for ANY procedure mentioned based on the transcription - use your medical coding expertise, do NOT rely on predefined static mappings
+- Analyze the transcription dynamically and generate codes based on what is actually mentioned or implied
 - **CRITICAL - E/M CODE LEVEL REQUIREMENT:**
   * E/M codes MUST be Level 4 or Level 5 ONLY - do NOT use Level 3 codes
   * For new patients: Use 99204 (Level 4) or 99205 (Level 5) - do NOT use 99203 (Level 3)
   * For established patients: Use 99214 (Level 4) or 99215 (Level 5) - do NOT use 99213 (Level 3)
   * Select Level 4 or Level 5 based on the complexity of the visit and Medical Decision Making (MDM) level
   * Level 4 = Moderate to high complexity, Level 5 = High complexity
-- **CRITICAL - INCLUDE ALL CODES MENTIONED IN DICTATION - MANDATORY:** If ANY CPT code is mentioned in the dictation (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in the Supportive CPTs section, even if it seems redundant. Example: If dictation mentions "29881", it MUST appear in Supportive CPTs along with other codes. Do NOT omit any code that is explicitly mentioned in the dictation.
-- **CRITICAL - CRYOTHERAPY DEVICE FOR ALL SURGERIES - MANDATORY:** For EVERY surgery mentioned, you MUST automatically include cryotherapy device codes: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY for ALL surgical procedures - no exceptions. These are standard post-surgical DME items and must be included for every surgery.
- - **CRITICAL - MAXIMIZE CPT CODES - GOAL IS MAXIMUM CODES (30+ FOR SURGERIES, 50+ PREFERRED):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, you MUST generate 30+ supportive CPT codes minimum (50+ codes preferred). You must be thorough and comprehensive. Include ALL applicable codes:
-   * ALL surgical component codes (e.g., 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876 for knee procedures)
-   * ALL graft codes (20924, 20925, 20926, 20927, 20928, 20929)
-   * ALL implant codes (C1713, C1714, C1715)
-   * ALL DME codes (ALL brace types: L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847, ALL crutch types: E0114, E0116, E0118, ALL walker types: E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149, ALL cane types: E0100, E0105, E0110, E0111, E0112, E0113)
-   * ALL cryotherapy devices (E0218, E0236, E0235, E0239) for ALL surgeries
-   * ALL guidance codes for injections (77003, 77002, 76942, 76941)
-   * ALL therapy codes (97110, 97140, 97530, 97116, 97112, 97113)
-   * ALL supply codes (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, A4463, A4464, A4465, A4648, A4649, A4650)
-   * All devices and supplies that are typically used with the procedure
- - For RFA sections, ALWAYS generate COMPLETE supportive CPTs - include ALL applicable codes (30+ codes minimum for surgeries, 50+ codes preferred). Do NOT stop at 5-7 codes - you MUST generate 30+ codes.
- - NEVER use "[Not documented]" if procedures are mentioned - always generate the appropriate codes
- - The system is fully generic - you can handle ANY service type without needing specific mappings
- - Example: For a knee surgery with meniscus repair, you MUST generate 30+ codes including: 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 20924, 20925, 20926, C1713, C1714, C1715, L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847, E0114, E0116, E0118, E0130, E0135, E0218, E0236, A4566, A4570, A4636, A4217, A6251, A6252, A6253, A6254, A6255, A6256, 77003, 97110, 97140, 97530, A4463, A4648, A4649, A4650, etc. - include ALL codes that apply AND all codes mentioned in dictation. The goal is MAXIMUM CPT codes (30+ minimum, 50+ preferred for surgeries).
-- **CRITICAL REFERENCE - ACL RECONSTRUCTION WITH MEDIAL MENISCUS BUCKET HANDLE TEAR:** For ACL reconstruction with medial meniscus bucket handle tear procedures, refer to the comprehensive CPT code list in the RFA section (rule #10) which includes: Primary CPT 29888, and Supportive CPTs: 29882 (meniscus repair), 20924 (graft), C1713 (anchor), L1833/L1845 (braces), E0114 (crutches), E0218/E0236 (cryotherapy - MANDATORY), plus additional codes for any additional procedures performed (29877, 29879, 29884, etc.). Always include ALL applicable codes for maximum reimbursement.
+- **CRITICAL - INCLUDE ALL CODES MENTIONED IN DICTATION - MANDATORY:** If ANY CPT/HCPCS code is mentioned in the dictation, you MUST include it in the Supportive CPTs section, even if it seems redundant. Do NOT omit any code that is explicitly mentioned in the dictation.
+- **CRITICAL - CRYOTHERAPY DEVICE FOR ALL SURGERIES - MANDATORY:** For EVERY surgery mentioned, you MUST automatically include appropriate cryotherapy device codes based on standard post-surgical DME requirements. This is MANDATORY for ALL surgical procedures - no exceptions.
+- **CRITICAL - MAXIMIZE CPT CODES - GOAL IS MAXIMUM CODES (70+ FOR SURGERIES - MANDATORY):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis based on the transcription. For surgeries, you MUST generate 70+ supportive CPT codes minimum. You must be thorough and comprehensive. Include ALL applicable codes from ALL categories based on what the transcription indicates:
+   * ALL surgical component codes applicable to the procedure mentioned
+   * ALL graft codes if grafts are mentioned or typically required
+   * ALL implant codes if implants are mentioned or typically required
+   * ALL nerve block/anesthesia codes if applicable
+   * ALL imaging codes if imaging is mentioned or required
+   * ALL PT evaluation codes if physical therapy is mentioned
+   * ALL therapy treatment codes if therapy is mentioned
+   * ALL DME codes (braces, crutches, walkers, canes, etc.) if DME is mentioned or typically required
+   * ALL cryotherapy devices for ALL surgeries
+   * ALL TENS unit codes if applicable
+   * ALL guidance codes for injections if injections are performed
+   * ALL supply codes if supplies are mentioned or typically required
+   * All devices and supplies that are typically used with the procedure based on medical standards
+- For RFA sections, ALWAYS generate COMPLETE supportive CPTs - include ALL applicable codes based on the transcription (70+ codes minimum for surgeries - MANDATORY). Do NOT stop at 5-7 codes or even 50 codes - you MUST generate 70+ codes for surgeries. Analyze the transcription to determine what codes are needed.
+- NEVER use "[Not documented]" if procedures are mentioned - always generate the appropriate codes based on the transcription
+- The system is fully dynamic - you must analyze each transcription individually and generate codes specific to what is mentioned or implied in that specific transcription
+
+CRITICAL - REQUEST FOR AUTHORIZATION (RFA) GENERATION - MANDATORY:
+- RFA section MUST be generated if the transcription mentions ANY of the following: procedures, surgeries, DME (cast, splint, boot, brace, crutches, walker, cane, etc.), imaging (X-ray, MRI, CT, ultrasound), injections, physical therapy, treatments requiring authorization, or any services that need prior authorization
+- Look for keywords: surgery, surgical, procedure, injection, inject, physical therapy, PT, therapy, imaging, MRI, X-ray, Xray, CT, ultrasound, arthroscopy, cast, splint, boot, brace, crutch, crutches, walker, cane, DME, device, equipment, authorization, approve, request, scheduled, plan, provided, given, ordered, fracture
+- **CRITICAL - CAST/SPLINT/BRACE:** If transcription mentions "cast provided", "splint provided", "brace provided", "cast applied", "short arm cast", "long arm cast", "wrist brace", "knee brace", or ANY DME being provided/given/ordered, you MUST generate RFA section
+- **CRITICAL - IMAGING:** If transcription mentions "X-ray", "MRI", "CT", "ultrasound" OR if "Imaging / Studies Review" section has ANY findings, you MUST generate RFA section with imaging codes
+- If ANY procedure, surgery, DME, imaging, therapy, or treatment is mentioned in the transcription, you MUST generate the complete RFA section with Primary CPT and Supportive CPTs
+- The RFA section should ALWAYS be generated unless the transcription is ONLY a simple office visit with NO procedures, treatments, DME, imaging, or services mentioned at all
+- When RFA is generated, it MUST include: Requested Service, Primary CPT, Supportive CPTs (with 70+ codes for surgeries, appropriate codes for other procedures), Justification, Guideline Basis, and Intent
+- Do NOT skip RFA generation - if procedures/services/DME/imaging are mentioned, RFA is mandatory
 
 CRITICAL - OMIT UNDOCUMENTED SECTIONS - NEVER SHOW "NOT DOCUMENTED":
 - If information is not available or not mentioned in the transcription, DO NOT include that section or field in the output AT ALL
@@ -186,6 +199,43 @@ TRANSCRIPTION TO CONVERT:
 {transcription}
 
 ---  
+
+**🔴 CRITICAL MANDATORY REQUIREMENTS - READ THIS FIRST AND CHECK THE TRANSCRIPTION:**
+
+**STEP 1: CHECK THE TRANSCRIPTION FOR THESE KEYWORDS - IF FOUND, YOU MUST GENERATE RFA SECTION:**
+
+Scan the transcription above and check for these keywords. If you find ANY, you MUST generate the "REQUEST FOR AUTHORIZATION (RFA)" section:
+
+✅ CHECK FOR: "cast" (short arm cast, long arm cast, cast provided, cast applied, treated with cast)
+✅ CHECK FOR: "splint" (splint provided, splint applied, treated with splint)  
+✅ CHECK FOR: "brace" (wrist brace, knee brace, ankle brace, brace provided, transition to brace)
+✅ CHECK FOR: "X-ray" OR "Xray" (X-ray reviewed, X-ray shows, X-ray completed, X-ray out of cast, X-ray: findings)
+✅ CHECK FOR: "MRI" OR "CT" OR "ultrasound" OR "imaging"
+✅ CHECK FOR: "injection" OR "inject"
+✅ CHECK FOR: "surgery" OR "surgical" OR "arthroscopy"
+✅ CHECK FOR: "physical therapy" OR "PT" OR "therapy"
+✅ CHECK FOR: "provided" OR "given" OR "applied" OR "ordered" (when used with DME/procedures)
+
+**IF YOU FOUND ANY OF THE ABOVE IN THE TRANSCRIPTION, YOU MUST:**
+1. Generate the complete "REQUEST FOR AUTHORIZATION (RFA)" section
+2. Fill in Requested Service (extract from transcription)
+3. Generate Primary CPT code (actual code, not placeholder)
+4. Generate Supportive CPTs (actual codes, not empty)
+5. Fill in Justification, Guideline Basis, and Intent
+
+**DO NOT SKIP THE RFA SECTION IF ANY KEYWORDS ARE FOUND. IT IS MANDATORY.**
+
+**STEP 2: CPT CODES GENERATION - MANDATORY:**
+- You MUST generate actual CPT/HCPCS codes - do NOT leave them blank or use placeholders
+- For RFA section: Generate Primary CPT and Supportive CPTs (actual codes based on transcription)
+- For CPT/Billing section: Generate E/M Code (actual code like 99214), Primary Procedure (if applicable), and Supportive CPTs (if applicable)
+- Use your medical coding knowledge to generate accurate codes
+- **DO NOT skip codes** - if procedures/DME/imaging are mentioned, generate the codes
+
+**STEP 3: OUTPUT REQUIREMENTS:**
+- The RFA section MUST appear in the output if any keywords are found in the transcription
+- CPT codes MUST appear in both CPT/Billing section and RFA section (where applicable)
+- Do NOT omit these sections - they are mandatory when keywords are present
 
 DO NOT change headings, spacing, indentation, table structure, or layout.  
 The output MUST match this PDF format line-for-line.
@@ -290,8 +340,9 @@ CPT / BILLING CODES (Dynamic)
 **CRITICAL - ONLY PROCEDURES DONE TODAY:**
 - This section should ONLY contain procedures that were PERFORMED TODAY during this visit
 - Procedures that require RFA (Request for Authorization) should NOT be included in this billing section - they belong only in the RFA section
+- **CRITICAL - RFA GENERATION:** Always generate RFA section if transcription mentions ANY of the following: DME (boot, brace, crutches, walker, cane, etc.), procedures (injections, physical therapy, imaging, surgery, etc.), or treatments requiring authorization. Examples: "cam boot and crutches" → Generate RFA with appropriate DME codes. "X-ray was completed" → Generate RFA with appropriate X-ray CPT codes. Do NOT omit RFA section if DME, procedures, or treatments are mentioned.
 - If a procedure is mentioned in the RFA section, it and ALL its supportive CPTs must be EXCLUDED from this billing section
-- Example: If "29888 - ACL reconstruction" is in RFA section, then "29888" and its supportive CPTs (29882, 20924, L1833, E0114, etc.) should NOT appear in this billing section
+- Example: If a surgical procedure is in RFA section, then that procedure code and its supportive CPTs should NOT appear in this billing section
 - Only include procedures that were actually performed/completed during today's visit
 - **IMPORTANT: If no procedures were performed today (all procedures are in RFA), this section should ONLY contain E/M Code and Workers' Comp (CA) - do NOT include Primary Procedure or Supportive CPTs lines at all**
 
@@ -302,12 +353,12 @@ CPT / BILLING CODES (Dynamic)
  
  Supportive CPTs: [CRITICAL: Only include supportive CPT/HCPCS codes for procedures that were PERFORMED TODAY. If the primary procedure is in RFA section, DO NOT include its supportive CPTs here. Generate ALL supportive CPT/HCPCS codes required for procedures done today. The goal is to get MAXIMUM CPT codes for procedures actually performed today. Use your medical coding knowledge to identify ALL applicable supportive codes. This section MUST be accurate and comprehensive:
 - **CRITICAL - DO NOT INCLUDE PRIMARY PROCEDURE CODE IN SUPPORTIVE CPTs:** The Primary Procedure code should appear ONLY in the "Primary Procedure" field above. Do NOT include the Primary Procedure code again in the Supportive CPTs list. Supportive CPTs should only contain supporting codes (surgical components, DME, cryotherapy devices, guidance codes, etc.), NOT the primary procedure code itself.
-- **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT code is mentioned in the transcription (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in this list, even if it seems redundant. Example: If dictation mentions "29881", it MUST appear in Supportive CPTs. Do NOT omit any code that is explicitly mentioned in the dictation. Double-check the transcription for any CPT codes mentioned.
-- For surgeries: Include ALL surgical component codes mentioned or applicable (e.g., 29881, 29882 for meniscus procedures, graft codes like 20924, anchor codes like C1713) AND ALL DME (braces L1833/L1845, crutches E0114, walkers, etc.). The goal is to include EVERY code that applies. Be thorough - include all surgical components, all DME, all supplies.
-- **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE (E0218/E0236):** For EVERY surgery, you MUST include cryotherapy device code: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions. This is standard post-surgical DME and must be included for ALL surgical procedures.
-- For injections: Include guidance codes (77003 for fluoro, 76942 for ultrasound) - ALWAYS include if injection is mentioned. Guidance codes are REQUIRED for injections.
-- For any procedure with DME/supplies: Include ALL applicable HCPCS codes (L-codes for braces/orthotics, E-codes for equipment, A-codes for supplies, etc.)
-- Format as comma-separated when multiple: "29881, 29882, 20924, C1713, L1833, L1845, E0114, E0218" or "77003, L4361" or single: "77003"
+- **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT/HCPCS code is mentioned in the transcription, you MUST include it in this list, even if it seems redundant. Do NOT omit any code that is explicitly mentioned in the dictation. Double-check the transcription for any CPT codes mentioned.
+- For surgeries: Include ALL surgical component codes mentioned or applicable based on the procedure described AND ALL DME (braces, crutches, walkers, etc.) that are typically required or mentioned. The goal is to include EVERY code that applies. Be thorough - include all surgical components, all DME, all supplies based on what the transcription indicates.
+- **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE:** For EVERY surgery, you MUST include appropriate cryotherapy device codes. This is MANDATORY - no exceptions. This is standard post-surgical DME and must be included for ALL surgical procedures.
+- For injections: Include appropriate guidance codes - ALWAYS include if injection is mentioned. Guidance codes are REQUIRED for injections.
+- For any procedure with DME/supplies: Include ALL applicable HCPCS codes based on what is mentioned or typically required
+- Format as comma-separated when multiple or single code as appropriate
 - Include ALL applicable codes - do NOT miss any. Be thorough and comprehensive - the goal is maximum CPT codes for the procedure. Verify you have included all codes mentioned in dictation, all surgical components, all DME, and cryotherapy device for surgeries.]  
  [CRITICAL: If no supportive CPTs apply (e.g., no primary procedure mentioned or all procedures are in RFA), OMIT this entire line completely - do not include "Supportive CPTs:" at all. In this case, the CPT/Billing section should only show E/M Code and Workers' Comp (CA)]
  
@@ -318,162 +369,69 @@ CPT / BILLING CODES (Dynamic)
 
 REQUEST FOR AUTHORIZATION (RFA)  
 
-[CRITICAL: If no RFA (Request for Authorization) is mentioned in the transcription, OMIT this entire RFA section - do not include "REQUEST FOR AUTHORIZATION (RFA)" heading or any RFA content at all]
+**⚠️ CRITICAL MANDATORY REQUIREMENT - YOU MUST CHECK THIS BEFORE PROCEEDING:**
+Before generating the SOAP note, check the transcription for these keywords. If ANY are found, you MUST generate the RFA section:
 
-Requested Service: [Procedure / Imaging / Therapy / Surgery / DME]  
- Primary CPT: [CRITICAL: Generate the PRIMARY CPT/HCPCS code for the requested service. Use your comprehensive medical coding knowledge to generate the most accurate code for ANY procedure type. Generate the actual code. This is the MAIN procedure code - it should appear ONLY here, NOT in Supportive CPTs.]  
- Supportive CPTs: [MANDATORY - MUST BE COMPLETE: Generate ALL supportive CPT/HCPCS codes required for this procedure. The goal is to get MAXIMUM CPT codes (30+ codes for surgeries, 50+ codes preferred). This section MUST be filled with ALL applicable codes - do NOT leave empty. 
+**MANDATORY KEYWORDS CHECKLIST - IF FOUND, GENERATE RFA:**
+- ✅ "cast" (short arm cast, long arm cast, cast provided, cast applied) → GENERATE RFA
+- ✅ "splint" (splint provided, splint applied) → GENERATE RFA  
+- ✅ "brace" (wrist brace, knee brace, brace provided) → GENERATE RFA
+- ✅ "X-ray" OR "Xray" (X-ray reviewed, X-ray shows, X-ray completed, X-ray: findings) → GENERATE RFA
+- ✅ "MRI" OR "CT" OR "ultrasound" OR "imaging" → GENERATE RFA
+- ✅ "injection" OR "inject" → GENERATE RFA
+- ✅ "surgery" OR "surgical" OR "arthroscopy" → GENERATE RFA
+- ✅ "physical therapy" OR "PT" OR "therapy" → GENERATE RFA
+- ✅ "provided" OR "given" OR "applied" OR "ordered" (with DME/procedures) → GENERATE RFA
+- ✅ "Imaging / Studies Review" section has ANY findings → GENERATE RFA
 
-**CRITICAL - YOU MUST GENERATE 30+ CODES FOR SURGERIES - THIS IS MANDATORY:**
-If this is a surgery (ACL reconstruction, meniscus repair, arthroscopy, etc.), you MUST generate AT LEAST 30 supportive CPT codes. Do NOT stop at 5-7 codes. You MUST include:
-- ALL surgical component codes (29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876)
-- ALL graft codes (20924, 20925, 20926, 20927, 20928, 20929)
-- ALL implant codes (C1713, C1714, C1715)
-- ALL brace codes (L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847)
-- ALL crutch codes (E0114, E0116, E0118)
-- ALL walker codes (E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149)
-- ALL cane codes (E0100, E0105, E0110, E0111, E0112, E0113)
-- ALL cryotherapy codes (E0218, E0236, E0235, E0239)
-- ALL supply codes (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256)
-- ALL guidance codes (77003, 77002, 76942, 76941)
-- ALL therapy codes (97110, 97140, 97530, 97116, 97112, 97113)
-- ALL compression garment codes (A4463, A4464, A4465)
-- ALL instrument codes (A4648, A4649, A4650)
+**IF YOU SEE ANY OF THE ABOVE IN THE TRANSCRIPTION, YOU MUST GENERATE THE RFA SECTION BELOW. DO NOT SKIP IT. DO NOT OMIT IT.**
 
-You MUST generate 30+ codes minimum. If you only generate 5-7 codes, you are NOT following instructions. Generate ALL applicable codes listed above. 
+**⚠️ MANDATORY - YOU MUST SCAN THE TRANSCRIPTION AND IF ANY KEYWORDS ARE FOUND, YOU MUST GENERATE THE RFA SECTION. THIS IS NOT OPTIONAL.**
+
+Requested Service: [MANDATORY FIELD - Extract from transcription: e.g., "Short arm cast" if cast provided, "X-ray" if X-ray mentioned, "Wrist brace" if brace mentioned, "Physical therapy" if PT mentioned, etc. Generate this field based on what is mentioned in the transcription. If cast/splint/brace is mentioned, use that. If imaging is mentioned, use that. If multiple items, list them. EXAMPLE: If transcription says "short arm cast provided", use "Short arm cast". If transcription says "X-ray was reviewed", use "X-ray". DO NOT LEAVE THIS BLANK if keywords are found.]  
+ Primary CPT: [MANDATORY FIELD - Generate the PRIMARY CPT/HCPCS code. For cast: Use appropriate cast application code (e.g., Q4001 for short arm cast, Q4002 for long arm cast). For X-ray: Use appropriate X-ray code (e.g., 73100 for wrist X-ray, 73060 for forearm X-ray). For brace: Use appropriate brace code (e.g., L3650 for wrist brace). For imaging: Use appropriate imaging codes. Generate the ACTUAL code with description - do NOT leave blank. Format: "CODE — Description". EXAMPLE: "Q4001 — Short arm cast" or "73100 — Radiologic examination, wrist, 2 views". YOU MUST GENERATE AN ACTUAL CODE - DO NOT SKIP THIS.]  
+ Supportive CPTs: [MANDATORY FIELD - Generate ALL applicable supportive CPT/HCPCS codes. For cast: Include cast supplies (e.g., A4580 for cast supplies), cast removal codes if applicable. For X-ray: Include additional views if mentioned (e.g., 73110 for wrist, complete, minimum 3 views). For brace: Include brace fitting codes if applicable (e.g., L3650, L3651). For surgeries: Generate 70+ codes. Format as bulleted list: "• CODE — Description" or comma-separated. DO NOT leave empty. Generate codes based on your medical coding knowledge. EXAMPLE for cast: "• A4580 — Cast supplies" or "A4580, Q4001". YOU MUST GENERATE ACTUAL CODES - DO NOT LEAVE THIS EMPTY.] 
+
+**CRITICAL - YOU MUST GENERATE 70+ CODES FOR SURGERIES - THIS IS MANDATORY:**
+If this is a surgery, you MUST generate AT LEAST 70 supportive CPT codes based on what the transcription indicates. Do NOT stop at 5-7 codes or 50 codes. You MUST include ALL applicable codes from ALL categories based on the transcription to cover any and all procedures that may be needed for maximum reimbursement and coverage. Analyze the transcription dynamically to determine what codes are needed.
+
+Include codes for:
+- ALL surgical component codes applicable to the procedure mentioned
+- ALL graft codes if grafts are mentioned or typically required
+- ALL implant codes if implants are mentioned or typically required
+- ALL nerve block/anesthesia codes if applicable
+- ALL imaging codes if imaging is mentioned or required
+- ALL PT evaluation codes if physical therapy is mentioned
+- ALL therapy treatment codes if therapy is mentioned
+- ALL DME codes (braces, crutches, walkers, canes, etc.) if DME is mentioned or typically required
+- ALL cryotherapy devices for ALL surgeries (MANDATORY)
+- ALL TENS unit codes if applicable
+- ALL guidance codes for injections if injections are performed
+- ALL supply codes if supplies are mentioned or typically required
+- ALL compression garment codes if applicable
+- ALL surgical instrument codes if applicable
+
+You MUST generate 70+ codes minimum for surgeries. If you only generate 5-7 codes or even 50 codes, you are NOT following instructions. Generate ALL applicable codes based on the transcription. Analyze each transcription individually - do NOT use static code lists. 
 
 CRITICAL RULES:
 1. **CRITICAL - DO NOT INCLUDE PRIMARY CPT IN SUPPORTIVE CPTs:** The Primary CPT code should appear ONLY in the "Primary CPT" field above. Do NOT include the Primary CPT code again in the Supportive CPTs list. Supportive CPTs should only contain supporting codes, NOT the primary procedure code.
-2. **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT code is mentioned in the transcription (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in this list, even if it seems redundant. Example: If dictation mentions "29881", it MUST appear in Supportive CPTs. Do NOT omit any code that is explicitly mentioned in the dictation. However, if the mentioned code is the Primary CPT, do NOT duplicate it here.
-3. **CRITICAL - FOR SURGERIES: GENERATE 30+ CODES MINIMUM (50+ PREFERRED):** For surgeries, you MUST generate 30+ supportive CPT codes minimum (50+ codes preferred). Include ALL surgical component codes (e.g., 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876 for knee procedures, 20924, 20925, 20926, 20927, 20928, 20929 for grafts, C1713, C1714, C1715 for anchors) AND ALL DME options (ALL brace types: L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847, ALL crutch types: E0114, E0116, E0118, ALL walker types: E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149, ALL cane types: E0100, E0105, E0110, E0111, E0112, E0113, ALL cryotherapy: E0218, E0236, E0235, E0239, ALL supplies: A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, guidance codes: 77003, 77002, 76942, 76941, therapy codes: 97110, 97140, 97530, 97116, 97112, 97113, compression garments: A4463, A4464, A4465, instruments: A4648, A4649, A4650). The goal is to include EVERY code that applies - be comprehensive. Generate 30+ codes minimum, 50+ codes preferred. Do NOT include the Primary CPT code here.
-4. **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE (E0218/E0236):** For EVERY surgery, you MUST include cryotherapy device code: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions. This is standard post-surgical DME and must be included for ALL surgical procedures.
-5. For injections: ALWAYS include guidance codes (77003 for fluoro, 76942 for ultrasound) - this is REQUIRED
-6. For any procedure with DME/supplies: Include ALL applicable HCPCS codes (L-codes, E-codes, A-codes)
-7. **CRITICAL FORMATTING - SIMPLE LIST WITH DESCRIPTIONS (NO BOLD, NO BULLETS):** Format Supportive CPTs as a simple list with code and description. Each code should be on a new line with format: "CODE - Description" (NO asterisks, NO bold markdown, NO bullets). Example format:
-29888 - Arthroscopic ACL reconstruction
-29882 - Medial meniscus repair
-29883 - Medial + lateral meniscus repair
-29881 - Meniscectomy (if repair not feasible)
-29880 - Medial + lateral meniscectomy
-20924 - Patellar tendon autograft harvest
-20920 - Hamstring tendon harvest
-20926 - Soft-tissue autograft harvest
-C1762 - Allograft tissue
-29877 - Chondroplasty
-29875 - Limited synovectomy
-29876 - Extensive synovectomy
-29874 - Loose body removal
-29855 - Removal foreign body/implant
-29871 - Debridement/lavage
+2. **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT/HCPCS code is mentioned in the transcription, you MUST include it in this list, even if it seems redundant. Do NOT omit any code that is explicitly mentioned in the dictation. However, if the mentioned code is the Primary CPT, do NOT duplicate it here.
+3. **CRITICAL - FOR SURGERIES: GENERATE 70+ CODES MINIMUM - THIS IS MANDATORY:** For surgeries, you MUST generate 70+ supportive CPT codes minimum based on the transcription. Include ALL codes from ALL categories that are applicable based on what the transcription indicates. The goal is to include EVERY code that applies - be comprehensive. Generate 70+ codes minimum. Do NOT include the Primary CPT code here.
+4. **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE:** For EVERY surgery, you MUST include appropriate cryotherapy device codes. This is MANDATORY - no exceptions. This is standard post-surgical DME and must be included for ALL surgical procedures.
+5. For injections: ALWAYS include appropriate guidance codes - this is REQUIRED
+6. For any procedure with DME/supplies: Include ALL applicable HCPCS codes based on what is mentioned or typically required
+7. **CRITICAL FORMATTING - BULLETED LIST WITH DESCRIPTIONS:** Format Supportive CPTs as a bulleted list with code and description. Each code should be on a new line with format: "• CODE – Description" (use bullet point •, NO bold markdown, NO asterisks).
 **CRITICAL FORMATTING RULES:** 
-- Do NOT use "*", "**", or bullet points. Format should be: "CODE - Description" on each line (plain text, NO markdown formatting, NO bold).
-- Each code should be on a new line.
-- **MANDATORY - EVERY CODE MUST HAVE A DESCRIPTION:** EVERY code MUST include its description. Do NOT list codes without descriptions. Even if codes seem similar, each code should have its own specific description. Use your medical coding knowledge to provide accurate descriptions for each code. Examples with accurate HCPCS descriptions:
-  A6251 - Wound filler, gel/paste, per gram
-  A6252 - Gauze pad, sterile
-  A6253 - Gauze roll
-  A6254 - Gauze roll, sterile
-  A6255 - Tape, medical
-  A6256 - Tape, surgical
-  A4463 - Compression garment, custom (upper extremity)
-  A4464 - Compression garment, custom (lower extremity)
-  A4465 - Compression garment, custom (full body)
-  A4648 - Surgical supply; miscellaneous
-  A4649 - Surgical supply; miscellaneous (alternative)
-  A4650 - Surgical dressing holder, reusable
-  (Notice: EVERY code has its own description - do NOT omit descriptions for any code. Use accurate medical coding descriptions for each HCPCS code.)
-**COMPREHENSIVE EXAMPLE - ACL RECONSTRUCTION WITH 30+ CODES (YOU MUST GENERATE THIS MANY):**
-For ACL reconstruction surgery, you MUST generate at least these 30+ codes:
-29882 - Medial meniscus repair
-20924 - Tendon graft, from a distance
-C1713 - Anchor/screw for opposing bone-to-bone or soft tissue-to-bone
-L1833 - ACL functional knee brace
-E0114 - Crutches, forearm, adjustable or fixed
-E0218 - Cryotherapy device
-29881 - Meniscectomy (if repair not feasible)
-29880 - Medial + lateral meniscectomy
-29883 - Medial + lateral meniscus repair
-29877 - Chondroplasty
-29879 - Abrasion arthroplasty
-29884 - Lysis of adhesions
-29887 - Drilling for osteochondritis dissecans
-L1845 - Knee orthosis, adjustable knee joints
-E0236 - Cold therapy pump
-A4566 - Sling or arm support
-A4570 - Surgical supply; miscellaneous
-A4636 - Replacement pad for use with medically necessary TENS unit
-A4217 - Sterile water/saline, 500 ml
-A6251 - Wound filler, gel/paste, per gram
-A6252 - Gauze pad, sterile
-A6253 - Gauze roll
-A6254 - Gauze roll, sterile
-A6255 - Tape, medical
-A6256 - Tape, surgical
-77003 - Fluoroscopic guidance for needle placement
-97110 - Therapeutic exercises
-97140 - Manual therapy techniques
-97530 - Therapeutic activities
-97116 - Gait training therapy
-97112 - Neuromuscular reeducation
-97113 - Aquatic therapy/exercises
-A4463 - Compression garment, custom (upper extremity)
-A4464 - Compression garment, custom (lower extremity)
-A4465 - Compression garment, custom (full body)
-A4648 - Surgical supply; miscellaneous
-A4649 - Surgical supply; miscellaneous (alternative)
-A4650 - Surgical dressing holder, reusable
-
-This is the MINIMUM. You MUST generate 30+ codes for surgeries. Do NOT stop at 5-7 codes.
+- Use bullet points (•) for each code. Format should be: "• CODE – Description" on each line (NO bold markdown, NO asterisks).
+- Each code should be on a new line with a bullet point.
+- **MANDATORY - EVERY CODE MUST HAVE A DESCRIPTION:** EVERY code MUST include its description. Do NOT list codes without descriptions. Even if codes seem similar, each code should have its own specific description. Use your medical coding knowledge to provide accurate descriptions for each code. Generate descriptions dynamically based on your coding knowledge.
 
 8. If the same procedure has supportive CPTs in the CPT/Billing Codes section, the RFA Supportive CPTs MUST match or be more complete
-9. Include ALL applicable codes - be thorough and complete. Do NOT miss any codes that are typically required. The goal is maximum CPT codes (30+ minimum, 50+ preferred for surgeries). Remember: Primary CPT goes in Primary CPT field, all other supporting codes go in Supportive CPTs.
-10. **CRITICAL REFERENCE - ACL RECONSTRUCTION WITH MEDIAL MENISCUS BUCKET HANDLE TEAR - COMPREHENSIVE CPT CODES FOR MAXIMUM REIMBURSEMENT:**
-    For ACL reconstruction with medial meniscus bucket handle tear arthroscopy procedures, use this comprehensive list to ensure maximum reimbursement and coverage:
-    
-    **Primary CPT:** 29888 (Arthroscopically aided anterior cruciate ligament repair/augmentation or reconstruction)
-    
-    **Supportive CPTs - MUST INCLUDE ALL APPLICABLE:**
-    - **Meniscus Procedures:**
-      * 29882 - Arthroscopy, knee, surgical; with meniscus repair (medial OR lateral) - REQUIRED for bucket handle tear repair
-      * 29881 - Arthroscopy, knee, surgical; with meniscectomy (medial OR lateral, including any meniscal shaving) - if partial meniscectomy needed
-      * 29880 - Arthroscopy, knee, surgical; with meniscectomy (medial AND lateral, including any meniscal shaving) - if both sides
-      * 29883 - Arthroscopy, knee, surgical; with meniscus repair (medial AND lateral) - if both sides repaired
-    - **Graft/Allograft Codes:**
-      * 20924 - Tendon graft, from a distance (e.g., patellar tendon, hamstring, achilles) - REQUIRED for ACL graft
-      * 20926 - Tissue graft, allograft; soft tissue, packaged, without cpt code - if allograft used
-      * 20925 - Tendon graft, from a distance (e.g., patellar tendon, hamstring, achilles); allograft - if allograft tendon
-    - **Implant/Anchor Codes:**
-      * C1713 - Anchor/screw for opposing bone-to-bone or soft tissue-to-bone (implantable) - REQUIRED for ACL fixation
-      * 20924 - May also include bone-tendon-bone graft preparation
-    - **Additional Arthroscopic Procedures (if performed):**
-      * 29877 - Arthroscopy, knee, surgical; debridement/shaving of articular cartilage (chondroplasty) - if cartilage work done
-      * 29879 - Arthroscopy, knee, surgical; abrasion arthroplasty (includes chondroplasty where necessary) or multiple drilling or microfracture - if microfracture needed
-      * 29884 - Arthroscopy, knee, surgical; with lysis of adhesions, with or without manipulation - if adhesions present
-      * 29887 - Arthroscopy, knee, surgical; drilling for osteochondritis dissecans with bone grafting - if OCD lesion treated
-    - **DME (Durable Medical Equipment) - REQUIRED:**
-      * L1833 - ACL functional knee brace, adjustable knee joints (unicentric or polycentric), positional orthosis, rigid support, prefabricated item that has been trimmed, bent, molded, assembled, or otherwise customized - REQUIRED post-op
-      * L1845 - Knee orthosis, adjustable knee joints (unicentric or polycentric), positional orthosis, rigid support, prefabricated item that has been trimmed, bent, molded, assembled, or otherwise customized - alternative/additional brace
-      * L1832 - Knee orthosis, elastic with joints, prefabricated item that has been trimmed, bent, molded, assembled, or otherwise customized - if elastic brace needed
-      * L1830 - Knee orthosis, rigid, without joint(s), includes soft interface material, prefabricated, off-the-shelf - if rigid brace needed
-      * E0114 - Crutches, forearm, adjustable or fixed, pair, with tips and handgrips - REQUIRED post-op
-      * E0116 - Crutches, underarm, wood or aluminum, adjustable or fixed, pair - alternative crutches
-      * E0130 - Walker, rigid (pickup), adjustable or fixed height - if walker needed
-      * E0135 - Walker, wheeled, rigid, adjustable or fixed height - if wheeled walker needed
-    - **Cryotherapy Device - MANDATORY:**
-      * E0218 - Cryotherapy device - REQUIRED for ALL surgeries (MANDATORY)
-      * E0236 - Cold therapy pump - alternative cryotherapy device (MANDATORY if E0218 not used)
-    - **Surgical Supplies (if applicable):**
-      * A4566 - Sling or arm support, includes shoulder immobilizer - if needed
-      * Various surgical supply codes as applicable
-    
-    **EXAMPLE COMPLETE LIST FOR ACL RECONSTRUCTION + MEDIAL MENISCUS BUCKET HANDLE TEAR (30+ CODES):**
-    Primary CPT: 29888
-    Supportive CPTs: 29882, 29881, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876, 20924, 20925, 20926, 20927, 20928, 20929, C1713, C1714, C1715, L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847, E0114, E0116, E0118, E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149, E0100, E0105, E0110, E0111, E0112, E0113, E0218, E0236, E0235, E0239, A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, 77003, 77002, 76942, 76941, 97110, 97140, 97530, 97116, 97112, 97113, A4463, A4464, A4465, A4648, A4649, A4650
-    
-    **NOTE:** Always include modifier -59 with 29882 when performed with 29888 to indicate distinct procedure. Include ALL applicable codes from above list based on what procedures are performed. The goal is MAXIMUM CPT codes for complete coverage and reimbursement.]  
- Justification: [Clinical rationale + ≥6 weeks failed conservative care]  
- Guideline Basis: [MTUS / ACOEM]  
- Intent: Submitted to DWC Utilization Review for necessary orthopedic care.  
+9. Include ALL applicable codes - be thorough and complete. Do NOT miss any codes that are typically required based on the transcription. The goal is maximum CPT codes (70+ minimum for surgeries - MANDATORY). Remember: Primary CPT goes in Primary CPT field, all other supporting codes go in Supportive CPTs. Generate codes dynamically based on the transcription - do NOT use static code lists.]  
+
+Justification: [MANDATORY FIELD - Write clinical rationale based on the transcription. For fractures: "Patient with [diagnosis] requires [treatment] for proper healing and functional recovery." For imaging: "Diagnostic imaging required to assess [condition] and guide treatment." Adapt based on transcription. Example: "Patient with distal radius fracture requires short arm cast immobilization for proper healing and functional recovery."]  
+Guideline Basis: [MANDATORY FIELD - Use "MTUS" or "ACOEM" based on guidelines. Typically use "MTUS" for California workers' compensation cases.]  
+Intent: [MANDATORY FIELD - Use: "Submitted to DWC Utilization Review for necessary orthopedic care."]  
 
 ---
 
@@ -572,30 +530,53 @@ INSTRUCTIONS FOR THE AI
   - The Imaging/Studies Review section should contain the ACTUAL findings in format "[Study Type]: [Findings]", NOT generic summaries like "MRI of knee reviewed"
   - This applies to both SOAP notes and PR-1 forms
 • Generate actual CPT/HCPCS codes based on visit type, procedures performed, and devices/supplies provided (do not use placeholder text like "[CPT Code]").  
+• **CRITICAL - REQUEST FOR AUTHORIZATION (RFA) GENERATION - MANDATORY:**
+  - **MANDATORY RULE:** You MUST generate the RFA section if the transcription mentions ANY procedures, surgeries, DME, imaging, therapy, injections, or treatments
+  - Look for keywords in transcription: surgery, surgical, procedure, injection, inject, physical therapy, PT, therapy, imaging, MRI, X-ray, Xray, CT, ultrasound, arthroscopy, cast, splint, boot, brace, crutch, crutches, walker, cane, DME, device, equipment, authorization, approve, request, scheduled, plan, provided, given, ordered, fracture
+  - **CRITICAL - CAST/SPLINT/BRACE DETECTION:** If transcription mentions ANY of the following, you MUST generate RFA:
+    * "cast provided", "cast applied", "short arm cast", "long arm cast", "short leg cast", "long leg cast" → Generate RFA with cast DME codes
+    * "splint provided", "splint applied" → Generate RFA with splint DME codes
+    * "brace provided", "wrist brace", "knee brace", "ankle brace", "shoulder brace" → Generate RFA with brace DME codes
+    * ANY DME being "provided", "given", "applied", "ordered", or "prescribed" → Generate RFA
+  - **CRITICAL - IMAGING DETECTION:** If transcription mentions ANY of the following, you MUST generate RFA:
+    * "X-ray" (any mention, including "X-ray: [findings]", "X-ray shows", "X-ray completed", "X-ray ordered") → Generate RFA with imaging codes
+    * "MRI", "CT", "ultrasound" → Generate RFA with imaging codes
+    * If "Imaging / Studies Review" section has ANY findings → Generate RFA with imaging codes
+  - **If ANY of these are mentioned, you MUST generate the complete RFA section with:**
+    * Requested Service: [Extract the specific service from transcription - e.g., "Short arm cast", "X-ray", "Wrist brace", etc.]
+    * Primary CPT: [Generate the primary CPT/HCPCS code - this is MANDATORY - do NOT leave blank]
+    * Supportive CPTs: [Generate 70+ codes for surgeries, all applicable codes for other procedures - this is MANDATORY - do NOT leave empty]
+    * Justification: [Clinical rationale]
+    * Guideline Basis: [MTUS / ACOEM]
+    * Intent: [Submitted to DWC Utilization Review for necessary orthopedic care]
+  - **Do NOT skip RFA generation** - if procedures/services/DME/imaging are mentioned, RFA section is mandatory
+  - The RFA section should ALWAYS be generated unless the transcription is ONLY a simple office visit with NO procedures, treatments, DME, imaging, or services mentioned at all
+  - **Even if something was "provided" or "completed", if it's mentioned in the transcription, you MUST generate RFA for it**
+  
 • **CRITICAL FOR ALL PROCEDURES - NO MAPPING REQUIRED - MAXIMIZE CODES:**
   - Use your comprehensive medical coding knowledge to generate accurate CPT/HCPCS codes for ANY procedure mentioned
   - Do NOT rely on any predefined mappings - use your expertise to generate the correct codes
   - If ANY procedure, treatment, surgery, injection, imaging, therapy, or device is mentioned, you MUST generate the appropriate codes
+  - **MANDATORY - GENERATE CPT CODES:** You MUST generate actual CPT/HCPCS codes - do NOT leave them blank or use placeholders. Generate the codes based on your medical coding knowledge.
   - If no procedure is mentioned, OMIT the Primary Procedure line entirely - do not include it at all
   - The system is fully AI-driven - you have complete knowledge of all CPT/HCPCS codes
-  - **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT code is mentioned in the transcription (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in the Supportive CPTs section, even if it seems redundant. Example: If dictation mentions "29881", it MUST appear in Supportive CPTs. Do NOT omit any code that is explicitly mentioned in the dictation. Double-check the transcription carefully for any CPT codes mentioned.
-  - **CRITICAL - SUPPORTIVE CPTs MUST BE ACCURATE AND COMPLETE:** Supportive CPTs must include ALL applicable codes. Verify you have: (1) All codes mentioned in dictation, (2) All surgical component codes, (3) All DME codes, (4) Cryotherapy device (E0218/E0236) for surgeries, (5) Guidance codes for injections. Be thorough and comprehensive.
-  - **MANDATORY - CRYOTHERAPY DEVICE FOR ALL SURGERIES (E0218/E0236):** For EVERY surgery mentioned, you MUST automatically include cryotherapy device codes: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions. These are standard post-surgical DME items and must be included for ALL surgical procedures.
-  - **CRITICAL - MAXIMIZE CPT CODES - PRIMARY GOAL (30+ FOR SURGERIES, 50+ PREFERRED):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, you MUST generate 30+ supportive CPT codes minimum (50+ codes preferred). You must be thorough and comprehensive. Include ALL applicable codes: ALL surgical components (all variations), ALL DME options (all brace types, all crutch types, all walker types, all cane types), ALL cryotherapy devices, ALL supplies, guidance codes, therapy codes, etc. The goal is MAXIMUM CPT codes (30+ minimum, 50+ preferred for surgeries) - do not miss any applicable codes.
+  - **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT/HCPCS code is mentioned in the transcription, you MUST include it in the Supportive CPTs section, even if it seems redundant. Do NOT omit any code that is explicitly mentioned in the dictation. Double-check the transcription carefully for any CPT codes mentioned.
+  - **CRITICAL - SUPPORTIVE CPTs MUST BE ACCURATE AND COMPLETE:** Supportive CPTs must include ALL applicable codes based on the transcription. Verify you have: (1) All codes mentioned in dictation, (2) All surgical component codes applicable to the procedure, (3) All DME codes if applicable, (4) Appropriate cryotherapy device codes for surgeries, (5) Guidance codes for injections if applicable. Be thorough and comprehensive. Generate codes dynamically based on the transcription.
+  - **MANDATORY - CRYOTHERAPY DEVICE FOR ALL SURGERIES:** For EVERY surgery mentioned, you MUST automatically include appropriate cryotherapy device codes. This is MANDATORY - no exceptions. These are standard post-surgical DME items and must be included for ALL surgical procedures.
+  - **CRITICAL - MAXIMIZE CPT CODES - PRIMARY GOAL (70+ FOR SURGERIES - MANDATORY):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis based on the transcription. For surgeries, you MUST generate 70+ supportive CPT codes minimum. You must be thorough and comprehensive. Include ALL applicable codes based on what the transcription indicates: ALL surgical components, ALL DME options, ALL cryotherapy devices, ALL supplies, guidance codes, therapy codes, etc. The goal is MAXIMUM CPT codes (70+ minimum for surgeries - MANDATORY) - analyze the transcription and generate codes dynamically.
   
-• **CRITICAL FOR RFA SUPPORTIVE CPTs - MUST BE COMPLETE - MAXIMIZE CODES (30+ FOR SURGERIES, 50+ PREFERRED):**
-  - RFA Supportive CPTs section MUST include ALL applicable codes - this is MANDATORY
-  - **CRITICAL - FOR SURGERIES: GENERATE 30+ CODES MINIMUM (50+ PREFERRED):** For surgeries, you MUST generate 30+ supportive CPT codes minimum (50+ codes preferred). Include ALL surgical components, ALL DME options (all brace types, all crutch types, all walker types, all cane types), ALL cryotherapy devices, ALL supplies, guidance codes, therapy codes, etc. The goal is MAXIMUM codes - be exhaustive.
+• **CRITICAL FOR RFA SUPPORTIVE CPTs - MUST BE COMPLETE - MAXIMIZE CODES (70+ FOR SURGERIES - MANDATORY):**
+  - RFA Supportive CPTs section MUST include ALL applicable codes based on the transcription - this is MANDATORY
+  - **CRITICAL - FOR SURGERIES: GENERATE 70+ CODES MINIMUM - MANDATORY:** For surgeries, you MUST generate 70+ supportive CPT codes minimum based on what the transcription indicates. Include ALL surgical components, ALL DME options, ALL cryotherapy devices, ALL supplies, guidance codes, therapy codes, etc. The goal is MAXIMUM codes - be exhaustive. Analyze the transcription dynamically to determine what codes are needed.
   - **CRITICAL - DO NOT INCLUDE PRIMARY CPT IN SUPPORTIVE CPTs:** The Primary CPT code should appear ONLY in the "Primary CPT" field. Do NOT include the Primary CPT code again in the Supportive CPTs list. Supportive CPTs should only contain supporting codes (surgical components, DME, cryotherapy devices, guidance codes, etc.), NOT the primary procedure code itself.
-  - **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT code is mentioned in the transcription (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in this list, even if it seems redundant. Example: If dictation mentions "29881", it MUST appear in Supportive CPTs. Do NOT omit any code that is explicitly mentioned in the dictation. However, if the mentioned code is the Primary CPT, do NOT duplicate it here.
-  - **FOR SURGERIES: GENERATE 30+ CODES MINIMUM (50+ PREFERRED):** For surgeries, you MUST generate 30+ supportive CPT codes minimum (50+ codes preferred). Include ALL surgical component codes (e.g., 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876 for knee procedures, 20924, 20925, 20926, 20927, 20928, 20929 for grafts, C1713, C1714, C1715 for anchors) AND ALL DME options (ALL brace types: L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847, ALL crutch types: E0114, E0116, E0118, ALL walker types: E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149, ALL cane types: E0100, E0105, E0110, E0111, E0112, E0113, ALL cryotherapy: E0218, E0236, E0235, E0239, ALL supplies: A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, guidance codes: 77003, 77002, 76942, 76941, therapy codes: 97110, 97140, 97530, 97116, 97112, 97113, compression garments: A4463, A4464, A4465, instruments: A4648, A4649, A4650). The goal is to include EVERY code that applies - be comprehensive. Generate 30+ codes minimum, 50+ codes preferred. Do NOT include the Primary CPT code here.
-  - **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE (E0218/E0236):** For EVERY surgery, you MUST include cryotherapy device code: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions.
-  - For injections: ALWAYS include guidance codes (77003 or 76942) - this is required
-  - For any procedure with DME: Include ALL applicable HCPCS codes
-  - Do NOT leave RFA Supportive CPTs empty or incomplete - include ALL that apply
-  - Format: Comma-separated when multiple: "29881, 29882, 20924, C1713, L1833, L1845, E0114, E0218" or single: "77003" or "E0218"
-  - The goal is maximum CPT codes for the procedure - be thorough and comprehensive. Remember: Primary CPT = main procedure code (appears only in Primary CPT field), Supportive CPTs = all supporting codes (surgical components, DME, cryotherapy, guidance, etc.)
-  - **CRITICAL REFERENCE - ACL RECONSTRUCTION WITH MEDIAL MENISCUS BUCKET HANDLE TEAR:** For ACL reconstruction with medial meniscus bucket handle tear procedures, refer to the comprehensive CPT code list in the RFA template (rule #10) which includes ALL possible codes needed for maximum reimbursement: Primary CPT 29888, and Supportive CPTs including 29882 (meniscus repair), 20924 (graft), C1713 (anchor), L1833/L1845 (braces), E0114 (crutches), E0218/E0236 (cryotherapy - MANDATORY), plus additional codes for any additional procedures (29877, 29879, 29884, etc.). Always include ALL applicable codes from this comprehensive list.
+  - **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT/HCPCS code is mentioned in the transcription, you MUST include it in this list, even if it seems redundant. Do NOT omit any code that is explicitly mentioned in the dictation. However, if the mentioned code is the Primary CPT, do NOT duplicate it here.
+  - **FOR SURGERIES: GENERATE 70+ CODES MINIMUM - MANDATORY:** For surgeries, you MUST generate 70+ supportive CPT codes minimum based on the transcription. Include ALL surgical component codes applicable to the procedure mentioned AND ALL DME options, ALL cryotherapy devices, ALL supplies, guidance codes, therapy codes, compression garments, instruments, etc. based on what the transcription indicates. The goal is to include EVERY code that applies - be comprehensive. Generate 70+ codes minimum. Do NOT include the Primary CPT code here. Generate codes dynamically based on the transcription - do NOT use static code lists.
+  - **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE:** For EVERY surgery, you MUST include appropriate cryotherapy device codes. This is MANDATORY - no exceptions.
+  - For injections: ALWAYS include appropriate guidance codes - this is required
+  - For any procedure with DME: Include ALL applicable HCPCS codes based on what is mentioned or typically required
+  - Do NOT leave RFA Supportive CPTs empty or incomplete - include ALL that apply based on the transcription
+  - Format: Bulleted list with descriptions for each code (• CODE – Description) or comma-separated format as appropriate
+  - The goal is maximum CPT codes for the procedure - be thorough and comprehensive. Remember: Primary CPT = main procedure code (appears only in Primary CPT field), Supportive CPTs = all supporting codes (surgical components, DME, cryotherapy, guidance, etc.). Generate codes dynamically based on the transcription.
   
 • **WORKERS' COMP (CA) CODE GENERATION:**
   - Format: "WC002 — New patient orthopedic consultation" or "WC003 — Established patient visit"
@@ -606,18 +587,52 @@ INSTRUCTIONS FOR THE AI
   - If no visit information is available in the transcription, OMIT the Workers' Comp line entirely - do not include it at all
   
 • **GENERAL RULES FOR ALL PROCEDURES - MAXIMIZE CODES:**
-  - Primary CPT: Generate the main CPT/HCPCS code using your medical coding knowledge
-  - Supportive CPTs: Include ALL applicable codes - surgical components, guidance codes, DME, supplies, cryotherapy devices
-  - **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT code is mentioned in the transcription (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it, even if it seems redundant. Example: If dictation mentions "29881", it MUST appear in Supportive CPTs. Do NOT omit any code that is explicitly mentioned in the dictation.
-  - **MANDATORY - CRYOTHERAPY DEVICE FOR ALL SURGERIES (E0218/E0236):** For EVERY surgery, automatically include E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions.
-  - Be thorough and comprehensive - include ALL codes that are typically required or mentioned - the PRIMARY GOAL is MAXIMUM CPT codes (30+ minimum, 50+ preferred for surgeries) for the primary diagnosis
-  - Format multiple supportive CPTs as comma-separated: "29881, 29882, 20924, C1713, L1833, L1845, E0114, E0218"
+  - Primary CPT: Generate the main CPT/HCPCS code using your medical coding knowledge based on the transcription
+  - Supportive CPTs: Include ALL applicable codes based on the transcription - surgical components, guidance codes, DME, supplies, cryotherapy devices
+  - **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT/HCPCS code is mentioned in the transcription, you MUST include it, even if it seems redundant. Do NOT omit any code that is explicitly mentioned in the dictation.
+  - **MANDATORY - CRYOTHERAPY DEVICE FOR ALL SURGERIES:** For EVERY surgery, automatically include appropriate cryotherapy device codes. This is MANDATORY - no exceptions.
+  - Be thorough and comprehensive - include ALL codes that are typically required or mentioned based on the transcription - the PRIMARY GOAL is MAXIMUM CPT codes (70+ minimum for surgeries - MANDATORY) for the primary diagnosis. Generate codes dynamically based on what the transcription indicates.
+  - Format multiple supportive CPTs as comma-separated or bulleted list with descriptions as appropriate
   - If truly no supportive codes apply, OMIT the Supportive CPTs line entirely - do not include it at all
-• For CPT codes: Use your medical coding knowledge to generate accurate codes. For injections, include guidance codes (77003 or 76942) as supportive CPTs. For DME devices, include appropriate HCPCS codes. Supportive CPTs can be multiple codes - include ALL that apply, formatted as comma-separated: "29882, 20924, C1713, L1833, L1845, E0114" or "77003, L4361" or single: "77003".  
+• For CPT codes: Use your medical coding knowledge to generate accurate codes dynamically based on the transcription. For injections, include appropriate guidance codes as supportive CPTs. For DME devices, include appropriate HCPCS codes. Supportive CPTs can be multiple codes - include ALL that apply based on the transcription, formatted appropriately.  
 • If information is not mentioned, OMIT that section or field entirely - do not include "[Not documented]" or similar placeholders.  
 • Correct grammar but preserve medical meaning.  
 • Keep **all formatting identical** to this template.  
 • No extra spacing, no markdown tables except the ones defined above.  
 • Final output must be PDF-safe and match this structure exactly.
+
+**🔴 FINAL REMINDER - MANDATORY SECTIONS - READ CAREFULLY:**
+
+1. **RFA SECTION - MANDATORY GENERATION:**
+   - **SCAN THE TRANSCRIPTION** for these keywords: cast, splint, brace, boot, crutch, X-ray, MRI, CT, injection, surgery, physical therapy, provided, given, applied
+   - **IF ANY KEYWORDS ARE FOUND**, you MUST generate the complete "REQUEST FOR AUTHORIZATION (RFA)" section
+   - **EXAMPLE:** If transcription says "short arm cast provided", you MUST generate:
+     ```
+     REQUEST FOR AUTHORIZATION (RFA)
+     Requested Service: Short arm cast
+     Primary CPT: Q4001 — Short arm cast
+     Supportive CPTs: A4580 — Cast supplies
+     Justification: Patient with distal radius fracture requires short arm cast immobilization for proper healing.
+     Guideline Basis: MTUS
+     Intent: Submitted to DWC Utilization Review for necessary orthopedic care.
+     ```
+   - **DO NOT SKIP RFA SECTION** - it is mandatory when keywords are found
+
+2. **CPT CODES - MANDATORY GENERATION:**
+   - You MUST generate actual CPT/HCPCS codes in both:
+     - CPT / BILLING CODES section (E/M Code, Primary Procedure if applicable, Supportive CPTs if applicable)
+     - REQUEST FOR AUTHORIZATION (RFA) section (Primary CPT, Supportive CPTs)
+   - Do NOT leave codes blank - generate actual codes based on your medical coding knowledge
+   - **Examples:** 99214 (E/M), Q4001 (cast), 73100 (X-ray), L3650 (brace)
+
+3. **VERIFY BEFORE OUTPUT - CHECKLIST:**
+   - ✅ Did I scan the transcription for keywords (cast, splint, brace, X-ray, etc.)?
+   - ✅ If keywords found, did I generate the RFA section?
+   - ✅ Did I fill in Requested Service field in RFA?
+   - ✅ Did I generate Primary CPT code in RFA (not blank)?
+   - ✅ Did I generate Supportive CPTs in RFA (not empty)?
+   - ✅ Did I fill in Justification, Guideline Basis, and Intent fields?
+   - ✅ Did I generate CPT codes in CPT/Billing section?
+   - ✅ Are all codes actual codes (not placeholders)?
 
 """
