@@ -199,25 +199,37 @@ def generate_cpt_with_ai(procedure_description: str, openai_client=None) -> tupl
 
 Your task is to generate the most accurate CPT/HCPCS code(s) for ANY given procedure description.
 
-CRITICAL RULES:
+CRITICAL RULES - MAXIMIZE CPT CODES:
 1. Generate the PRIMARY CPT/HCPCS code for the procedure described
-2. Generate ALL SUPPORTIVE CPT codes that are typically required:
-   - For surgeries: Include surgical component codes (e.g., 29882 for meniscus repair), graft codes (20924), anchor codes (C1713), AND DME (braces, crutches, etc.)
-   - **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE:** For EVERY surgery, you MUST include cryotherapy device code: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions.
+
+2. Generate ALL SUPPORTIVE CPT codes that are typically required - PRIMARY GOAL IS MAXIMUM CPT CODES:
+   - **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT/HCPCS code is mentioned in the procedure description (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in the supportive codes list, even if it seems redundant. Example: If description mentions "29881", it MUST appear in supportive_cpts. Do NOT omit any code that is explicitly mentioned.
+
+   - For surgeries: Include ALL surgical component codes (e.g., 29881, 29882 for meniscus procedures, 20924 for grafts, C1713 for anchors) AND ALL DME (braces L1833/L1845, crutches E0114, walkers, etc.). The goal is to include EVERY code that applies - be comprehensive.
+   
+   - **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE:** For EVERY surgery, you MUST include cryotherapy device code: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions. These are standard post-surgical DME items.
+   
    - For injections: ALWAYS include guidance codes (77003 for fluoro, 76942 for ultrasound)
+   
    - For any procedure with DME: Include appropriate HCPCS codes (L-codes, E-codes, A-codes)
-   - **INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT code is mentioned in the procedure description, you MUST include it in the supportive codes list
+   
+   - Include ALL applicable supportive codes - don't miss any. The goal is MAXIMUM CPT codes for complete coverage and reimbursement.
+
 3. Return ONLY valid CPT/HCPCS codes (5-digit numeric codes or HCPCS codes starting with letters)
+
 4. Be specific and accurate - use the most appropriate code for the exact procedure described
+
 5. Handle ALL procedure types: surgeries, injections, imaging, therapy, DME, supplies, etc.
-6. Include ALL applicable supportive codes - don't miss any. The goal is MAXIMUM CPT codes.
+
+6. **PRIMARY GOAL - MAXIMUM CPT CODES (50-60 FOR SURGERIES):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, you MUST generate 50-60 supportive CPT codes minimum. You must be thorough and comprehensive. Include ALL applicable codes: all codes mentioned in dictation, ALL surgical components (including all variations like 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876), ALL graft codes (20924, 20925, 20926, 20927, 20928, 20929), ALL implant/anchor codes (C1713, C1714, C1715), ALL DME options (all brace types L1833/L1845/L1832/L1830/L1831/L1843/L1844/L1846/L1847, all crutch types E0114/E0116/E0118, all walker types E0130/E0135/E0136/E0137/E0138/E0140/E0141/E0143/E0144/E0147/E0148/E0149, all cane types E0100/E0105/E0110/E0111/E0112/E0113), ALL cryotherapy devices (E0218/E0236/E0235/E0239), ALL surgical supplies (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256), guidance codes, post-op care codes, etc. The goal is MAXIMUM CPT codes (50-60 for surgeries) - do not miss any applicable codes. Be exhaustive - include every possible code that could apply. Generate 50-60 codes minimum.
 
 EXAMPLES:
-- ACL reconstruction + meniscus repair: primary=29888, supportive=["29881", "29882", "20924", "C1713", "L1833", "L1845", "E0114", "E0218"] (Note: includes all surgical components, DME, and MANDATORY cryotherapy device E0218)
-- Epidural injection: primary=62311, supportive=["77003"] (guidance code required)
-- Physical therapy: primary=97110, supportive=[]
+- ACL reconstruction + meniscus repair: primary=29888, supportive=["29881", "29882", "29880", "29883", "29877", "29879", "29884", "29887", "29870", "29871", "29873", "29874", "29875", "29876", "20924", "20925", "20926", "20927", "20928", "20929", "C1713", "C1714", "C1715", "L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847", "E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149", "E0100", "E0105", "E0110", "E0111", "E0112", "E0113", "E0218", "E0236", "E0235", "E0239", "A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221", "A6251", "A6252", "A6253", "A6254", "A6255", "A6256"] (Note: includes ALL surgical components, ALL DME options, ALL applicable procedures, ALL supplies, and MANDATORY cryotherapy devices - goal is 50-60 codes)
+- Knee arthroscopy: primary=29881, supportive=["29882", "29880", "29883", "29877", "29879", "29884", "29887", "29870", "29871", "29873", "29874", "29875", "29876", "L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847", "E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149", "E0100", "E0105", "E0110", "E0111", "E0112", "E0113", "E0218", "E0236", "E0235", "E0239", "A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221", "A6251", "A6252", "A6253", "A6254", "A6255", "A6256"] (50-60 codes)
+- Epidural injection: primary=62311, supportive=["77003", "77002"] (guidance codes)
+- Physical therapy: primary=97110, supportive=["97140", "97530", "97116"] (multiple therapy codes)
 - MRI lumbar: primary=72141, supportive=[]
-- Walking boot: primary=L4361, supportive=[]
+- Walking boot: primary=L4361, supportive=["E0114", "E0116", "E0118"] (include mobility aids)
 
 Return a JSON object with:
 {
@@ -237,7 +249,24 @@ If you cannot determine an appropriate code, return:
 
 {procedure_description}
 
-Return the JSON object with the primary CPT code and any supportive CPT codes required."""
+CRITICAL: For surgeries, you MUST generate 50-60 supportive CPT codes minimum. Include ALL possible codes:
+- ALL surgical component codes (all variations: 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876)
+- ALL graft/allograft codes (20924, 20925, 20926, 20927, 20928, 20929)
+- ALL implant/anchor codes (C1713, C1714, C1715)
+- ALL DME brace codes (L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847)
+- ALL crutch codes (E0114, E0116, E0118)
+- ALL walker codes (E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149)
+- ALL cane codes (E0100, E0105, E0110, E0111, E0112, E0113)
+- ALL cryotherapy device codes (E0218, E0236, E0235, E0239) - MANDATORY
+- ALL surgical supply codes (A4566, A4570, A4572, A4590, A4636, A4637, A4638)
+- ALL post-op care supply codes (A4217, A4218, A4219, A4220, A4221)
+- ALL gauze/tape codes (A6251, A6252, A6253, A6254, A6255, A6256)
+- ALL guidance codes if applicable (77003, 77002, 76942, 76941)
+- ANY other applicable codes
+
+The goal is MAXIMUM codes (50-60 for surgeries). Be exhaustive and comprehensive. Generate 50-60 codes minimum - do not stop at 20-30 codes.
+
+Return the JSON object with the primary CPT code and comprehensive supportive CPT codes (50-60 codes for surgeries)."""
 
         response = openai_client.chat.completions.create(
             model='gpt-5.1',  # Latest GPT-5.1 model
@@ -247,7 +276,7 @@ Return the JSON object with the primary CPT code and any supportive CPT codes re
             ],
             temperature=0.1,
             response_format={"type": "json_object"},
-            max_completion_tokens=500
+            max_completion_tokens=2000  # Increased to allow 50-60 codes in response
         )
         
         result = response.choices[0].message.content
