@@ -751,7 +751,7 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
                 }
             ],
             temperature=0.1,  # Lower temperature for more consistent CPT code generation
-            max_completion_tokens=6000,
+            max_completion_tokens=8000,  # Increased to allow 50+ CPT codes with descriptions
             top_p=0.95  # Slightly lower for more deterministic output
         )
         

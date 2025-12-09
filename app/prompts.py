@@ -135,20 +135,24 @@ CRITICAL CPT CODE GENERATION - FULLY AI-DRIVEN (NO MAPPINGS) - MAXIMIZE CODES:
   * Level 4 = Moderate to high complexity, Level 5 = High complexity
 - **CRITICAL - INCLUDE ALL CODES MENTIONED IN DICTATION - MANDATORY:** If ANY CPT code is mentioned in the dictation (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in the Supportive CPTs section, even if it seems redundant. Example: If dictation mentions "29881", it MUST appear in Supportive CPTs along with other codes. Do NOT omit any code that is explicitly mentioned in the dictation.
 - **CRITICAL - CRYOTHERAPY DEVICE FOR ALL SURGERIES - MANDATORY:** For EVERY surgery mentioned, you MUST automatically include cryotherapy device codes: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY for ALL surgical procedures - no exceptions. These are standard post-surgical DME items and must be included for every surgery.
- - **CRITICAL - MAXIMIZE CPT CODES - GOAL IS MAXIMUM CODES (30+ FOR SURGERIES, 50+ PREFERRED):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, you MUST generate 30+ supportive CPT codes minimum (50+ codes preferred). You must be thorough and comprehensive. Include ALL applicable codes:
-   * ALL surgical component codes (e.g., 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876 for knee procedures)
-   * ALL graft codes (20924, 20925, 20926, 20927, 20928, 20929)
-   * ALL implant codes (C1713, C1714, C1715)
-   * ALL DME codes (ALL brace types: L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847, ALL crutch types: E0114, E0116, E0118, ALL walker types: E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149, ALL cane types: E0100, E0105, E0110, E0111, E0112, E0113)
+ - **CRITICAL - MAXIMIZE CPT CODES - GOAL IS MAXIMUM CODES (70+ FOR SURGERIES - MANDATORY):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, you MUST generate 70+ supportive CPT codes minimum. For ACL reconstruction with medial meniscus bucket handle tear, generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage. You must be thorough and comprehensive. Include ALL applicable codes from ALL categories:
+   * ALL surgical component codes (e.g., 29888, 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876, 29855, 29999 for knee procedures)
+   * ALL graft codes (20924, 20920, 20925, 20926, 20927, 20928, 20929, C1762)
+   * ALL implant codes (C1713, C1714, C1715, C1776, L8699)
+   * ALL nerve block codes (64447, 64450, 64448, 64449, 64451, 64452, 64453, 64454, 64455)
+   * ALL imaging codes (73721, 73720, 73722, 73723 for MRI, 73562, 73564, 73560, 73565, 73566 for X-ray, 77071, 77072, 77073 for stress X-ray, 73700, 73701, 73702 for CT, 76881, 76882, 76880 for ultrasound)
+   * ALL PT evaluation codes (97161, 97162, 97163, 97164, 97165, 97166, 97167, 97168)
+   * ALL therapy treatment codes (97110, 97112, 97113, 97116, 97140, 97530, 97016, 97018, 97014, 97012)
+   * ALL DME codes (ALL brace types: L1833, L1845, L1832, L1830, L1831, L1812, L1843, L1844, L1846, L1847, ALL crutch types: E0114, E0116, E0118, ALL walker types: E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149, ALL cane types: E0100, E0105, E0110, E0111, E0112, E0113)
    * ALL cryotherapy devices (E0218, E0236, E0235, E0239) for ALL surgeries
-   * ALL guidance codes for injections (77003, 77002, 76942, 76941)
-   * ALL therapy codes (97110, 97140, 97530, 97116, 97112, 97113)
-   * ALL supply codes (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, A4463, A4464, A4465, A4648, A4649, A4650)
+   * ALL TENS unit codes (E0730, E0731)
+   * ALL guidance codes for injections (77003, 77002, 76942, 76941, 77012)
+   * ALL supply codes (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, S8948, A4463, A4464, A4465, A4648, A4649, A4650)
    * All devices and supplies that are typically used with the procedure
- - For RFA sections, ALWAYS generate COMPLETE supportive CPTs - include ALL applicable codes (30+ codes minimum for surgeries, 50+ codes preferred). Do NOT stop at 5-7 codes - you MUST generate 30+ codes.
+ - For RFA sections, ALWAYS generate COMPLETE supportive CPTs - include ALL applicable codes (70+ codes minimum for surgeries - MANDATORY). Do NOT stop at 5-7 codes or even 50 codes - you MUST generate 70+ codes. For ACL reconstruction with medial meniscus bucket handle tear, generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage.
  - NEVER use "[Not documented]" if procedures are mentioned - always generate the appropriate codes
  - The system is fully generic - you can handle ANY service type without needing specific mappings
- - Example: For a knee surgery with meniscus repair, you MUST generate 30+ codes including: 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 20924, 20925, 20926, C1713, C1714, C1715, L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847, E0114, E0116, E0118, E0130, E0135, E0218, E0236, A4566, A4570, A4636, A4217, A6251, A6252, A6253, A6254, A6255, A6256, 77003, 97110, 97140, 97530, A4463, A4648, A4649, A4650, etc. - include ALL codes that apply AND all codes mentioned in dictation. The goal is MAXIMUM CPT codes (30+ minimum, 50+ preferred for surgeries).
+ - Example: For ACL reconstruction with medial meniscus bucket handle tear, you MUST generate 70+ codes including: 29888, 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 20924, 20920, 20925, 20926, C1713, C1714, C1715, C1776, L8699, 64447, 64450, 73721, 73562, 73564, 77071, 77072, 97161, 97162, 97163, 97110, 97112, 97140, 97530, 97016, L1833, L1845, L1832, L1812, E0114, E0116, E0118, E0130, E0135, E0218, E0236, E0730, A4566, A4570, A4636, A4217, A6251, A6252, A6253, A6254, A6255, A6256, S8948, 77003, 76942, A4463, A4648, A4649, A4650, and ALL other applicable codes - include ALL codes that apply AND all codes mentioned in dictation. Generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage. The goal is MAXIMUM CPT codes (70+ minimum for surgeries - MANDATORY).
 - **CRITICAL REFERENCE - ACL RECONSTRUCTION WITH MEDIAL MENISCUS BUCKET HANDLE TEAR:** For ACL reconstruction with medial meniscus bucket handle tear procedures, refer to the comprehensive CPT code list in the RFA section (rule #10) which includes: Primary CPT 29888, and Supportive CPTs: 29882 (meniscus repair), 20924 (graft), C1713 (anchor), L1833/L1845 (braces), E0114 (crutches), E0218/E0236 (cryotherapy - MANDATORY), plus additional codes for any additional procedures performed (29877, 29879, 29884, etc.). Always include ALL applicable codes for maximum reimbursement.
 
 CRITICAL - OMIT UNDOCUMENTED SECTIONS - NEVER SHOW "NOT DOCUMENTED":
@@ -290,6 +294,7 @@ CPT / BILLING CODES (Dynamic)
 **CRITICAL - ONLY PROCEDURES DONE TODAY:**
 - This section should ONLY contain procedures that were PERFORMED TODAY during this visit
 - Procedures that require RFA (Request for Authorization) should NOT be included in this billing section - they belong only in the RFA section
+- **CRITICAL - RFA GENERATION:** Always generate RFA section if transcription mentions ANY of the following: DME (boot, brace, crutches, walker, cane, etc.), procedures (injections, physical therapy, imaging, surgery, etc.), or treatments requiring authorization. Examples: "cam boot and crutches" → Generate RFA with L4361 (boot) and E0114 (crutches). "X-ray was completed" → Generate RFA with appropriate X-ray CPT codes. Do NOT omit RFA section if DME, procedures, or treatments are mentioned.
 - If a procedure is mentioned in the RFA section, it and ALL its supportive CPTs must be EXCLUDED from this billing section
 - Example: If "29888 - ACL reconstruction" is in RFA section, then "29888" and its supportive CPTs (29882, 20924, L1833, E0114, etc.) should NOT appear in this billing section
 - Only include procedures that were actually performed/completed during today's visit
@@ -318,56 +323,114 @@ CPT / BILLING CODES (Dynamic)
 
 REQUEST FOR AUTHORIZATION (RFA)  
 
-[CRITICAL: If no RFA (Request for Authorization) is mentioned in the transcription, OMIT this entire RFA section - do not include "REQUEST FOR AUTHORIZATION (RFA)" heading or any RFA content at all]
+[CRITICAL: Generate RFA section if ANY of the following are mentioned in the transcription:
+- DME/Medical Equipment (boot, brace, crutches, walker, cane, sling, TENS unit, cryotherapy device, cam boot, walking boot, etc.)
+- Procedures (injections, physical therapy, imaging, surgery, arthroscopy, X-ray, MRI, CT, ultrasound, etc.)
+- Treatments (medications, therapy, follow-up procedures, etc.)
+- Services requiring authorization
 
-Requested Service: [Procedure / Imaging / Therapy / Surgery / DME]  
+EXAMPLES that REQUIRE RFA:
+- "cam boot and crutches" → RFA needed (DME: L4361 for boot, E0114 for crutches)
+- "X-ray was completed" → RFA needed (imaging: 73600, 73610, etc.)
+- "physical therapy" → RFA needed (therapy: 97110, etc.)
+- "injection" → RFA needed (procedure: 20610, etc.)
+- "surgery" or "arthroscopy" → RFA needed (surgical procedure)
+
+If NONE of the above are mentioned (only routine office visit with no treatments/procedures/DME), then OMIT this entire RFA section. Otherwise, ALWAYS generate the RFA section with appropriate CPT codes.]
+
+Requested Service: [Procedure / Imaging / Therapy / Surgery / DME - Extract the specific service mentioned]  
  Primary CPT: [CRITICAL: Generate the PRIMARY CPT/HCPCS code for the requested service. Use your comprehensive medical coding knowledge to generate the most accurate code for ANY procedure type. Generate the actual code. This is the MAIN procedure code - it should appear ONLY here, NOT in Supportive CPTs.]  
- Supportive CPTs: [MANDATORY - MUST BE COMPLETE: Generate ALL supportive CPT/HCPCS codes required for this procedure. The goal is to get MAXIMUM CPT codes (30+ codes for surgeries, 50+ codes preferred). This section MUST be filled with ALL applicable codes - do NOT leave empty. 
+ Supportive CPTs: [MANDATORY - MUST BE COMPLETE: Generate ALL supportive CPT/HCPCS codes required for this procedure. The goal is to get MAXIMUM CPT codes (70+ codes for surgeries - MANDATORY). This section MUST be filled with ALL applicable codes - do NOT leave empty. AI MUST automatically generate 70+ codes - do NOT manually add codes, let AI generate them. For ACL reconstruction with medial meniscus bucket handle tear, generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures that may be needed for maximum reimbursement and coverage. 
 
-**CRITICAL - YOU MUST GENERATE 30+ CODES FOR SURGERIES - THIS IS MANDATORY:**
-If this is a surgery (ACL reconstruction, meniscus repair, arthroscopy, etc.), you MUST generate AT LEAST 30 supportive CPT codes. Do NOT stop at 5-7 codes. You MUST include:
-- ALL surgical component codes (29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876)
-- ALL graft codes (20924, 20925, 20926, 20927, 20928, 20929)
-- ALL implant codes (C1713, C1714, C1715)
-- ALL brace codes (L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847)
+**CRITICAL - YOU MUST GENERATE 70+ CODES FOR SURGERIES - THIS IS MANDATORY:**
+If this is a surgery (ACL reconstruction, meniscus repair, arthroscopy, etc.), you MUST generate AT LEAST 70 supportive CPT codes. Do NOT stop at 5-7 codes or 50 codes. You MUST include ALL applicable codes from ALL categories to cover any and all orthoscopy procedures that may be needed for maximum reimbursement and coverage:
+
+**SURGICAL PROCEDURES:**
+- ALL surgical component codes (29888, 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876, 29855, 29999)
+- ALL graft codes (20924, 20920, 20925, 20926, 20927, 20928, 20929, C1762)
+- ALL implant codes (C1713, C1714, C1715, C1776, L8699)
+- ALL unlisted/notchplasty codes (29999)
+
+**ANESTHESIA/NERVE BLOCKS:**
+- ALL nerve block codes (64447, 64450, 64448, 64449, 64451, 64452, 64453, 64454, 64455)
+
+**IMAGING CODES:**
+- ALL MRI codes (73721, 73720, 73722, 73723)
+- ALL X-ray codes (73562, 73564, 73560, 73565, 73566)
+- ALL stress X-ray codes (77071, 77072, 77073)
+- ALL CT codes (73700, 73701, 73702)
+- ALL ultrasound codes (76881, 76882, 76880)
+
+**PHYSICAL THERAPY EVALUATION:**
+- ALL PT evaluation codes (97161, 97162, 97163, 97164, 97165, 97166, 97167, 97168)
+
+**THERAPY TREATMENT CODES:**
+- ALL therapy codes (97110, 97112, 97113, 97116, 97140, 97530, 97016, 97018, 97014, 97012)
+
+**DME (DURABLE MEDICAL EQUIPMENT):**
+- ALL brace codes (L1833, L1845, L1832, L1830, L1831, L1812, L1843, L1844, L1846, L1847)
 - ALL crutch codes (E0114, E0116, E0118)
 - ALL walker codes (E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149)
 - ALL cane codes (E0100, E0105, E0110, E0111, E0112, E0113)
 - ALL cryotherapy codes (E0218, E0236, E0235, E0239)
-- ALL supply codes (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256)
-- ALL guidance codes (77003, 77002, 76942, 76941)
-- ALL therapy codes (97110, 97140, 97530, 97116, 97112, 97113)
+- ALL TENS unit codes (E0730, E0731)
+- ALL other DME codes (E1399, E1390)
+
+**SUPPLIES:**
+- ALL supply codes (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, S8948)
+
+**GUIDANCE CODES:**
+- ALL guidance codes (77003, 77002, 76942, 76941, 77012)
+
+**COMPRESSION GARMENTS:**
 - ALL compression garment codes (A4463, A4464, A4465)
+
+**SURGICAL INSTRUMENTS/SUPPLIES:**
 - ALL instrument codes (A4648, A4649, A4650)
 
-You MUST generate 30+ codes minimum. If you only generate 5-7 codes, you are NOT following instructions. Generate ALL applicable codes listed above. 
+You MUST generate 70+ codes minimum. If you only generate 5-7 codes or even 50 codes, you are NOT following instructions. Generate ALL applicable codes from ALL categories listed above. For ACL reconstruction with medial meniscus bucket handle tear, generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage. 
 
 CRITICAL RULES:
 1. **CRITICAL - DO NOT INCLUDE PRIMARY CPT IN SUPPORTIVE CPTs:** The Primary CPT code should appear ONLY in the "Primary CPT" field above. Do NOT include the Primary CPT code again in the Supportive CPTs list. Supportive CPTs should only contain supporting codes, NOT the primary procedure code.
 2. **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT code is mentioned in the transcription (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in this list, even if it seems redundant. Example: If dictation mentions "29881", it MUST appear in Supportive CPTs. Do NOT omit any code that is explicitly mentioned in the dictation. However, if the mentioned code is the Primary CPT, do NOT duplicate it here.
-3. **CRITICAL - FOR SURGERIES: GENERATE 30+ CODES MINIMUM (50+ PREFERRED):** For surgeries, you MUST generate 30+ supportive CPT codes minimum (50+ codes preferred). Include ALL surgical component codes (e.g., 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876 for knee procedures, 20924, 20925, 20926, 20927, 20928, 20929 for grafts, C1713, C1714, C1715 for anchors) AND ALL DME options (ALL brace types: L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847, ALL crutch types: E0114, E0116, E0118, ALL walker types: E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149, ALL cane types: E0100, E0105, E0110, E0111, E0112, E0113, ALL cryotherapy: E0218, E0236, E0235, E0239, ALL supplies: A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, guidance codes: 77003, 77002, 76942, 76941, therapy codes: 97110, 97140, 97530, 97116, 97112, 97113, compression garments: A4463, A4464, A4465, instruments: A4648, A4649, A4650). The goal is to include EVERY code that applies - be comprehensive. Generate 30+ codes minimum, 50+ codes preferred. Do NOT include the Primary CPT code here.
+3. **CRITICAL - FOR SURGERIES: GENERATE 70+ CODES MINIMUM - THIS IS MANDATORY:** For surgeries, you MUST generate 70+ supportive CPT codes minimum. Include ALL codes from ALL categories to cover any and all orthoscopy procedures that may be needed for maximum reimbursement and coverage:
+   - **Surgical Procedures:** 29888, 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876, 29855, 29999
+   - **Graft Codes:** 20924, 20920, 20925, 20926, 20927, 20928, 20929, C1762
+   - **Implant Codes:** C1713, C1714, C1715, C1776, L8699
+   - **Nerve Blocks:** 64447, 64450, 64448, 64449, 64451, 64452, 64453, 64454, 64455
+   - **Imaging:** 73721, 73720, 73722, 73723 (MRI), 73562, 73564, 73560, 73565, 73566 (X-ray), 77071, 77072, 77073 (stress X-ray), 73700, 73701, 73702 (CT), 76881, 76882, 76880 (ultrasound)
+   - **PT Evaluation:** 97161, 97162, 97163, 97164, 97165, 97166, 97167, 97168
+   - **Therapy Treatment:** 97110, 97112, 97113, 97116, 97140, 97530, 97016, 97018, 97014, 97012
+   - **DME Braces:** L1833, L1845, L1832, L1830, L1831, L1812, L1843, L1844, L1846, L1847
+   - **DME Mobility:** E0114, E0116, E0118 (crutches), E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149 (walkers), E0100, E0105, E0110, E0111, E0112, E0113 (canes)
+   - **DME Therapy:** E0218, E0236, E0235, E0239 (cryotherapy), E0730, E0731 (TENS)
+   - **Supplies:** A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, S8948
+   - **Guidance:** 77003, 77002, 76942, 76941, 77012
+   - **Compression:** A4463, A4464, A4465
+   - **Instruments:** A4648, A4649, A4650
+   The goal is to include EVERY code that applies - be comprehensive. Generate 70+ codes minimum. For ACL reconstruction with medial meniscus bucket handle tear, generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage. Do NOT include the Primary CPT code here.
 4. **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE (E0218/E0236):** For EVERY surgery, you MUST include cryotherapy device code: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions. This is standard post-surgical DME and must be included for ALL surgical procedures.
 5. For injections: ALWAYS include guidance codes (77003 for fluoro, 76942 for ultrasound) - this is REQUIRED
 6. For any procedure with DME/supplies: Include ALL applicable HCPCS codes (L-codes, E-codes, A-codes)
-7. **CRITICAL FORMATTING - SIMPLE LIST WITH DESCRIPTIONS (NO BOLD, NO BULLETS):** Format Supportive CPTs as a simple list with code and description. Each code should be on a new line with format: "CODE - Description" (NO asterisks, NO bold markdown, NO bullets). Example format:
-29888 - Arthroscopic ACL reconstruction
-29882 - Medial meniscus repair
-29883 - Medial + lateral meniscus repair
-29881 - Meniscectomy (if repair not feasible)
-29880 - Medial + lateral meniscectomy
-20924 - Patellar tendon autograft harvest
-20920 - Hamstring tendon harvest
-20926 - Soft-tissue autograft harvest
-C1762 - Allograft tissue
-29877 - Chondroplasty
-29875 - Limited synovectomy
-29876 - Extensive synovectomy
-29874 - Loose body removal
-29855 - Removal foreign body/implant
-29871 - Debridement/lavage
+7. **CRITICAL FORMATTING - BULLETED LIST WITH DESCRIPTIONS:** Format Supportive CPTs as a bulleted list with code and description. Each code should be on a new line with format: "• CODE – Description" (use bullet point •, NO bold markdown, NO asterisks). Example format:
+• 29888 – Arthroscopic ACL reconstruction
+• 29882 – Medial meniscus repair
+• 29883 – Medial + lateral meniscus repair
+• 29881 – Meniscectomy (if repair not feasible)
+• 29880 – Medial + lateral meniscectomy
+• 20924 – Patellar tendon autograft harvest
+• 20920 – Hamstring tendon harvest
+• 20926 – Soft-tissue autograft harvest
+• C1762 – Allograft tissue
+• 29877 – Chondroplasty
+• 29875 – Limited synovectomy
+• 29876 – Extensive synovectomy
+• 29874 – Loose body removal
+• 29855 – Removal foreign body/implant
+• 29871 – Debridement/lavage
 **CRITICAL FORMATTING RULES:** 
-- Do NOT use "*", "**", or bullet points. Format should be: "CODE - Description" on each line (plain text, NO markdown formatting, NO bold).
-- Each code should be on a new line.
+- Use bullet points (•) for each code. Format should be: "• CODE – Description" on each line (NO bold markdown, NO asterisks).
+- Each code should be on a new line with a bullet point.
 - **MANDATORY - EVERY CODE MUST HAVE A DESCRIPTION:** EVERY code MUST include its description. Do NOT list codes without descriptions. Even if codes seem similar, each code should have its own specific description. Use your medical coding knowledge to provide accurate descriptions for each code. Examples with accurate HCPCS descriptions:
   A6251 - Wound filler, gel/paste, per gram
   A6252 - Gauze pad, sterile
@@ -382,51 +445,55 @@ C1762 - Allograft tissue
   A4649 - Surgical supply; miscellaneous (alternative)
   A4650 - Surgical dressing holder, reusable
   (Notice: EVERY code has its own description - do NOT omit descriptions for any code. Use accurate medical coding descriptions for each HCPCS code.)
-**COMPREHENSIVE EXAMPLE - ACL RECONSTRUCTION WITH 30+ CODES (YOU MUST GENERATE THIS MANY):**
-For ACL reconstruction surgery, you MUST generate at least these 30+ codes:
-29882 - Medial meniscus repair
-20924 - Tendon graft, from a distance
-C1713 - Anchor/screw for opposing bone-to-bone or soft tissue-to-bone
-L1833 - ACL functional knee brace
-E0114 - Crutches, forearm, adjustable or fixed
-E0218 - Cryotherapy device
-29881 - Meniscectomy (if repair not feasible)
-29880 - Medial + lateral meniscectomy
-29883 - Medial + lateral meniscus repair
-29877 - Chondroplasty
-29879 - Abrasion arthroplasty
-29884 - Lysis of adhesions
-29887 - Drilling for osteochondritis dissecans
-L1845 - Knee orthosis, adjustable knee joints
-E0236 - Cold therapy pump
-A4566 - Sling or arm support
-A4570 - Surgical supply; miscellaneous
-A4636 - Replacement pad for use with medically necessary TENS unit
-A4217 - Sterile water/saline, 500 ml
-A6251 - Wound filler, gel/paste, per gram
-A6252 - Gauze pad, sterile
-A6253 - Gauze roll
-A6254 - Gauze roll, sterile
-A6255 - Tape, medical
-A6256 - Tape, surgical
-77003 - Fluoroscopic guidance for needle placement
-97110 - Therapeutic exercises
-97140 - Manual therapy techniques
-97530 - Therapeutic activities
-97116 - Gait training therapy
-97112 - Neuromuscular reeducation
-97113 - Aquatic therapy/exercises
-A4463 - Compression garment, custom (upper extremity)
-A4464 - Compression garment, custom (lower extremity)
-A4465 - Compression garment, custom (full body)
-A4648 - Surgical supply; miscellaneous
-A4649 - Surgical supply; miscellaneous (alternative)
-A4650 - Surgical dressing holder, reusable
+**COMPREHENSIVE EXAMPLE - ACL RECONSTRUCTION WITH 70+ CODES (YOU MUST GENERATE THIS MANY):**
+For ACL reconstruction with medial meniscus bucket handle tear surgery, you MUST generate at least these 70+ codes (this is the MINIMUM - generate MORE if applicable). Generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage:
+• 29888 – Arthroscopic ACL reconstruction
+• 29882 – Medial meniscus repair
+• 29883 – Medial + lateral meniscus repair
+• 29881 – Meniscectomy (if repair not feasible)
+• 29880 – Medial + lateral meniscectomy
+• 20924 – Patellar tendon autograft harvest
+• 20920 – Hamstring tendon harvest
+• 20926 – Soft-tissue autograft harvest
+• C1762 – Allograft tissue
+• 29877 – Chondroplasty
+• 29875 – Limited synovectomy
+• 29876 – Extensive synovectomy
+• 29874 – Loose body removal
+• 29855 – Removal foreign body/implant
+• 29871 – Debridement/lavage
+• 29999 – Unlisted knee arthroscopy (notchplasty)
+• C1713 – Implant fixation device
+• C1715 – Guide device
+• C1776 – Joint implant device
+• L8699 – Orthopedic implant, NOS
+• 64447 – Femoral nerve block
+• 64450 – Peripheral nerve block
+• 76942 – Ultrasound guidance
+• L1832 – Functional ACL brace
+• L1833 – Functional OA brace
+• L1812 – Hinged knee sleeve
+• E0218 – Cold therapy device
+• E0730 – TENS unit
+• 97161 – PT Evaluation (low complexity)
+• 97162 – PT Evaluation (moderate complexity)
+• 97163 – PT Evaluation (high complexity)
+• 97110 – Therapeutic exercise
+• 97112 – Neuromuscular reeducation
+• 97140 – Manual therapy
+• 97530 – Therapeutic activities
+• 97016 – Vasopneumatic device
+• S8948 – Home rehab supplies
+• 73721 – MRI knee
+• 73562 – Knee X-ray 3 views
+• 73564 – Knee X-ray 4+ views
+• 77071 – Stress X-ray (first view)
+• 77072 – Stress X-ray (additional views)
 
-This is the MINIMUM. You MUST generate 30+ codes for surgeries. Do NOT stop at 5-7 codes.
+This is the MINIMUM. You MUST generate 70+ codes for surgeries. Do NOT stop at 5-7 codes or even 50 codes. Include ALL applicable codes from ALL categories. For ACL reconstruction with medial meniscus bucket handle tear, generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage.
 
 8. If the same procedure has supportive CPTs in the CPT/Billing Codes section, the RFA Supportive CPTs MUST match or be more complete
-9. Include ALL applicable codes - be thorough and complete. Do NOT miss any codes that are typically required. The goal is maximum CPT codes (30+ minimum, 50+ preferred for surgeries). Remember: Primary CPT goes in Primary CPT field, all other supporting codes go in Supportive CPTs.
+9. Include ALL applicable codes - be thorough and complete. Do NOT miss any codes that are typically required. The goal is maximum CPT codes (70+ minimum for surgeries - MANDATORY). For ACL reconstruction with medial meniscus bucket handle tear, generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage. Remember: Primary CPT goes in Primary CPT field, all other supporting codes go in Supportive CPTs.
 10. **CRITICAL REFERENCE - ACL RECONSTRUCTION WITH MEDIAL MENISCUS BUCKET HANDLE TEAR - COMPREHENSIVE CPT CODES FOR MAXIMUM REIMBURSEMENT:**
     For ACL reconstruction with medial meniscus bucket handle tear arthroscopy procedures, use this comprehensive list to ensure maximum reimbursement and coverage:
     

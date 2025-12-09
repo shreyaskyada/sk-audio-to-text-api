@@ -221,7 +221,7 @@ CRITICAL RULES - MAXIMIZE CPT CODES:
 
 5. Handle ALL procedure types: surgeries, injections, imaging, therapy, DME, supplies, etc.
 
-6. **PRIMARY GOAL - MAXIMUM CPT CODES (50-60 FOR SURGERIES):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, you MUST generate 50-60 supportive CPT codes minimum. You must be thorough and comprehensive. Include ALL applicable codes: all codes mentioned in dictation, ALL surgical components (including all variations like 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876), ALL graft codes (20924, 20925, 20926, 20927, 20928, 20929), ALL implant/anchor codes (C1713, C1714, C1715), ALL DME options (all brace types L1833/L1845/L1832/L1830/L1831/L1843/L1844/L1846/L1847, all crutch types E0114/E0116/E0118, all walker types E0130/E0135/E0136/E0137/E0138/E0140/E0141/E0143/E0144/E0147/E0148/E0149, all cane types E0100/E0105/E0110/E0111/E0112/E0113), ALL cryotherapy devices (E0218/E0236/E0235/E0239), ALL surgical supplies (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256), guidance codes, post-op care codes, etc. The goal is MAXIMUM CPT codes (50-60 for surgeries) - do not miss any applicable codes. Be exhaustive - include every possible code that could apply. Generate 50-60 codes minimum.
+6. **PRIMARY GOAL - MAXIMUM CPT CODES (70+ FOR SURGERIES):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, especially ACL reconstruction with medial meniscus bucket handle tear, you MUST generate 70+ supportive CPT codes minimum. Generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage. You must be thorough and comprehensive. Include ALL applicable codes: all codes mentioned in dictation, ALL surgical components (including all variations like 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876, 29855, 29999), ALL graft codes (20924, 20920, 20925, 20926, 20927, 20928, 20929, C1762), ALL implant/anchor codes (C1713, C1714, C1715, C1776, L8699), ALL nerve block codes (64447, 64450, 64448, 64449, 64451, 64452, 64453, 64454, 64455), ALL imaging codes (73721, 73720, 73722, 73723 for MRI, 73562, 73564, 73560, 73565, 73566 for X-ray, 77071, 77072, 77073 for stress X-ray, 73700, 73701, 73702 for CT, 76881, 76882, 76880 for ultrasound), ALL PT evaluation codes (97161, 97162, 97163, 97164, 97165, 97166, 97167, 97168), ALL therapy treatment codes (97110, 97112, 97113, 97116, 97140, 97530, 97016, 97018, 97014, 97012), ALL DME options (all brace types L1833/L1845/L1832/L1830/L1831/L1812/L1843/L1844/L1846/L1847, all crutch types E0114/E0116/E0118, all walker types E0130/E0135/E0136/E0137/E0138/E0140/E0141/E0143/E0144/E0147/E0148/E0149, all cane types E0100/E0105/E0110/E0111/E0112/E0113), ALL cryotherapy devices (E0218/E0236/E0235/E0239), ALL TENS units (E0730/E0731), ALL surgical supplies (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, S8948), guidance codes, post-op care codes, compression garments (A4463, A4464, A4465), instruments (A4648, A4649, A4650), etc. The goal is MAXIMUM CPT codes (70+ for surgeries) - do not miss any applicable codes. Be exhaustive - include every possible code that could apply. Generate 70+ codes minimum.
 
 EXAMPLES:
 - ACL reconstruction + meniscus repair: primary=29888, supportive=["29881", "29882", "29880", "29883", "29877", "29879", "29884", "29887", "29870", "29871", "29873", "29874", "29875", "29876", "20924", "20925", "20926", "20927", "20928", "20929", "C1713", "C1714", "C1715", "L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847", "E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149", "E0100", "E0105", "E0110", "E0111", "E0112", "E0113", "E0218", "E0236", "E0235", "E0239", "A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221", "A6251", "A6252", "A6253", "A6254", "A6255", "A6256"] (Note: includes ALL surgical components, ALL DME options, ALL applicable procedures, ALL supplies, and MANDATORY cryotherapy devices - goal is 50-60 codes)
@@ -249,7 +249,7 @@ If you cannot determine an appropriate code, return:
 
 {procedure_description}
 
-CRITICAL: For surgeries, you MUST generate 50-60 supportive CPT codes minimum. Include ALL possible codes:
+CRITICAL: For surgeries, especially ACL reconstruction with medial meniscus bucket handle tear, you MUST generate 70+ supportive CPT codes minimum. Generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage. Include ALL possible codes:
 - ALL surgical component codes (all variations: 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876)
 - ALL graft/allograft codes (20924, 20925, 20926, 20927, 20928, 20929)
 - ALL implant/anchor codes (C1713, C1714, C1715)
@@ -264,9 +264,9 @@ CRITICAL: For surgeries, you MUST generate 50-60 supportive CPT codes minimum. I
 - ALL guidance codes if applicable (77003, 77002, 76942, 76941)
 - ANY other applicable codes
 
-The goal is MAXIMUM codes (50-60 for surgeries). Be exhaustive and comprehensive. Generate 50-60 codes minimum - do not stop at 20-30 codes.
+The goal is MAXIMUM codes (70+ for surgeries). Be exhaustive and comprehensive. Generate 70+ codes minimum - do not stop at 20-30 codes or even 50 codes. For ACL reconstruction with medial meniscus bucket handle tear, generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage.
 
-Return the JSON object with the primary CPT code and comprehensive supportive CPT codes (50-60 codes for surgeries)."""
+Return the JSON object with the primary CPT code and comprehensive supportive CPT codes (70+ codes for surgeries)."""
 
         response = openai_client.chat.completions.create(
             model='gpt-5.1',  # Latest GPT-5.1 model
@@ -276,7 +276,7 @@ Return the JSON object with the primary CPT code and comprehensive supportive CP
             ],
             temperature=0.1,
             response_format={"type": "json_object"},
-            max_completion_tokens=2000  # Increased to allow 50-60 codes in response
+            max_completion_tokens=3000  # Increased to allow 50-60 codes with descriptions in response
         )
         
         result = response.choices[0].message.content
