@@ -312,4 +312,3 @@ def get_cpt_for_procedure_enhanced(procedure_text: str, openai_client=None) -> t
     
     # Not in mapping - use AI to generate
     return generate_cpt_with_ai(procedure_text, openai_client)
-
