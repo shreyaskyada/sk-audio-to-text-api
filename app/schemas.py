@@ -1,7 +1,7 @@
 """
 Pydantic schemas for API request/response models
 """
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -197,11 +197,24 @@ class SOAPRequest(BaseModel):
     system_prompt: Optional[str] = None
     user_prompt_template: Optional[str] = None
     
+    # Model selection (optional) - only 'gpt-4o' or 'gpt-5.1' allowed
+    model: Optional[str] = None
+    
     # Pre-filled sections (optional)
     subjective: Optional[SubjectiveSection] = None
     objective: Optional[ObjectiveSection] = None
     assessment: Optional[List[AssessmentItem]] = []
     plan: Optional[PlanSection] = None
+    
+    @field_validator('model')
+    @classmethod
+    def validate_model(cls, v: Optional[str]) -> Optional[str]:
+        """Validate that model is one of the allowed models"""
+        if v is not None:
+            allowed_models = ['gpt-4o', 'gpt-5.1']
+            if v not in allowed_models:
+                raise ValueError(f"Model '{v}' is not allowed. Only {allowed_models} are permitted.")
+        return v
 
 
 class SOAPResponse(BaseModel):
@@ -224,4 +237,3 @@ class SOAPResponse(BaseModel):
     patient_info: Optional[dict] = None
     format: str = "markdown"  # Format of the SOAP note
     document_id: Optional[str] = None  # MongoDB document ID if saved to database
-

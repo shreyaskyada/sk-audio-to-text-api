@@ -43,7 +43,6 @@ from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_generator, work_status_forms
 from app.api.soap_storage import (
     save_soap_note_to_db, 
-    get_soap_note_by_transcription_id,
     get_all_soap_notes_by_transcription_id,
     update_soap_note
 )
@@ -92,6 +91,7 @@ OPENAI_MODEL = 'gpt-5.1'  # Latest GPT-5.1 model
 # OpenAI Model Configuration - Latest ChatGPT model for SOAP note generation
 # Options: 'gpt-4o' (latest GPT-4o), 'gpt-4o-2024-11-20' (specific version), 'gpt-4-turbo' (older)
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')  # Default to latest gpt-4o model
+logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
 
 # Medical keyterms for Deepgram
 MEDICAL_KEYTERMS = [
@@ -665,7 +665,7 @@ def generate_soap_note_from_transcription(text: str) -> str:
         return text
 
 
-def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data: Optional[str] = None, intake_doc: Optional[dict] = None) -> dict:
+def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data: Optional[str] = None, intake_doc: Optional[dict] = None, model: Optional[str] = None) -> dict:
     """
     Generate a comprehensive orthopedic SOAP note from transcription with optional structured data.
     Returns a dictionary with structured SOAP sections and formatted note.
@@ -735,11 +735,15 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
         if soap_request.system_prompt:
             logger.info("Using custom system prompt provided by frontend")
         
+        # Use model from request if provided, otherwise use default
+        selected_model = model or soap_request.model or OPENAI_MODEL
+        logger.info(f"Using OpenAI model: {selected_model}")
+        
         # Call OpenAI GPT-4 with explicit configuration
         client = create_openai_client()
         
         response = client.chat.completions.create(
-            model=OPENAI_MODEL,
+            model=selected_model,
             messages=[
                 {
                     "role": "system",
@@ -1592,33 +1596,6 @@ async def generate_soap_comprehensive(
         
         # Fetch transcription from database if transcription_id is provided
         if soap_request.transcription_id:
-            # Check if SOAP note already exists for this transcription_id
-            existing_soap = await get_soap_note_by_transcription_id(soap_request.transcription_id)
-            if existing_soap:
-                logger.info(f"✅ Found existing SOAP note for transcription_id: {soap_request.transcription_id}")
-                # Convert existing SOAP note to SOAPResponse format
-                # Handle created_at - convert datetime to ISO string if needed
-                created_at = existing_soap.get("created_at")
-                if created_at and isinstance(created_at, datetime):
-                    created_at = created_at.isoformat()
-                elif not created_at:
-                    created_at = datetime.utcnow().isoformat()
-                
-                soap_response = SOAPResponse(
-                    transcription=existing_soap.get("transcription", ""),
-                    corrected_transcription=existing_soap.get("corrected_transcription", ""),
-                    subjective=existing_soap.get("subjective", ""),
-                    objective=existing_soap.get("objective", ""),
-                    assessment=existing_soap.get("assessment", ""),
-                    plan=existing_soap.get("plan", ""),
-                    formatted_soap_note=existing_soap.get("formatted_soap_note", ""),
-                    created_at=created_at,
-                    patient_info=existing_soap.get("patient_info"),
-                    format=existing_soap.get("format", "markdown"),
-                    document_id=existing_soap.get("_id")
-                )
-                return soap_response
-            
             transcription = await get_transcription_by_id(soap_request.transcription_id)
             if not transcription:
                 raise HTTPException(
@@ -1655,7 +1632,7 @@ async def generate_soap_comprehensive(
             logger.warning("⚠️ No intake form data available - will use 'As per chart'")
         
         # Generate comprehensive SOAP note (pass both formatted data and raw doc for post-processing)
-        soap_result = generate_comprehensive_soap_note(soap_request, intake_form_data, intake_doc)
+        soap_result = generate_comprehensive_soap_note(soap_request, intake_form_data, intake_doc, model=soap_request.model)
         
         # Save to MongoDB
         document_id = None
@@ -1673,6 +1650,8 @@ async def generate_soap_comprehensive(
             soap_response.document_id = document_id
         return soap_response
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Comprehensive SOAP generation error: {str(e)}")
         raise HTTPException(
@@ -1693,6 +1672,7 @@ async def generate_soap_simple(
     reason_for_visit: Optional[str] = Form(None),
     system_prompt: Optional[str] = Form(None),
     user_prompt_template: Optional[str] = Form(None),
+    model: Optional[str] = Form(None, description="OpenAI model to use: 'gpt-4o' or 'gpt-5.1'"),
     intake_id: Optional[str] = Form(None),
     use_latest_intake: Optional[bool] = Form(True)
 ):
@@ -1741,33 +1721,6 @@ async def generate_soap_simple(
         
         # Fetch transcription from database if transcription_id is provided
         if transcription_id:
-            # Check if SOAP note already exists for this transcription_id
-            existing_soap = await get_soap_note_by_transcription_id(transcription_id)
-            if existing_soap:
-                logger.info(f"✅ Found existing SOAP note for transcription_id: {transcription_id}")
-                # Convert existing SOAP note to SOAPResponse format
-                # Handle created_at - convert datetime to ISO string if needed
-                created_at = existing_soap.get("created_at")
-                if created_at and isinstance(created_at, datetime):
-                    created_at = created_at.isoformat()
-                elif not created_at:
-                    created_at = datetime.utcnow().isoformat()
-                
-                soap_response = SOAPResponse(
-                    transcription=existing_soap.get("transcription", ""),
-                    corrected_transcription=existing_soap.get("corrected_transcription", ""),
-                    subjective=existing_soap.get("subjective", ""),
-                    objective=existing_soap.get("objective", ""),
-                    assessment=existing_soap.get("assessment", ""),
-                    plan=existing_soap.get("plan", ""),
-                    formatted_soap_note=existing_soap.get("formatted_soap_note", ""),
-                    created_at=created_at,
-                    patient_info=existing_soap.get("patient_info"),
-                    format=existing_soap.get("format", "markdown"),
-                    document_id=existing_soap.get("_id")
-                )
-                return soap_response
-            
             transcription_doc = await get_transcription_by_id(transcription_id)
             if not transcription_doc:
                 raise HTTPException(
@@ -1790,6 +1743,15 @@ async def generate_soap_simple(
                 gender=patient_gender
             )
         
+        # Validate model if provided
+        if model:
+            allowed_models = ['gpt-4o', 'gpt-5.1']
+            if model not in allowed_models:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Model '{model}' is not allowed. Only {allowed_models} are permitted."
+                )
+        
         soap_request = SOAPRequest(
             transcription=transcription,
             transcription_id=transcription_id,
@@ -1798,7 +1760,8 @@ async def generate_soap_simple(
             location=location,
             reason_for_visit=reason_for_visit,
             system_prompt=system_prompt,
-            user_prompt_template=user_prompt_template
+            user_prompt_template=user_prompt_template,
+            model=model
         )
         
         # Fetch intake form data if requested
@@ -1823,7 +1786,7 @@ async def generate_soap_simple(
             logger.warning("⚠️ No intake form data available - will use 'As per chart'")
         
         # Generate comprehensive SOAP note (pass both formatted data and raw doc for post-processing)
-        soap_result = generate_comprehensive_soap_note(soap_request, intake_form_data, intake_doc)
+        soap_result = generate_comprehensive_soap_note(soap_request, intake_form_data, intake_doc, model=model)
         
         # Save to MongoDB
         document_id = None
@@ -1841,6 +1804,8 @@ async def generate_soap_simple(
             soap_response.document_id = document_id
         return soap_response
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"SOAP generation error: {str(e)}")
         raise HTTPException(

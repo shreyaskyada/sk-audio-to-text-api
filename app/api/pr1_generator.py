@@ -89,185 +89,177 @@ def str_or_nd(val: Optional[str]) -> str:
     return val if (val is not None and str(val).strip() != "") else "[Not documented]"
 
 
-def get_comprehensive_supportive_cpts_for_surgery(primary_cpt: str, service_description: str) -> List[str]:
+def extract_diagnosis_codes_from_soap_assessment(soap_doc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Get comprehensive list of supportive CPT codes for surgeries to maximize codes (50-60 codes).
-    This function provides a comprehensive list of ALL applicable codes for common orthopedic surgeries.
+    Extract diagnosis codes from SOAP note's A - ASSESSMENT section.
+    Returns Primary Diagnosis, Secondary Diagnosis, Associated Diagnosis, and Planned Procedures/RFAs codes.
+    
+    Returns:
+        {
+            "primary_diagnosis_code": "ICD10_CODE",
+            "secondary_diagnosis_code": "ICD10_CODE",
+            "associated_diagnosis_codes": ["ICD10_CODE1", "ICD10_CODE2"],
+            "planned_procedures_rfa_codes": ["ICD10_CODE1", "ICD10_CODE2"]
+        }
     """
-    service_lower = str(service_description).lower()
-    primary_cpt_str = str(primary_cpt).strip()
+    result = {
+        "primary_diagnosis_code": None,
+        "secondary_diagnosis_code": None,
+        "associated_diagnosis_codes": [],
+        "planned_procedures_rfa_codes": []
+    }
     
-    comprehensive_cpts = []
+    if not soap_doc:
+        return result
     
-    # ACL Reconstruction (29888) - Comprehensive code list (50-60 codes)
-    if primary_cpt_str == "29888" or "acl" in service_lower or "anterior cruciate" in service_lower:
-        # Meniscus procedures - ALL variations
-        comprehensive_cpts.extend(["29882", "29881", "29880", "29883", "29877", "29879", "29884", "29887"])
-        # Graft/Allograft codes - ALL variations
-        comprehensive_cpts.extend(["20924", "20925", "20926", "20927", "20928", "20929"])
-        # Implant/Anchor codes - ALL variations
-        comprehensive_cpts.extend(["C1713", "C1714", "C1715"])
-        # Additional arthroscopic procedures
-        comprehensive_cpts.extend(["29870", "29871", "29873", "29874", "29875", "29876"])
-        # DME - Braces - ALL types
-        comprehensive_cpts.extend(["L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847"])
-        # DME - Mobility aids - ALL types
-        comprehensive_cpts.extend(["E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149"])
-        # DME - Canes and walkers
-        comprehensive_cpts.extend(["E0100", "E0105", "E0110", "E0111", "E0112", "E0113"])
-        # Cryotherapy - MANDATORY - ALL variations
-        comprehensive_cpts.extend(["E0218", "E0236", "E0235", "E0239"])
-        # Surgical supplies and accessories
-        comprehensive_cpts.extend(["A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638"])
-        # Post-op care supplies
-        comprehensive_cpts.extend(["A4217", "A4218", "A4219", "A4220", "A4221"])
-        # Additional surgical supplies
-        comprehensive_cpts.extend(["A6251", "A6252", "A6253", "A6254", "A6255", "A6256"])
-        # Additional guidance codes (if imaging needed)
-        comprehensive_cpts.extend(["77003", "77002", "76942", "76941"])
-        # Additional therapy codes (if post-op PT needed)
-        comprehensive_cpts.extend(["97110", "97140", "97530", "97116", "97112", "97113"])
-        # Additional DME - compression garments
-        comprehensive_cpts.extend(["A4463", "A4464", "A4465"])
-        # Additional surgical instruments/supplies
-        comprehensive_cpts.extend(["A4648", "A4649", "A4650"])
+    # Extract diagnoses using existing function
+    primary, secondary, additional = primary_secondary_dx(soap_doc)
     
-    # Knee arthroscopy (29881) - Comprehensive code list
-    elif primary_cpt_str == "29881" or ("knee" in service_lower and "arthroscopy" in service_lower):
-        comprehensive_cpts.extend(["29882", "29880", "29883", "29877", "29879", "29884", "29887", "29870", "29871", "29873", "29874", "29875", "29876"])
-        comprehensive_cpts.extend(["L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847"])
-        comprehensive_cpts.extend(["E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149"])
-        comprehensive_cpts.extend(["E0100", "E0105", "E0110", "E0111", "E0112", "E0113"])
-        comprehensive_cpts.extend(["E0218", "E0236", "E0235", "E0239"])
-        comprehensive_cpts.extend(["A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221"])
-        comprehensive_cpts.extend(["A6251", "A6252", "A6253", "A6254", "A6255", "A6256"])
-        comprehensive_cpts.extend(["77003", "77002", "76942", "76941"])
-        comprehensive_cpts.extend(["97110", "97140", "97530", "97116", "97112", "97113"])
-        comprehensive_cpts.extend(["A4463", "A4464", "A4465", "A4648", "A4649", "A4650"])
+    # Get Primary Diagnosis code
+    if primary:
+        primary_code = (
+            primary.get("icd10") or 
+            primary.get("ICD-10") or 
+            primary.get("icd_10") or
+            primary.get("ICD10") or
+            primary.get("icd10_code")
+        )
+        if primary_code:
+            result["primary_diagnosis_code"] = str(primary_code).strip()
+            logger.info(f"Extracted Primary Diagnosis code: {result['primary_diagnosis_code']}")
     
-    # Meniscus repair (29882) - Comprehensive code list
-    elif primary_cpt_str == "29882" or "meniscus" in service_lower:
-        comprehensive_cpts.extend(["29881", "29880", "29883", "29877", "29879", "29884", "29887", "29870", "29871", "29873", "29874", "29875", "29876"])
-        comprehensive_cpts.extend(["L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847"])
-        comprehensive_cpts.extend(["E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149"])
-        comprehensive_cpts.extend(["E0100", "E0105", "E0110", "E0111", "E0112", "E0113"])
-        comprehensive_cpts.extend(["E0218", "E0236", "E0235", "E0239"])
-        comprehensive_cpts.extend(["A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221"])
-        comprehensive_cpts.extend(["A6251", "A6252", "A6253", "A6254", "A6255", "A6256"])
-        comprehensive_cpts.extend(["77003", "77002", "76942", "76941"])
-        comprehensive_cpts.extend(["97110", "97140", "97530", "97116", "97112", "97113"])
-        comprehensive_cpts.extend(["A4463", "A4464", "A4465", "A4648", "A4649", "A4650"])
+    # Get Secondary Diagnosis code
+    if secondary:
+        secondary_code = (
+            secondary.get("icd10") or 
+            secondary.get("ICD-10") or 
+            secondary.get("icd_10") or
+            secondary.get("ICD10") or
+            secondary.get("icd10_code")
+        )
+        if secondary_code:
+            result["secondary_diagnosis_code"] = str(secondary_code).strip()
+            logger.info(f"Extracted Secondary Diagnosis code: {result['secondary_diagnosis_code']}")
     
-    # For any surgery, add standard codes
-    if any(keyword in service_lower for keyword in ["surgery", "surgical", "reconstruction", "repair", "arthroscopy"]):
-        # Always add cryotherapy (if not already added)
-        if "E0218" not in comprehensive_cpts:
-            comprehensive_cpts.append("E0218")
-        # Always add common DME if not already added
-        if "E0114" not in comprehensive_cpts:
-            comprehensive_cpts.append("E0114")
-        if "L1833" not in comprehensive_cpts and ("knee" in service_lower or "acl" in service_lower):
-            comprehensive_cpts.append("L1833")
+    # Get Associated Diagnosis codes (additional diagnoses)
+    for dx in additional:
+        if dx:
+            associated_code = (
+                dx.get("icd10") or 
+                dx.get("ICD-10") or 
+                dx.get("icd_10") or
+                dx.get("ICD10") or
+                dx.get("icd10_code")
+            )
+            if associated_code:
+                code_str = str(associated_code).strip()
+                if code_str not in result["associated_diagnosis_codes"]:
+                    result["associated_diagnosis_codes"].append(code_str)
     
-    return list(set(comprehensive_cpts))  # Remove duplicates
+    # Extract Planned Procedures / RFAs codes from RFA items
+    rfa_items = (soap_doc or {}).get("rfa_items") or (soap_doc or {}).get("RFA_items") or []
+    for rfa_item in rfa_items:
+        if isinstance(rfa_item, dict):
+            rfa_code = (
+                rfa_item.get("diagnosisCode") or
+                rfa_item.get("diagnosis_code") or
+                rfa_item.get("diagnosis_icd10") or 
+                rfa_item.get("diagnosis_codes") or
+                rfa_item.get("icd10") or
+                rfa_item.get("icd10_code")
+            )
+            if rfa_code:
+                code_str = str(rfa_code).strip()
+                if code_str not in result["planned_procedures_rfa_codes"]:
+                    result["planned_procedures_rfa_codes"].append(code_str)
+    
+    logger.info(f"Extracted diagnosis codes - Primary: {result['primary_diagnosis_code']}, Secondary: {result['secondary_diagnosis_code']}, Associated: {len(result['associated_diagnosis_codes'])}, RFA: {len(result['planned_procedures_rfa_codes'])}")
+    
+    return result
 
 
-def generate_supportive_cpts_for_request(primary_cpt: str, service_description: str, openai_client=None) -> List[str]:
+def generate_cpt_codes_from_diagnosis_codes(diagnosis_codes: Dict[str, Any], openai_client=None) -> List[str]:
     """
-    Generate supportive CPT codes for a request based on primary CPT and service description.
-    Returns a comprehensive list of supportive CPT codes (aiming for 50-60 codes for surgeries).
+    Dynamically generate CPT codes based on diagnosis codes from SOAP Assessment section.
+    Uses AI to generate as many relevant CPT codes as possible based on the diagnosis codes.
+    
+    Args:
+        diagnosis_codes: Dictionary with primary_diagnosis_code, secondary_diagnosis_code, 
+                        associated_diagnosis_codes, and planned_procedures_rfa_codes
+        openai_client: Optional OpenAI client
+    
+    Returns:
+        List of CPT codes (as many as possible, dynamically generated)
     """
-    if not primary_cpt or not primary_cpt.strip():
-        return []
-    
-    # First, get comprehensive codes from predefined mappings for surgeries
-    service_lower = str(service_description).lower()
-    is_surgery = any(keyword in service_lower for keyword in [
-        "surgery", "surgical", "reconstruction", "repair", "arthroscopy", 
-        "meniscectomy", "meniscus", "acl", "discectomy", "laminectomy", 
-        "fusion", "fixation", "procedure"
-    ])
-    
-    comprehensive_cpts = []
-    
-    # CRITICAL: Always get comprehensive codes for surgeries (50-60 codes)
-    if is_surgery:
-        # Get comprehensive codes from predefined function
-        comprehensive_cpts = get_comprehensive_supportive_cpts_for_surgery(primary_cpt, service_description)
-        logger.info(f"Generated {len(comprehensive_cpts)} comprehensive CPT codes for surgery '{service_description}'")
-        
-        # If comprehensive codes are less than 50, add more codes to reach 50-60
-        if len(comprehensive_cpts) < 50:
-            # Add additional codes that are always applicable for surgeries
-            additional_codes = [
-                # More arthroscopic codes
-                "29870", "29871", "29873", "29874", "29875", "29876",
-                # More graft codes
-                "20927", "20928", "20929",
-                # More implant codes
-                "C1714", "C1715",
-                # More brace codes
-                "L1831", "L1843", "L1844", "L1846", "L1847",
-                # More mobility aids
-                "E0118", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149",
-                # More canes
-                "E0100", "E0105", "E0110", "E0111", "E0112", "E0113",
-                # More cryotherapy
-                "E0235", "E0239",
-                # More supplies
-                "A4570", "A4572", "A4590", "A4637", "A4638", "A4218", "A4219", "A4220", "A4221",
-                # More gauze/tape
-                "A6252", "A6253", "A6254", "A6255", "A6256",
-                # Guidance codes
-                "77003", "77002", "76942", "76941",
-                # Therapy codes
-                "97110", "97140", "97530", "97116", "97112", "97113",
-                # Compression garments
-                "A4463", "A4464", "A4465",
-                # Instruments
-                "A4648", "A4649", "A4650"
-            ]
-            for code in additional_codes:
-                if code not in comprehensive_cpts:
-                    comprehensive_cpts.append(code)
-            logger.info(f"Enhanced comprehensive codes to {len(comprehensive_cpts)} codes for surgery '{service_description}'")
-    
     if not openai_client:
         try:
             openai_client = create_openai_client()
         except Exception:
-            logger.warning("Could not create OpenAI client for supportive CPT generation")
-            # Return comprehensive codes even if AI fails
-            return comprehensive_cpts
+            logger.warning("Could not create OpenAI client for CPT generation from diagnosis codes")
+            return []
+    
+    # Collect all diagnosis codes
+    all_diagnosis_codes = []
+    diagnosis_descriptions = []
+    
+    if diagnosis_codes.get("primary_diagnosis_code"):
+        all_diagnosis_codes.append(diagnosis_codes["primary_diagnosis_code"])
+        diagnosis_descriptions.append(f"Primary Diagnosis: {diagnosis_codes['primary_diagnosis_code']}")
+    
+    if diagnosis_codes.get("secondary_diagnosis_code"):
+        all_diagnosis_codes.append(diagnosis_codes["secondary_diagnosis_code"])
+        diagnosis_descriptions.append(f"Secondary Diagnosis: {diagnosis_codes['secondary_diagnosis_code']}")
+    
+    for code in diagnosis_codes.get("associated_diagnosis_codes", []):
+        if code and code not in all_diagnosis_codes:
+            all_diagnosis_codes.append(code)
+            diagnosis_descriptions.append(f"Associated Diagnosis: {code}")
+    
+    for code in diagnosis_codes.get("planned_procedures_rfa_codes", []):
+        if code and code not in all_diagnosis_codes:
+            all_diagnosis_codes.append(code)
+            diagnosis_descriptions.append(f"Planned Procedure/RFA: {code}")
+    
+    if not all_diagnosis_codes:
+        logger.warning("No diagnosis codes found to generate CPT codes from")
+        return []
     
     try:
         from app.cpt_mappings import generate_cpt_with_ai
         
-        # Build procedure description from service and CPT - CRITICAL: Request 50-60 codes
-        procedure_description = f"{service_description} (CPT: {primary_cpt}). Generate MAXIMUM supportive CPT codes (70+ codes minimum). For ACL reconstruction with medial meniscus bucket handle tear, generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage. Include ALL surgical components (29888, 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876, 29855, 29999), ALL graft codes (20924, 20920, 20925, 20926, 20927, 20928, 20929, C1762), ALL implant codes (C1713, C1714, C1715, C1776, L8699), ALL nerve block codes (64447, 64450, 64448, 64449, 64451, 64452, 64453, 64454, 64455), ALL imaging codes (73721, 73720, 73722, 73723 for MRI, 73562, 73564, 73560, 73565, 73566 for X-ray, 77071, 77072, 77073 for stress X-ray), ALL PT evaluation codes (97161, 97162, 97163, 97164, 97165, 97166, 97167, 97168), ALL therapy codes (97110, 97112, 97113, 97116, 97140, 97530, 97016, 97018, 97014, 97012), ALL DME braces (L1833, L1845, L1832, L1830, L1831, L1812, L1843, L1844, L1846, L1847), ALL crutches (E0114, E0116, E0118), ALL walkers (E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149), ALL canes (E0100, E0105, E0110, E0111, E0112, E0113), ALL cryotherapy (E0218, E0236, E0235, E0239), ALL TENS units (E0730, E0731), ALL supplies (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, S8948), guidance codes, compression garments (A4463, A4464, A4465), instruments (A4648, A4649, A4650), and ANY other applicable codes. Generate 70+ codes minimum."
+        # Build comprehensive prompt for AI to generate CPT codes based on diagnosis codes
+        diagnosis_text = "\n".join(diagnosis_descriptions)
+        prompt = f"""Based on the following diagnosis codes from the SOAP note Assessment section, generate ALL possible and relevant CPT/HCPCS codes that would be needed for treatment, procedures, DME, supplies, and services related to these diagnoses.
+
+Diagnosis Codes:
+{diagnosis_text}
+
+Generate MAXIMUM CPT codes - include:
+- ALL surgical/procedure codes that could apply
+- ALL DME codes (braces, crutches, walkers, canes, etc.)
+- ALL supply codes (surgical supplies, post-op care supplies, etc.)
+- ALL therapy codes (physical therapy, occupational therapy, etc.)
+- ALL imaging/guidance codes if applicable
+- ALL cryotherapy devices
+- ALL other applicable codes
+
+Generate as many codes as possible (aim for 50-70+ codes if surgeries are involved). Return ONLY valid CPT/HCPCS codes."""
         
-        # Use the existing AI function to generate CPTs
-        # It will return both primary and supportive, but we only need supportive
-        _, ai_generated_cpts = generate_cpt_with_ai(procedure_description, openai_client)
+        # Use AI to generate CPT codes
+        _, generated_cpts = generate_cpt_with_ai(prompt, openai_client)
         
-        # Merge comprehensive codes with AI-generated codes
-        if ai_generated_cpts and isinstance(ai_generated_cpts, list):
-            for code in ai_generated_cpts:
-                code_str = str(code).strip()
-                if code_str and code_str != primary_cpt.strip() and code_str not in comprehensive_cpts:
-                    comprehensive_cpts.append(code_str)
-        
-            # Filter out empty strings and normalize
-        final_cpts = [str(code).strip() for code in comprehensive_cpts if code and str(code).strip()]
-        
-        logger.info(f"Final supportive CPT codes for '{service_description}': {len(final_cpts)} codes - {', '.join(final_cpts[:10])}{'...' if len(final_cpts) > 10 else ''}")
-        
-        return final_cpts
+        if generated_cpts and isinstance(generated_cpts, list):
+            # Filter and normalize codes
+            final_cpts = [str(code).strip() for code in generated_cpts if code and str(code).strip()]
+            logger.info(f"Generated {len(final_cpts)} CPT codes from diagnosis codes: {', '.join(final_cpts[:10])}{'...' if len(final_cpts) > 10 else ''}")
+            return final_cpts
+        else:
+            logger.warning("AI did not return valid CPT codes")
+            return []
         
     except Exception as e:
-        logger.warning(f"Error generating supportive CPTs for CPT {primary_cpt}: {e}")
-        # Return comprehensive codes even if AI fails
-        return comprehensive_cpts
+        logger.warning(f"Error generating CPT codes from diagnosis codes: {e}")
+        return []
 
 
 def to_mmddyyyy(s: Optional[str]) -> Optional[str]:
@@ -735,79 +727,29 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                             supportive_cpts.append(code_str)
                             logger.info(f"Added mentioned CPT code {code_str} to supportive CPTs for '{service_requested}'")
                 
-                # CRITICAL: Always generate comprehensive supportive CPTs to maximize codes (50-60 for surgeries)
-                # Even if some codes already exist, we want to add comprehensive codes
-                if cpt and cpt.strip():
-                    # First, always get comprehensive codes from predefined function for surgeries
-                    service_lower_check = str(service_requested).lower()
-                    is_surgery_check = any(keyword in service_lower_check for keyword in [
-                        "surgery", "surgical", "reconstruction", "repair", "arthroscopy", 
-                        "meniscectomy", "meniscus", "acl", "discectomy", "laminectomy", 
-                        "fusion", "fixation", "procedure"
-                    ])
-                    
-                    if is_surgery_check:
-                        # Always get comprehensive codes first (50-60 codes)
-                        comprehensive_cpts = get_comprehensive_supportive_cpts_for_surgery(cpt, service_requested)
-                        if comprehensive_cpts:
-                            # Merge comprehensive codes with existing codes
-                            for comp_code in comprehensive_cpts:
-                                comp_code_str = str(comp_code).strip()
-                                if comp_code_str and comp_code_str != cpt.strip() and comp_code_str not in supportive_cpts:
-                                    supportive_cpts.append(comp_code_str)
-                            logger.info(f"RFA item '{service_requested}': Added {len(comprehensive_cpts)} comprehensive CPT codes (total: {len(supportive_cpts)})")
-                    
-                    # Then try AI to add even more codes
-                    try:
-                        openai_client = create_openai_client()
-                        generated_supportive = generate_supportive_cpts_for_request(
-                            cpt, 
-                            service_requested, 
-                            openai_client
-                        )
-                        if generated_supportive:
-                            # Merge AI-generated codes with existing codes (avoid duplicates)
-                            for gen_code in generated_supportive:
-                                gen_code_str = str(gen_code).strip()
-                                if gen_code_str and gen_code_str != cpt.strip() and gen_code_str not in supportive_cpts:
-                                    supportive_cpts.append(gen_code_str)
-                            logger.info(f"RFA item '{service_requested}': Enhanced to {len(supportive_cpts)} total supportive CPTs (added AI-generated codes)")
-                    except Exception as e:
-                        logger.warning(f"Could not auto-generate supportive CPTs with AI for '{service_requested}' (CPT: {cpt}): {e}")
-                    
-                    # CRITICAL: For surgeries, ensure we have at least 50 codes
-                    if is_surgery_check and len(supportive_cpts) < 50:
-                        # Add more comprehensive codes to reach 50-60
-                        additional_codes = [
-                            "29870", "29871", "29873", "29874", "29875", "29876",
-                            "20927", "20928", "20929", "C1714", "C1715",
-                            "L1831", "L1843", "L1844", "L1846", "L1847",
-                            "E0118", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149",
-                            "E0100", "E0105", "E0110", "E0111", "E0112", "E0113",
-                            "E0235", "E0239", "A4570", "A4572", "A4590", "A4637", "A4638",
-                            "A4218", "A4219", "A4220", "A4221", "A6252", "A6253", "A6254", "A6255", "A6256",
-                            "77003", "77002", "76942", "76941", "97110", "97140", "97530", "97116", "97112", "97113",
-                            "A4463", "A4464", "A4465", "A4648", "A4649", "A4650"
-                        ]
-                        for code in additional_codes:
-                            code_str = str(code).strip()
-                            if code_str and code_str != cpt.strip() and code_str not in supportive_cpts:
-                                supportive_cpts.append(code_str)
-                        logger.info(f"RFA item '{service_requested}': Enhanced to {len(supportive_cpts)} total supportive CPTs (ensured 50+ codes)")
+                # CRITICAL: Generate supportive CPTs dynamically from SOAP Assessment diagnosis codes
+                # Extract diagnosis codes from SOAP Assessment section (Primary, Secondary, Associated, Planned Procedures/RFAs)
+                diagnosis_codes_from_assessment = extract_diagnosis_codes_from_soap_assessment(soap_doc)
                 
-                # CRITICAL: For surgeries, ensure cryotherapy device code is included
-                service_lower = str(service_requested).lower()
-                is_surgery = any(keyword in service_lower for keyword in [
-                    "surgery", "surgical", "reconstruction", "repair", "arthroscopy", 
-                    "meniscectomy", "meniscus", "acl", "discectomy", "laminectomy", 
-                    "fusion", "fixation", "procedure"
-                ])
-                
-                if is_surgery:
-                    # Ensure cryotherapy device code is included
-                    if "E0218" not in supportive_cpts and "E0236" not in supportive_cpts:
-                        supportive_cpts.append("E0218")  # Default to E0218
-                        logger.info(f"Added mandatory cryotherapy device code E0218 for surgery '{service_requested}'")
+                # Generate CPT codes dynamically based on diagnosis codes
+                try:
+                    openai_client = create_openai_client()
+                    generated_cpts_from_diagnosis = generate_cpt_codes_from_diagnosis_codes(
+                        diagnosis_codes_from_assessment,
+                        openai_client
+                    )
+                    
+                    if generated_cpts_from_diagnosis:
+                        # Merge dynamically generated CPT codes with existing codes (avoid duplicates)
+                        for gen_code in generated_cpts_from_diagnosis:
+                            gen_code_str = str(gen_code).strip()
+                            if gen_code_str and gen_code_str != cpt.strip() and gen_code_str not in supportive_cpts:
+                                supportive_cpts.append(gen_code_str)
+                        logger.info(f"RFA item '{service_requested}': Added {len(generated_cpts_from_diagnosis)} dynamically generated CPT codes from diagnosis codes (total: {len(supportive_cpts)})")
+                    else:
+                        logger.warning(f"Could not generate CPT codes from diagnosis codes for '{service_requested}'")
+                except Exception as e:
+                    logger.warning(f"Could not auto-generate supportive CPTs from diagnosis codes for '{service_requested}': {e}")
                 
                 # CRITICAL: Split supportive CPTs into separate request items (binary/individual entries)
                 # Each supportive CPT code should be a separate RFA request item
@@ -4462,4 +4404,3 @@ async def extract_work_status_from_soap(
             status_code=500,
             detail=f"Failed to extract work status from SOAP note: {str(e)}"
         )
-
