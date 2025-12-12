@@ -4,181 +4,70 @@ This ensures consistent and accurate CPT code generation in SOAP notes
 """
 import os
 
-# Common Orthopedic Procedure CPT Code Mappings
-# Format: procedure_keyword -> (primary_cpt, [supportive_cpts])
-CPT_PROCEDURE_MAPPINGS = {
-    # Physical Therapy
-    "physical therapy": ("97110", []),
-    "pt": ("97110", []),
-    "therapeutic exercise": ("97110", []),
-    "therapeutic activities": ("97530", []),
-    "manual therapy": ("97140", []),
-    "gait training": ("97116", []),
-    
-    # Injections - Epidural
-    "epidural steroid injection": ("62311", ["77003"]),
-    "epidural injection": ("62311", ["77003"]),
-    "transforaminal epidural": ("64483", ["77003"]),
-    "interlaminar epidural": ("62311", ["77003"]),
-    
-    # Injections - Joint
-    "knee injection": ("20610", ["77003"]),
-    "shoulder injection": ("20610", ["77003"]),
-    "hip injection": ("20610", ["77003"]),
-    "ankle injection": ("20610", ["77003"]),
-    "wrist injection": ("20610", ["77003"]),
-    "elbow injection": ("20610", ["77003"]),
-    "joint injection": ("20610", ["77003"]),
-    "intra-articular injection": ("20610", ["77003"]),
-    "corticosteroid injection": ("20610", ["77003"]),
-    
-    # Injections - Trigger Point
-    "trigger point injection": ("20552", []),
-    "trigger point": ("20552", []),
-    
-    # Injections - Facet
-    "facet injection": ("64490", ["77003"]),
-    "facet joint injection": ("64490", ["77003"]),
-    "medial branch block": ("64490", ["77003"]),
-    
-    # Imaging
-    "mri": ("70551", []),  # MRI brain
-    "mri spine": ("72141", []),  # MRI lumbar spine
-    "mri lumbar": ("72141", []),
-    "mri cervical": ("72141", []),
-    "x-ray": ("73060", []),  # X-ray extremity
-    "xray": ("73060", []),
-    "ct scan": ("70450", []),
-    "ultrasound": ("76881", []),
-    
-    # DME/Supplies - Lower Extremity
-    "walking boot": ("L4361", []),
-    "cam boot": ("L4361", []),
-    "ankle brace": ("L1900", []),
-    "knee brace": ("L1832", []),
-    "knee brace acl": ("L1833", []),  # ACL-specific knee brace
-    "acl brace": ("L1833", []),
-    "post-op knee brace": ("L1833", []),
-    "knee immobilizer": ("L1830", []),
-    "hinged knee brace": ("L1845", []),
-    "crutches": ("E0114", []),
-    "walker": ("E0130", []),
-    "cane": ("E0100", []),
-    
-    # DME/Supplies - Upper Extremity
-    "wrist brace": ("L3808", []),
-    "elbow brace": ("L3700", []),
-    "shoulder brace": ("L3650", []),
-    "sling": ("A4566", []),
-    
-    # Surgery - Common Orthopedic
-    "arthroscopy": ("29881", []),  # Knee arthroscopy
-    "knee arthroscopy": ("29881", []),
-    "shoulder arthroscopy": ("29827", []),
-    "arthroscopic surgery": ("29881", []),
-    
-    # Surgery - ACL Reconstruction
-    "acl reconstruction": ("29888", ["29882", "20924", "C1713"]),  # ACL recon with meniscus repair, graft, anchor
-    "acl recon": ("29888", ["29882", "20924", "C1713"]),
-    "anterior cruciate ligament reconstruction": ("29888", ["29882", "20924", "C1713"]),
-    "acl repair": ("29888", ["29882", "20924", "C1713"]),
-    
-    # Surgery - Meniscus
-    "meniscus repair": ("29882", []),
-    "medial meniscus repair": ("29882", []),
-    "lateral meniscus repair": ("29882", []),
-    "meniscectomy": ("29881", []),
-    
-    # Surgery - Spine
-    "discectomy": ("63030", []),
-    "laminectomy": ("63047", []),
-    "spinal fusion": ("22612", []),
-    
-    # Surgery - Fracture
-    "fracture repair": ("27792", []),  # Ankle fracture
-    "open reduction": ("27792", []),
-    "internal fixation": ("27792", []),
-}
-
-# E/M Code Mappings based on visit type and complexity
-E_M_CODE_MAPPINGS = {
-    # New Patient
-    ("new", "low"): ("99201", "New patient visit, low complexity"),
-    ("new", "moderate"): ("99203", "New patient visit, moderate complexity"),
-    ("new", "high"): ("99205", "New patient visit, high complexity"),
-    
-    # Established Patient
-    ("established", "low"): ("99211", "Established patient visit, low complexity"),
-    ("established", "moderate"): ("99213", "Established patient visit, moderate complexity"),
-    ("established", "high"): ("99215", "Established patient visit, high complexity"),
-    
-    # Consultation
-    ("consultation", "moderate"): ("99243", "Consultation, moderate complexity"),
-    ("consultation", "high"): ("99245", "Consultation, high complexity"),
-}
-
-# Supportive CPT codes that are commonly required
-SUPPORTIVE_CPT_GUIDANCE = {
-    "77003": "Fluoroscopic guidance for injections",
-    "77002": "Fluoroscopic guidance for needle placement",
-    "76942": "Ultrasound guidance for needle placement",
-    "76941": "Ultrasound guidance for procedures",
-}
-
-# DME HCPCS Codes
-DME_CODES = {
-    "L4361": "Walking boot/CAM boot",
-    "L1900": "Ankle brace",
-    "L1832": "Knee brace",
-    "L1830": "Knee immobilizer",
-    "L3808": "Wrist brace",
-    "L3700": "Elbow brace",
-    "L3650": "Shoulder brace",
-    "E0114": "Crutches",
-    "E0130": "Walker",
-    "E0100": "Cane",
-    "A4566": "Sling",
-}
-
-
-def get_cpt_for_procedure(procedure_text: str) -> tuple:
-    """
-    Get CPT code and supportive CPTs for a given procedure.
-    Returns (primary_cpt, supportive_cpts_list) or (None, []) if not found.
-    """
-    if not procedure_text:
-        return (None, [])
-    
-    procedure_lower = procedure_text.lower().strip()
-    
-    # Check for exact or partial matches
-    for keyword, (primary, supportive) in CPT_PROCEDURE_MAPPINGS.items():
-        if keyword in procedure_lower:
-            return (primary, supportive)
-    
-    return (None, [])
+# Static CPT mappings removed - now using AI-only extraction from transcription
+# All CPT codes are extracted dynamically from transcription using AI
 
 
 def get_e_m_code(visit_type: str, complexity: str) -> tuple:
     """
     Get E/M code based on visit type and complexity.
-    Returns (code, description) or (None, None) if not found.
+    Static mappings removed - E/M codes should be extracted from transcription using AI.
+    Returns (code, description) or (None, None).
     """
-    visit_lower = visit_type.lower().strip()
-    complexity_lower = complexity.lower().strip()
-    
-    key = (visit_lower, complexity_lower)
-    if key in E_M_CODE_MAPPINGS:
-        return E_M_CODE_MAPPINGS[key]
-    
+    # Static mappings removed - E/M codes should be extracted from transcription
     return (None, None)
+
+
+def is_valid_cpt_code(code: str) -> bool:
+    """
+    Validate if a code is a valid CPT or HCPCS code.
+    
+    CPT codes: 5 digits (e.g., 29881, 20610)
+    HCPCS codes: Letter(s) followed by digits (e.g., L1833, E0114, A4566, C1713)
+    
+    Returns:
+        True if valid, False otherwise
+    """
+    if not code:
+        return False
+    
+    code_str = str(code).strip()
+    
+    # Remove any dashes or spaces
+    code_str = code_str.replace("-", "").replace(" ", "").replace(".", "")
+    
+    # Empty after cleaning
+    if not code_str:
+        return False
+    
+    # CPT codes: Exactly 5 digits
+    if len(code_str) == 5 and code_str.isdigit():
+        return True
+    
+    # HCPCS codes: Letter(s) followed by digits, total length 5
+    # Examples: L1833, E0114, A4566, C1713, Q4001
+    if len(code_str) == 5:
+        # Check if starts with letter(s) and rest are digits
+        if code_str[0].isalpha():
+            # Single letter + 4 digits (most common: L1833, E0114, A4566)
+            if code_str[1:].isdigit():
+                return True
+            # Two letters + 3 digits (e.g., Q4001)
+            if len(code_str) >= 2 and code_str[0:2].isalpha() and code_str[2:].isdigit():
+                return True
+    
+    # Some HCPCS codes might be 4 characters (less common but valid)
+    if len(code_str) == 4:
+        if code_str[0].isalpha() and code_str[1:].isdigit():
+            return True
+    
+    return False
 
 
 def generate_cpt_with_ai(procedure_description: str, openai_client=None) -> tuple:
     """
-    Use AI to generate CPT code for a procedure not in the mapping.
-    This makes the system unlimited - can handle any procedure.
-    Returns (primary_cpt, supportive_cpts_list) or (None, []) if unable to generate.
+    Use AI to EXTRACT CPT codes ONLY from what is mentioned in the transcription.
+    Returns (primary_cpt, supportive_cpts_list) or (None, []) if unable to extract.
     """
     if not procedure_description or not procedure_description.strip():
         return (None, [])
@@ -195,78 +84,66 @@ def generate_cpt_with_ai(procedure_description: str, openai_client=None) -> tupl
             return (None, [])
     
     try:
-        system_prompt = """You are a medical coding expert specializing in CPT/HCPCS codes for ALL orthopedic procedures, surgeries, injections, imaging, therapy, and DME.
+        system_prompt = """You are a medical coding expert specializing in CPT/HCPCS codes for orthopedic procedures, surgeries, injections, imaging, therapy, and DME.
 
-Your task is to generate the most accurate CPT/HCPCS code(s) for ANY given procedure description.
+Your task is to EXTRACT CPT/HCPCS codes that are ACTUALLY MENTIONED in the transcription text provided AND are RELATED TO THE ILLNESS/DIAGNOSIS mentioned.
 
-CRITICAL RULES - MAXIMIZE CPT CODES:
-1. Generate the PRIMARY CPT/HCPCS code for the procedure described
-
-2. Generate ALL SUPPORTIVE CPT codes that are typically required - PRIMARY GOAL IS MAXIMUM CPT CODES:
-   - **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT/HCPCS code is mentioned in the procedure description (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in the supportive codes list, even if it seems redundant. Example: If description mentions "29881", it MUST appear in supportive_cpts. Do NOT omit any code that is explicitly mentioned.
-
-   - For surgeries: Include ALL surgical component codes (e.g., 29881, 29882 for meniscus procedures, 20924 for grafts, C1713 for anchors) AND ALL DME (braces L1833/L1845, crutches E0114, walkers, etc.). The goal is to include EVERY code that applies - be comprehensive.
-   
-   - **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE:** For EVERY surgery, you MUST include cryotherapy device code: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions. These are standard post-surgical DME items.
-   
-   - For injections: ALWAYS include guidance codes (77003 for fluoro, 76942 for ultrasound)
-   
-   - For any procedure with DME: Include appropriate HCPCS codes (L-codes, E-codes, A-codes)
-   
-   - Include ALL applicable supportive codes - don't miss any. The goal is MAXIMUM CPT codes for complete coverage and reimbursement.
-
-3. Return ONLY valid CPT/HCPCS codes (5-digit numeric codes or HCPCS codes starting with letters)
-
-4. Be specific and accurate - use the most appropriate code for the exact procedure described
-
-5. Handle ALL procedure types: surgeries, injections, imaging, therapy, DME, supplies, etc.
-
-6. **PRIMARY GOAL - MAXIMUM CPT CODES (70+ FOR SURGERIES):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, especially ACL reconstruction with medial meniscus bucket handle tear, you MUST generate 70+ supportive CPT codes minimum. Generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage. You must be thorough and comprehensive. Include ALL applicable codes: all codes mentioned in dictation, ALL surgical components (including all variations like 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876, 29855, 29999), ALL graft codes (20924, 20920, 20925, 20926, 20927, 20928, 20929, C1762), ALL implant/anchor codes (C1713, C1714, C1715, C1776, L8699), ALL nerve block codes (64447, 64450, 64448, 64449, 64451, 64452, 64453, 64454, 64455), ALL imaging codes (73721, 73720, 73722, 73723 for MRI, 73562, 73564, 73560, 73565, 73566 for X-ray, 77071, 77072, 77073 for stress X-ray, 73700, 73701, 73702 for CT, 76881, 76882, 76880 for ultrasound), ALL PT evaluation codes (97161, 97162, 97163, 97164, 97165, 97166, 97167, 97168), ALL therapy treatment codes (97110, 97112, 97113, 97116, 97140, 97530, 97016, 97018, 97014, 97012), ALL DME options (all brace types L1833/L1845/L1832/L1830/L1831/L1812/L1843/L1844/L1846/L1847, all crutch types E0114/E0116/E0118, all walker types E0130/E0135/E0136/E0137/E0138/E0140/E0141/E0143/E0144/E0147/E0148/E0149, all cane types E0100/E0105/E0110/E0111/E0112/E0113), ALL cryotherapy devices (E0218/E0236/E0235/E0239), ALL TENS units (E0730/E0731), ALL surgical supplies (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256, S8948), guidance codes, post-op care codes, compression garments (A4463, A4464, A4465), instruments (A4648, A4649, A4650), etc. The goal is MAXIMUM CPT codes (70+ for surgeries) - do not miss any applicable codes. Be exhaustive - include every possible code that could apply. Generate 70+ codes minimum.
-
-EXAMPLES:
-- ACL reconstruction + meniscus repair: primary=29888, supportive=["29881", "29882", "29880", "29883", "29877", "29879", "29884", "29887", "29870", "29871", "29873", "29874", "29875", "29876", "20924", "20925", "20926", "20927", "20928", "20929", "C1713", "C1714", "C1715", "L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847", "E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149", "E0100", "E0105", "E0110", "E0111", "E0112", "E0113", "E0218", "E0236", "E0235", "E0239", "A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221", "A6251", "A6252", "A6253", "A6254", "A6255", "A6256"] (Note: includes ALL surgical components, ALL DME options, ALL applicable procedures, ALL supplies, and MANDATORY cryotherapy devices - goal is 50-60 codes)
-- Knee arthroscopy: primary=29881, supportive=["29882", "29880", "29883", "29877", "29879", "29884", "29887", "29870", "29871", "29873", "29874", "29875", "29876", "L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847", "E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149", "E0100", "E0105", "E0110", "E0111", "E0112", "E0113", "E0218", "E0236", "E0235", "E0239", "A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221", "A6251", "A6252", "A6253", "A6254", "A6255", "A6256"] (50-60 codes)
-- Epidural injection: primary=62311, supportive=["77003", "77002"] (guidance codes)
-- Physical therapy: primary=97110, supportive=["97140", "97530", "97116"] (multiple therapy codes)
-- MRI lumbar: primary=72141, supportive=[]
-- Walking boot: primary=L4361, supportive=["E0114", "E0116", "E0118"] (include mobility aids)
+CRITICAL RULES - EXTRACT ONLY WHAT IS MENTIONED AND RELATED TO ILLNESS:
+1. FIRST: Identify the PRIMARY ILLNESS/DIAGNOSIS mentioned in the transcription (e.g., "knee pain", "ACL tear", "shoulder injury", "back pain", "fracture", etc.)
+2. Extract the PRIMARY CPT/HCPCS code ONLY if:
+   - It is explicitly mentioned in the transcription OR
+   - A specific procedure is mentioned AND it is directly related to the identified illness/diagnosis
+3. Extract SUPPORTIVE CPT codes ONLY if:
+   - They are explicitly mentioned in the transcription AND
+   - They are directly related to the illness/diagnosis mentioned (same body part, same condition, same treatment)
+4. DO NOT generate or add codes that are NOT mentioned in the transcription
+5. DO NOT add codes "that might be needed" or "typically required" - ONLY extract what is actually stated
+6. DO NOT include codes for different body parts than the illness/diagnosis (e.g., if illness is "knee pain", do NOT include shoulder codes)
+7. DO NOT include codes for different conditions than the illness/diagnosis (e.g., if illness is "ACL tear", do NOT include rotator cuff codes)
+8. If a code is mentioned (e.g., "29881", "29882", "20924", "L1833", "E0114"), extract it ONLY if it relates to the illness/diagnosis
+9. If a procedure is mentioned but no code is given, you may infer the primary code for that specific procedure ONLY if it relates to the illness/diagnosis
+10. Return ONLY valid CPT/HCPCS codes (5-digit numeric codes or HCPCS codes starting with letters) that are RELATED TO THE ILLNESS
+11. DO NOT generate 70+ codes - only extract what is actually present in the transcription and related to the illness
 
 Return a JSON object with:
 {
-  "primary_cpt": "CPT_CODE",
-  "supportive_cpts": ["CODE1", "CODE2", "CODE3"],
-  "description": "Brief description of what the code represents"
+  "primary_cpt": "CPT_CODE" or null,
+  "supportive_cpts": ["CODE1", "CODE2"] (only codes mentioned in transcription),
+  "description": "Brief description"
 }
 
-If you cannot determine an appropriate code, return:
+If no codes are mentioned, return:
 {
   "primary_cpt": null,
   "supportive_cpts": [],
   "description": null
 }"""
 
-        user_prompt = f"""Generate the CPT/HCPCS code(s) for this procedure:
+        user_prompt = f"""Extract CPT/HCPCS codes that are ACTUALLY MENTIONED in this transcription AND are RELATED TO THE ILLNESS/DIAGNOSIS:
 
 {procedure_description}
 
-CRITICAL: For surgeries, especially ACL reconstruction with medial meniscus bucket handle tear, you MUST generate 70+ supportive CPT codes minimum. Generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage. Include ALL possible codes:
-- ALL surgical component codes (all variations: 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876)
-- ALL graft/allograft codes (20924, 20925, 20926, 20927, 20928, 20929)
-- ALL implant/anchor codes (C1713, C1714, C1715)
-- ALL DME brace codes (L1833, L1845, L1832, L1830, L1831, L1843, L1844, L1846, L1847)
-- ALL crutch codes (E0114, E0116, E0118)
-- ALL walker codes (E0130, E0135, E0136, E0137, E0138, E0140, E0141, E0143, E0144, E0147, E0148, E0149)
-- ALL cane codes (E0100, E0105, E0110, E0111, E0112, E0113)
-- ALL cryotherapy device codes (E0218, E0236, E0235, E0239) - MANDATORY
-- ALL surgical supply codes (A4566, A4570, A4572, A4590, A4636, A4637, A4638)
-- ALL post-op care supply codes (A4217, A4218, A4219, A4220, A4221)
-- ALL gauze/tape codes (A6251, A6252, A6253, A6254, A6255, A6256)
-- ALL guidance codes if applicable (77003, 77002, 76942, 76941)
-- ANY other applicable codes
+**CRITICAL - EXTRACT ONLY WHAT IS MENTIONED AND RELATED TO ILLNESS:**
+- FIRST: Identify the PRIMARY ILLNESS/DIAGNOSIS from the transcription (e.g., "knee pain", "ACL tear", "shoulder injury", "back pain", "fracture", etc.)
+- Extract ONLY codes that are:
+  1. Explicitly stated in the transcription AND
+  2. Directly related to the identified illness/diagnosis (same body part, same condition, same treatment)
+- DO NOT add codes that are not mentioned
+- DO NOT add codes for different body parts than the illness (e.g., if illness is "knee pain", do NOT include shoulder codes)
+- DO NOT add codes for different conditions than the illness (e.g., if illness is "ACL tear", do NOT include rotator cuff codes)
+- DO NOT generate 70+ codes - only extract what is actually present and related to the illness
+- If a procedure is mentioned without a code, you may infer the primary code ONLY if it relates to the illness/diagnosis
+- DO NOT add supportive codes unless they are explicitly mentioned AND related to the illness
+- If transcription mentions "29881" for a knee procedure, extract "29881" ONLY if it relates to the illness - do NOT add 50+ other codes that are not mentioned or not related
 
-The goal is MAXIMUM codes (70+ for surgeries). Be exhaustive and comprehensive. Generate 70+ codes minimum - do not stop at 20-30 codes or even 50 codes. For ACL reconstruction with medial meniscus bucket handle tear, generate ALL possible codes needed in worker comp RFA to cover any and all orthoscopy procedures for maximum reimbursement and coverage.
+**ILLNESS RELEVANCE CHECK:**
+Before including any code, verify:
+- Is this code for the same body part as the illness? (e.g., knee illness → knee codes only)
+- Is this code for the same condition as the illness? (e.g., ACL tear → ACL-related codes only)
+- Is this code for treating the illness mentioned? (e.g., knee pain → knee treatment codes only)
+- If ANY answer is NO, DO NOT include that code
 
-Return the JSON object with the primary CPT code and comprehensive supportive CPT codes (70+ codes for surgeries)."""
+Return the JSON object with only the codes that are actually mentioned AND related to the illness/diagnosis."""
 
         response = openai_client.chat.completions.create(
             model='gpt-5.1',  # Latest GPT-5.1 model
@@ -276,18 +153,43 @@ Return the JSON object with the primary CPT code and comprehensive supportive CP
             ],
             temperature=0.1,
             response_format={"type": "json_object"},
-            max_completion_tokens=3000  # Increased to allow 50-60 codes with descriptions in response
+            max_completion_tokens=5000  # Increased to allow 70+ codes with descriptions in response
         )
         
         result = response.choices[0].message.content
         import json
+        import logging
+        logger = logging.getLogger(__name__)
         data = json.loads(result)
         
         primary = data.get("primary_cpt")
         supportive = data.get("supportive_cpts", [])
         
+        # Validate and filter codes
+        validated_primary = None
         if primary:
-            return (primary, supportive if isinstance(supportive, list) else [])
+            primary_str = str(primary).strip()
+            if is_valid_cpt_code(primary_str):
+                validated_primary = primary_str
+            else:
+                logger.warning(f"Invalid primary CPT code filtered out: {primary_str}")
+        
+        # Validate supportive codes
+        validated_supportive = []
+        if isinstance(supportive, list):
+            for code in supportive:
+                if code:
+                    code_str = str(code).strip()
+                    if is_valid_cpt_code(code_str):
+                        # Avoid duplicates
+                        if code_str not in validated_supportive:
+                            validated_supportive.append(code_str)
+                    else:
+                        logger.warning(f"Invalid supportive CPT code filtered out: {code_str}")
+        
+        if validated_primary:
+            logger.info(f"Generated {len(validated_supportive)} valid supportive CPT codes")
+            return (validated_primary, validated_supportive)
         
         return (None, [])
         
@@ -299,16 +201,143 @@ Return the JSON object with the primary CPT code and comprehensive supportive CP
         return (None, [])
 
 
+def validate_cpt_codes_relevance(cpt_codes: list, transcription: str, openai_client=None) -> list:
+    """
+    Validate that CPT codes are actually relevant to the transcription.
+    Filters out codes that are not related to procedures/services mentioned in transcription.
+    
+    Args:
+        cpt_codes: List of CPT codes to validate
+        transcription: The transcription text to check relevance against
+        openai_client: Optional OpenAI client
+    
+    Returns:
+        List of CPT codes that are relevant to the transcription
+    """
+    if not cpt_codes or not transcription:
+        return []
+    
+    if not openai_client:
+        try:
+            try:
+                from app.main import create_openai_client
+            except ImportError:
+                from app.api.pr1_generator import create_openai_client
+            openai_client = create_openai_client()
+        except Exception:
+            return cpt_codes  # Return as-is if can't validate
+    
+    try:
+        import json
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Limit transcription length
+        transcription_snippet = str(transcription)[:3000] if len(str(transcription)) > 3000 else str(transcription)
+        
+        system_prompt = """You are a medical coding validation expert. Your task is to validate if CPT/HCPCS codes are actually relevant to the ILLNESS/DIAGNOSIS and procedures mentioned in a medical transcription.
+
+CRITICAL VALIDATION RULES - BE VERY STRICT - ILLNESS RELEVANCE REQUIRED:
+1. FIRST: Identify the PRIMARY ILLNESS/DIAGNOSIS from the transcription (e.g., "knee pain", "ACL tear", "shoulder injury", "back pain", "fracture", etc.)
+
+2. A code is RELEVANT ONLY if ALL of the following are true:
+   - The procedure/service it represents is explicitly mentioned in the transcription
+   - The code matches the EXACT body part of the illness/diagnosis (e.g., if illness is "right knee pain", only right knee codes are relevant, NOT left knee codes, NOT other body parts)
+   - The code matches the EXACT condition/illness mentioned (e.g., if illness is "ACL tear", ACL-related codes are relevant, NOT rotator cuff codes unless rotator cuff is also the illness)
+   - The code is for treating the identified illness/diagnosis (e.g., if illness is "knee pain", knee treatment codes are relevant, NOT shoulder treatment codes)
+   - The code is for DME/supplies that are mentioned AND match the illness body part (e.g., if illness is "knee pain" and "knee brace" is mentioned, knee brace codes are relevant, NOT ankle brace codes)
+   - The code is for imaging that is mentioned AND matches the illness body part and imaging type (e.g., if illness is "knee pain" and "knee X-ray" is mentioned, knee X-ray codes are relevant, NOT shoulder MRI codes)
+
+3. A code is NOT RELEVANT if ANY of the following are true:
+   - The procedure/service it represents is NOT mentioned in the transcription
+   - The code is for a different body part than the illness/diagnosis (e.g., if illness is "right knee pain", left knee codes are NOT relevant, shoulder codes are NOT relevant)
+   - The code is for a different condition than the illness/diagnosis (e.g., if illness is "ACL tear", rotator cuff codes are NOT relevant)
+   - The code is for treating a different condition than the illness (e.g., if illness is "knee pain", shoulder treatment codes are NOT relevant)
+   - The code is for a procedure that might be "typically needed" but is NOT mentioned or NOT related to the illness
+   - The code is for a procedure that is not related to the illness/diagnosis described
+
+4. Be VERY STRICT - only mark codes as relevant if they:
+   - EXACTLY match what is mentioned in the transcription (procedure type, body part, and service type)
+   - Are DIRECTLY related to the identified illness/diagnosis
+   - Are for treating the same condition/body part as the illness
+
+Return a JSON object with:
+{
+  "relevant_codes": ["CODE1", "CODE2", ...] (only codes that are actually relevant),
+  "irrelevant_codes": ["CODE3", "CODE4", ...] (codes that are not relevant)
+}"""
+
+        user_prompt = f"""Validate if these CPT/HCPCS codes are relevant to the ILLNESS/DIAGNOSIS and procedures mentioned in this transcription:
+
+CPT Codes to validate:
+{', '.join(cpt_codes[:50])}  # Limit to first 50 codes
+
+Transcription:
+{transcription_snippet}
+
+**CRITICAL - BE VERY STRICT - CHECK EACH CODE FOR ILLNESS RELEVANCE:**
+FIRST: Identify the PRIMARY ILLNESS/DIAGNOSIS from the transcription (e.g., "knee pain", "ACL tear", "shoulder injury", "back pain", "fracture", etc.)
+
+For EACH code, verify:
+1. Is this code for a procedure/service that is EXPLICITLY mentioned in the transcription?
+2. Does this code match the EXACT body part of the illness/diagnosis? (e.g., if illness is "right knee pain", do NOT mark left knee codes or shoulder codes as relevant)
+3. Does this code match the EXACT condition/illness mentioned? (e.g., if illness is "ACL tear", do NOT mark rotator cuff codes as relevant)
+4. Is this code for treating the identified illness/diagnosis? (e.g., if illness is "knee pain", do NOT mark shoulder treatment codes as relevant)
+5. If ANY answer is NO, mark the code as IRRELEVANT
+
+- Only mark codes as relevant if they:
+  * EXACTLY match what is mentioned (procedure type, body part, service type)
+  * Are DIRECTLY related to the identified illness/diagnosis
+  * Are for treating the same condition/body part as the illness
+- Filter out codes for procedures that are NOT mentioned
+- Filter out codes for different body parts than the illness
+- Filter out codes for different conditions than the illness
+- Filter out codes that are not related to treating the illness
+- Return ONLY codes that are actually relevant to the illness/diagnosis in this specific transcription
+
+Return the JSON object with relevant and irrelevant codes."""
+
+        response = openai_client.chat.completions.create(
+            model='gpt-4o',  # Use gpt-4o for validation
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"},
+            max_completion_tokens=2000
+        )
+        
+        result = response.choices[0].message.content
+        data = json.loads(result)
+        
+        relevant_codes = data.get("relevant_codes", [])
+        
+        # Validate codes are actually valid CPT codes
+        validated_relevant = []
+        for code in relevant_codes:
+            code_str = str(code).strip()
+            if is_valid_cpt_code(code_str) and code_str in cpt_codes:
+                validated_relevant.append(code_str)
+        
+        filtered_count = len(cpt_codes) - len(validated_relevant)
+        if filtered_count > 0:
+            logger.info(f"Filtered out {filtered_count} irrelevant CPT codes. Kept {len(validated_relevant)} relevant codes.")
+        
+        return validated_relevant
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Error validating CPT codes relevance: {e}")
+        return cpt_codes  # Return as-is if validation fails
+
+
 def get_cpt_for_procedure_enhanced(procedure_text: str, openai_client=None) -> tuple:
     """
-    Enhanced version that first checks mapping, then uses AI if not found.
-    This makes the system unlimited - can handle any procedure.
+    Extract CPT codes using AI only (static mappings removed).
+    This makes the system fully dynamic - extracts codes from transcription.
     Returns (primary_cpt, supportive_cpts_list)
     """
-    # First try the mapping
-    result = get_cpt_for_procedure(procedure_text)
-    if result[0]:  # Found in mapping
-        return result
-    
-    # Not in mapping - use AI to generate
+    # Use AI to extract codes from transcription (no static mappings)
     return generate_cpt_with_ai(procedure_text, openai_client)

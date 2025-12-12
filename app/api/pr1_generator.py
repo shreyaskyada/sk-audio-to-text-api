@@ -178,87 +178,151 @@ def extract_diagnosis_codes_from_soap_assessment(soap_doc: Optional[Dict[str, An
     return result
 
 
-def generate_cpt_codes_from_diagnosis_codes(diagnosis_codes: Dict[str, Any], openai_client=None) -> List[str]:
+def generate_cpt_codes_from_diagnosis_codes(diagnosis_codes: Dict[str, Any], transcription: str = "", soap_doc: Optional[Dict[str, Any]] = None, openai_client=None) -> List[str]:
     """
-    Dynamically generate CPT codes based on diagnosis codes from SOAP Assessment section.
-    Uses AI to generate as many relevant CPT codes as possible based on the diagnosis codes.
+    Extract CPT codes ONLY from transcription text using diagnosis values from A - ASSESSMENT section.
+    Uses diagnosis descriptions in prompt but still only extracts codes mentioned in transcription.
     
     Args:
-        diagnosis_codes: Dictionary with primary_diagnosis_code, secondary_diagnosis_code, 
-                        associated_diagnosis_codes, and planned_procedures_rfa_codes
+        diagnosis_codes: Dictionary with primary_diagnosis_code, secondary_diagnosis_code, etc.
+        transcription: The original transcription text to extract codes from (MANDATORY)
+        soap_doc: SOAP document to extract diagnosis descriptions from A - ASSESSMENT section
         openai_client: Optional OpenAI client
     
     Returns:
-        List of CPT codes (as many as possible, dynamically generated)
+        List of CPT codes that are actually mentioned in transcription
     """
-    if not openai_client:
-        try:
-            openai_client = create_openai_client()
-        except Exception:
-            logger.warning("Could not create OpenAI client for CPT generation from diagnosis codes")
-            return []
-    
-    # Collect all diagnosis codes
-    all_diagnosis_codes = []
-    diagnosis_descriptions = []
-    
-    if diagnosis_codes.get("primary_diagnosis_code"):
-        all_diagnosis_codes.append(diagnosis_codes["primary_diagnosis_code"])
-        diagnosis_descriptions.append(f"Primary Diagnosis: {diagnosis_codes['primary_diagnosis_code']}")
-    
-    if diagnosis_codes.get("secondary_diagnosis_code"):
-        all_diagnosis_codes.append(diagnosis_codes["secondary_diagnosis_code"])
-        diagnosis_descriptions.append(f"Secondary Diagnosis: {diagnosis_codes['secondary_diagnosis_code']}")
-    
-    for code in diagnosis_codes.get("associated_diagnosis_codes", []):
-        if code and code not in all_diagnosis_codes:
-            all_diagnosis_codes.append(code)
-            diagnosis_descriptions.append(f"Associated Diagnosis: {code}")
-    
-    for code in diagnosis_codes.get("planned_procedures_rfa_codes", []):
-        if code and code not in all_diagnosis_codes:
-            all_diagnosis_codes.append(code)
-            diagnosis_descriptions.append(f"Planned Procedure/RFA: {code}")
-    
-    if not all_diagnosis_codes:
-        logger.warning("No diagnosis codes found to generate CPT codes from")
+    if not transcription or not transcription.strip():
+        logger.warning("No transcription provided to extract CPT codes from")
         return []
     
     try:
-        from app.cpt_mappings import generate_cpt_with_ai
+        # First, try to extract codes directly from transcription using regex
+        extracted_codes = extract_cpt_codes_from_text(transcription)
         
-        # Build comprehensive prompt for AI to generate CPT codes based on diagnosis codes
-        diagnosis_text = "\n".join(diagnosis_descriptions)
-        prompt = f"""Based on the following diagnosis codes from the SOAP note Assessment section, generate ALL possible and relevant CPT/HCPCS codes that would be needed for treatment, procedures, DME, supplies, and services related to these diagnoses.
-
-Diagnosis Codes:
-{diagnosis_text}
-
-Generate MAXIMUM CPT codes - include:
-- ALL surgical/procedure codes that could apply
-- ALL DME codes (braces, crutches, walkers, canes, etc.)
-- ALL supply codes (surgical supplies, post-op care supplies, etc.)
-- ALL therapy codes (physical therapy, occupational therapy, etc.)
-- ALL imaging/guidance codes if applicable
-- ALL cryotherapy devices
-- ALL other applicable codes
-
-Generate as many codes as possible (aim for 50-70+ codes if surgeries are involved). Return ONLY valid CPT/HCPCS codes."""
+        if extracted_codes:
+            logger.info(f"Extracted {len(extracted_codes)} CPT codes directly from transcription: {', '.join(extracted_codes[:10])}{'...' if len(extracted_codes) > 10 else ''}")
+            return extracted_codes
         
-        # Use AI to generate CPT codes
-        _, generated_cpts = generate_cpt_with_ai(prompt, openai_client)
+        # If no codes found via regex, use AI to extract only what's mentioned
+        # But first, extract diagnosis descriptions from A - ASSESSMENT section
+        if openai_client and soap_doc:
+            from app.cpt_mappings import generate_cpt_with_ai
+            
+            # Extract diagnosis descriptions from SOAP Assessment section
+            primary, secondary, additional = primary_secondary_dx(soap_doc)
+            
+            # Build diagnosis values for prompt
+            primary_dx = ""
+            if primary:
+                primary_dx = primary.get("condition") or primary.get("diagnosis") or ""
+            
+            secondary_dx = ""
+            if secondary:
+                secondary_dx = secondary.get("condition") or secondary.get("diagnosis") or ""
+            
+            associated_dx = ""
+            if additional and len(additional) > 0:
+                associated_dx = ", ".join([dx.get("condition") or dx.get("diagnosis") or "" for dx in additional if dx.get("condition") or dx.get("diagnosis")])
+            
+            # Extract Planned Procedures / RFAs from SOAP document
+            planned_procedures = ""
+            rfa_items = soap_doc.get("rfa_items") or soap_doc.get("RFA_items") or []
+            if rfa_items:
+                procedures = []
+                for rfa_item in rfa_items:
+                    if isinstance(rfa_item, dict):
+                        service = rfa_item.get("serviceRequested") or rfa_item.get("service_requested") or rfa_item.get("service_or_good") or ""
+                        if service:
+                            procedures.append(service)
+                if procedures:
+                    planned_procedures = ", ".join(procedures)
+            
+            # Build prompt with diagnosis values from A - ASSESSMENT section
+            diagnosis_prompt_parts = []
+            if primary_dx:
+                diagnosis_prompt_parts.append(f"Primary Diagnosis: {primary_dx}")
+            if associated_dx:
+                diagnosis_prompt_parts.append(f"Associated Diagnosis: {associated_dx}")
+            if secondary_dx:
+                diagnosis_prompt_parts.append(f"Secondary Diagnosis: {secondary_dx}")
+            if planned_procedures:
+                diagnosis_prompt_parts.append(f"Planned Procedure / Requested Service: {planned_procedures}")
+            
+            diagnosis_context = "\n".join(diagnosis_prompt_parts) if diagnosis_prompt_parts else ""
+            
+            # Build the full prompt - STRICT: Only generate codes for procedures ACTUALLY mentioned
+            if diagnosis_context:
+                prompt = f"""Generate CPT/HCPCS codes ONLY for procedures and services that are EXPLICITLY MENTIONED in the transcription below.
+
+A - ASSESSMENT Section Values (for context only):
+{diagnosis_context}
+
+Transcription:
+{transcription[:2000]}
+
+**CRITICAL - GENERATE ONLY CODES FOR PROCEDURES MENTIONED:**
+- Generate PRIMARY CPT code ONLY for the main procedure/service that is EXPLICITLY mentioned in the transcription
+- Generate SUPPORTIVE CPT codes ONLY for:
+  * Procedures/services that are EXPLICITLY mentioned (e.g., if "ACL reconstruction" is mentioned, include ACL reconstruction codes)
+  * DME/supplies that are EXPLICITLY mentioned (e.g., if "crutches" is mentioned, include crutch codes)
+  * Imaging that is EXPLICITLY mentioned (e.g., if "MRI" is mentioned, include MRI codes)
+  * Grafts/implants ONLY if mentioned or if the procedure requires them (e.g., ACL reconstruction typically needs graft codes)
+- DO NOT generate codes for procedures that are NOT mentioned
+- DO NOT generate codes for "possible future procedures" - only what is mentioned
+- DO NOT generate codes for different body parts than what is mentioned
+- Be STRICT - only include codes that are clearly related to what is described in the transcription
+- Use diagnosis values as context, but ONLY generate codes for procedures/services mentioned in transcription"""
+            else:
+                prompt = f"""Extract ALL CPT/HCPCS codes that are ACTUALLY MENTIONED in this transcription. DO NOT generate codes that are not mentioned. Only extract codes that are explicitly stated.
+
+Transcription:
+{transcription[:2000]}
+
+Return ONLY codes that are actually mentioned in the transcription. DO NOT add codes that might be needed."""
+            
+            _, extracted_cpts = generate_cpt_with_ai(prompt, openai_client)
+            
+            if extracted_cpts and isinstance(extracted_cpts, list):
+                final_cpts = [str(code).strip() for code in extracted_cpts if code and str(code).strip()]
+                
+                # CRITICAL: Validate codes are relevant to transcription
+                from app.cpt_mappings import validate_cpt_codes_relevance
+                validated_cpts = validate_cpt_codes_relevance(final_cpts, transcription, openai_client)
+                
+                logger.info(f"Extracted {len(final_cpts)} CPT codes, validated {len(validated_cpts)} relevant codes: {', '.join(validated_cpts[:10])}{'...' if len(validated_cpts) > 10 else ''}")
+                return validated_cpts
+        elif openai_client:
+            # Fallback if soap_doc is not provided
+            from app.cpt_mappings import generate_cpt_with_ai
+            
+            prompt = f"""Generate CPT/HCPCS codes ONLY for procedures and services that are EXPLICITLY MENTIONED in this transcription.
+
+Transcription:
+{transcription[:2000]}
+
+**CRITICAL - GENERATE ONLY CODES FOR PROCEDURES MENTIONED:**
+- Generate codes ONLY for procedures/services that are EXPLICITLY mentioned
+- DO NOT generate codes for procedures that are NOT mentioned
+- DO NOT generate codes for "possible future procedures"
+- Be STRICT - only include codes that are clearly related to what is described"""
+            
+            _, extracted_cpts = generate_cpt_with_ai(prompt, openai_client)
+            
+            if extracted_cpts and isinstance(extracted_cpts, list):
+                final_cpts = [str(code).strip() for code in extracted_cpts if code and str(code).strip()]
+                
+                # CRITICAL: Validate codes are relevant to transcription
+                from app.cpt_mappings import validate_cpt_codes_relevance
+                validated_cpts = validate_cpt_codes_relevance(final_cpts, transcription, openai_client)
+                
+                logger.info(f"Extracted {len(final_cpts)} CPT codes, validated {len(validated_cpts)} relevant codes: {', '.join(validated_cpts[:10])}{'...' if len(validated_cpts) > 10 else ''}")
+                return validated_cpts
         
-        if generated_cpts and isinstance(generated_cpts, list):
-            # Filter and normalize codes
-            final_cpts = [str(code).strip() for code in generated_cpts if code and str(code).strip()]
-            logger.info(f"Generated {len(final_cpts)} CPT codes from diagnosis codes: {', '.join(final_cpts[:10])}{'...' if len(final_cpts) > 10 else ''}")
-            return final_cpts
-        else:
-            logger.warning("AI did not return valid CPT codes")
-            return []
+        return []
         
     except Exception as e:
-        logger.warning(f"Error generating CPT codes from diagnosis codes: {e}")
+        logger.warning(f"Error extracting CPT codes from transcription: {e}")
         return []
 
 
@@ -727,29 +791,51 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                             supportive_cpts.append(code_str)
                             logger.info(f"Added mentioned CPT code {code_str} to supportive CPTs for '{service_requested}'")
                 
-                # CRITICAL: Generate supportive CPTs dynamically from SOAP Assessment diagnosis codes
+                # CRITICAL: Extract CPT codes ONLY from transcription (not generate based on diagnosis codes)
+                # Get transcription text for code extraction
+                transcription_text = str(soap_doc.get("transcription") or soap_doc.get("corrected_transcription") or soap_doc.get("formatted_soap_note") or "")
+                
                 # Extract diagnosis codes from SOAP Assessment section (Primary, Secondary, Associated, Planned Procedures/RFAs)
                 diagnosis_codes_from_assessment = extract_diagnosis_codes_from_soap_assessment(soap_doc)
                 
-                # Generate CPT codes dynamically based on diagnosis codes
+                # Extract CPT codes ONLY from transcription (not generate based on diagnosis codes)
                 try:
                     openai_client = create_openai_client()
                     generated_cpts_from_diagnosis = generate_cpt_codes_from_diagnosis_codes(
                         diagnosis_codes_from_assessment,
+                        transcription_text,  # Pass transcription
+                        soap_doc,  # Pass SOAP document to extract diagnosis descriptions from A - ASSESSMENT
                         openai_client
                     )
                     
                     if generated_cpts_from_diagnosis:
-                        # Merge dynamically generated CPT codes with existing codes (avoid duplicates)
-                        for gen_code in generated_cpts_from_diagnosis:
+                        # CRITICAL: Validate codes are relevant to transcription before adding
+                        from app.cpt_mappings import validate_cpt_codes_relevance
+                        validated_cpts = validate_cpt_codes_relevance(generated_cpts_from_diagnosis, transcription_text, openai_client)
+                        
+                        # Merge validated CPT codes with existing codes (avoid duplicates)
+                        for gen_code in validated_cpts:
                             gen_code_str = str(gen_code).strip()
                             if gen_code_str and gen_code_str != cpt.strip() and gen_code_str not in supportive_cpts:
                                 supportive_cpts.append(gen_code_str)
-                        logger.info(f"RFA item '{service_requested}': Added {len(generated_cpts_from_diagnosis)} dynamically generated CPT codes from diagnosis codes (total: {len(supportive_cpts)})")
+                        
+                        filtered_count = len(generated_cpts_from_diagnosis) - len(validated_cpts)
+                        logger.info(f"RFA item '{service_requested}': Generated {len(generated_cpts_from_diagnosis)} codes, validated {len(validated_cpts)} relevant codes (filtered {filtered_count} irrelevant). Total supportive CPTs: {len(supportive_cpts)}")
                     else:
                         logger.warning(f"Could not generate CPT codes from diagnosis codes for '{service_requested}'")
                 except Exception as e:
                     logger.warning(f"Could not auto-generate supportive CPTs from diagnosis codes for '{service_requested}': {e}")
+                
+                # Final validation: Validate all supportive CPTs against transcription
+                if supportive_cpts and len(supportive_cpts) > 0:
+                    try:
+                        from app.cpt_mappings import validate_cpt_codes_relevance
+                        final_validated_cpts = validate_cpt_codes_relevance(supportive_cpts, transcription_text, openai_client)
+                        if len(final_validated_cpts) < len(supportive_cpts):
+                            logger.info(f"RFA item '{service_requested}': Final validation filtered {len(supportive_cpts) - len(final_validated_cpts)} irrelevant codes. Final count: {len(final_validated_cpts)}")
+                            supportive_cpts = final_validated_cpts
+                    except Exception as e:
+                        logger.warning(f"Error in final CPT validation for '{service_requested}': {e}")
                 
                 # CRITICAL: Split supportive CPTs into separate request items (binary/individual entries)
                 # Each supportive CPT code should be a separate RFA request item
@@ -2115,24 +2201,16 @@ Return a JSON object with an "rfa_items" array containing all extracted items. U
   ]
 }
 
-CRITICAL RULES FOR SUPPORTIVE CPTs - MAXIMIZE CPT CODES:
-1. **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT/HCPCS code is mentioned in the text (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in the supportiveCpts array, even if it seems redundant. Example: If text mentions "29881", it MUST appear in supportiveCpts. Do NOT omit any code that is explicitly mentioned in the dictation. Double-check the text carefully for any CPT codes mentioned.
+CRITICAL RULES FOR SUPPORTIVE CPTs - EXTRACT ONLY FROM TRANSCRIPTION:
+1. **MANDATORY - INCLUDE ALL CODES MENTIONED IN DICTATION:** If ANY CPT/HCPCS code is mentioned in the text (e.g., "29881", "29882", "20924", "L1833", "E0114", etc.), you MUST include it in the supportiveCpts array. Extract ONLY codes that are explicitly mentioned in the transcription. DO NOT add codes that are not mentioned.
 
-2. **MANDATORY FOR ALL SURGERIES - CRYOTHERAPY DEVICE (E0218/E0236):** For EVERY surgery mentioned, you MUST automatically include cryotherapy device code: E0218 (Cryotherapy device) or E0236 (Cold therapy pump). This is MANDATORY - no exceptions. These are standard post-surgical DME items and must be included for ALL surgical procedures.
-
-3. For injection procedures, ALWAYS include fluoroscopic guidance (77003) or ultrasound guidance (76942) if the procedure typically requires it, even if not explicitly mentioned
-
-4. For procedures involving imaging guidance, extract the guidance code as a supportive CPT
-
-5. For DME/Supplies, if a device is mentioned (boot, brace, crutches), include the appropriate HCPCS L-code
-
-6. For surgeries: Include ALL surgical component codes (e.g., 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876 for knee procedures, 20924, 20925, 20926, 20927, 20928, 20929 for grafts, C1713, C1714, C1715 for anchors) AND ALL DME options (braces L1833/L1845/L1832/L1830/L1831/L1843/L1844/L1846/L1847, crutches E0114/E0116/E0118, walkers E0130/E0135/E0136/E0137/E0138/E0140/E0141/E0143/E0144/E0147/E0148/E0149, canes E0100/E0105/E0110/E0111/E0112/E0113, cryotherapy E0218/E0236/E0235/E0239, supplies A4566/A4570/A4572/A4590/A4636/A4637/A4638/A4217/A4218/A4219/A4220/A4221/A6251/A6252/A6253/A6254/A6255/A6256, etc.). Include ALL variations and alternatives. The goal is to include EVERY code that applies - be comprehensive. TARGET: 50-60 codes for surgeries.
-
-7. Supportive CPTs should be an array with 50-60 codes for surgeries: ["29881", "29882", "29880", "29883", "29877", "29879", "29884", "29887", "29870", "29871", "29873", "29874", "29875", "29876", "20924", "20925", "20926", "20927", "20928", "20929", "C1713", "C1714", "C1715", "L1833", "L1845", "L1832", "L1830", "L1831", "L1843", "L1844", "L1846", "L1847", "E0114", "E0116", "E0118", "E0130", "E0135", "E0136", "E0137", "E0138", "E0140", "E0141", "E0143", "E0144", "E0147", "E0148", "E0149", "E0100", "E0105", "E0110", "E0111", "E0112", "E0113", "E0218", "E0236", "E0235", "E0239", "A4566", "A4570", "A4572", "A4590", "A4636", "A4637", "A4638", "A4217", "A4218", "A4219", "A4220", "A4221", "A6251", "A6252", "A6253", "A6254", "A6255", "A6256", ...] or [] if none. For surgeries, aim for 50-60 codes minimum.
-
-8. **PRIMARY GOAL - MAXIMUM CPT CODES (50-60 FOR SURGERIES):** The PRIMARY GOAL is to get as many procedure codes as possible for the primary diagnosis. For surgeries, you MUST generate 50-60 supportive CPT codes minimum. You must be thorough and comprehensive. Include ALL applicable codes: all codes mentioned in dictation, ALL surgical components (including all variations: 29881, 29882, 29880, 29883, 29877, 29879, 29884, 29887, 29870, 29871, 29873, 29874, 29875, 29876), ALL graft codes (20924, 20925, 20926, 20927, 20928, 20929), ALL implant codes (C1713, C1714, C1715), ALL DME options (all brace types L1833/L1845/L1832/L1830/L1831/L1843/L1844/L1846/L1847, all crutch types E0114/E0116/E0118, all walker types E0130/E0135/E0136/E0137/E0138/E0140/E0141/E0143/E0144/E0147/E0148/E0149, all cane types E0100/E0105/E0110/E0111/E0112/E0113), ALL cryotherapy devices (E0218/E0236/E0235/E0239), ALL surgical supplies (A4566, A4570, A4572, A4590, A4636, A4637, A4638, A4217, A4218, A4219, A4220, A4221, A6251, A6252, A6253, A6254, A6255, A6256), guidance codes, post-op care codes, etc. The goal is MAXIMUM CPT codes (50-60 for surgeries) - do not miss any applicable codes. Be exhaustive - include every possible code that could apply. Generate 50-60 codes minimum.
-
-9. Be thorough - supportive CPTs are CRITICAL for accurate billing and authorization
+2. DO NOT generate 70+ codes - only extract what is actually present in the transcription
+3. DO NOT add codes "that might be needed" - only extract what is explicitly stated
+4. If a procedure is mentioned without a code, you may infer the primary code for that procedure only
+5. DO NOT add supportive codes unless they are explicitly mentioned in the transcription
+6. For injection procedures, include guidance codes (77003, 76942) ONLY if they are explicitly mentioned in the transcription
+7. For DME/Supplies, include codes ONLY if the device is explicitly mentioned in the transcription
+8. Be accurate - only extract what is actually stated in the transcription
 
 CRITICAL: Use EXACT field names (camelCase):
 - For treatments: type="treatment", diagnosis, diagnosisCode, serviceRequested, cpt, supportiveCpts (array), frequencyDuration
