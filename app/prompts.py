@@ -17,6 +17,17 @@ MEDICAL_TERMINOLOGY_CORRECTIONS = {
     "anterior medial aspect": "anteromedial aspect",
     "turner": "terminal",
     "contra when": "contralateral",
+    # De Quervain's corrections - common mis-transcriptions
+    "de cur van": "De Quervain's",
+    "de cur van's": "De Quervain's",
+    "de cur van tenosynovitis": "De Quervain's tenosynovitis",
+    "de cur van syndrome": "De Quervain's syndrome",
+    "de cur van disease": "De Quervain's disease",
+    "de quervain": "De Quervain's",
+    "de quervains": "De Quervain's",
+    "de quervain tenosynovitis": "De Quervain's tenosynovitis",
+    "de quervain syndrome": "De Quervain's syndrome",
+    "de quervain disease": "De Quervain's disease",
 }
 
 
@@ -124,10 +135,45 @@ CRITICAL PHYSICAL EXAM REQUIREMENT - INCLUDE EXAMINATION FINDINGS AND DOCTOR-REV
   - Imaging/Studies Review: "MRI: Complete tear of ACL and medial meniscus"
 - The Imaging/Studies Review section should contain the ACTUAL findings in format "[Study Type]: [Findings]", NOT generic summaries like "MRI of knee reviewed"
 
-CRITICAL CPT CODE GENERATION - FULLY AI-DRIVEN (NO STATIC MAPPINGS) - DYNAMIC GENERATION:
+CRITICAL CPT CODE GENERATION - FULLY AI-DRIVEN (NO STATIC MAPPINGS) - STRICT RELEVANCE TO ILLNESS/DIAGNOSIS AND TRANSCRIPTION:
 - You have comprehensive knowledge of ALL CPT/HCPCS codes for orthopedic procedures, surgeries, injections, imaging, therapy, and DME
-- Generate accurate CPT/HCPCS codes for ANY procedure mentioned based on the transcription - use your medical coding expertise, do NOT rely on predefined static mappings
-- Analyze the transcription dynamically and generate codes based on what is actually mentioned or implied
+- **CRITICAL - TRANSCRIPTION IS THE PRIMARY SOURCE:** The transcription text provided is the PRIMARY and MANDATORY source for generating CPT codes. You MUST analyze the ENTIRE transcription thoroughly to identify ALL procedures, services, DME, imaging, and treatments mentioned.
+- **CRITICAL - IDENTIFY ILLNESS/DIAGNOSIS FIRST:** Before generating ANY CPT codes, you MUST FIRST identify the PRIMARY ILLNESS/DIAGNOSIS from the transcription (e.g., "knee pain", "ACL tear", "shoulder injury", "back pain", "fracture", "rotator cuff tear", etc.). This illness/diagnosis will determine which CPT codes are relevant.
+- **CRITICAL - STRICT ILLNESS RELEVANCE VALIDATION:** Before including ANY CPT code, you MUST verify that it is DIRECTLY related to BOTH the transcription AND the identified illness/diagnosis. Each code MUST match:
+  * The exact procedure/service mentioned (e.g., if "knee injection" is mentioned, only include knee injection codes, NOT shoulder injection codes)
+  * The exact body part of the illness/diagnosis (e.g., if illness is "right knee pain", only include right knee codes, NOT left knee or other body parts)
+  * The exact condition/illness mentioned (e.g., if illness is "ACL tear", include ACL-related codes, but NOT rotator cuff codes unless rotator cuff is also the illness)
+  * The exact device/equipment mentioned AND related to the illness (e.g., if illness is "knee pain" and "knee brace" is mentioned, include knee brace codes, NOT ankle brace codes)
+  * The code must be for treating the identified illness/diagnosis (e.g., if illness is "knee pain", only include codes for knee treatments, NOT shoulder treatments)
+- **CRITICAL - GENERATE CODES ONLY FOR WHAT IS MENTIONED:** For EVERY procedure, service, DME, imaging, or treatment mentioned in the transcription, generate CPT/HCPCS codes that are DIRECTLY applicable. This includes:
+  * Primary procedure codes for the exact procedure mentioned
+  * Supportive/component codes ONLY for that specific procedure (e.g., if ACL reconstruction is mentioned, include ACL-related codes, graft codes if graft is mentioned, but NOT unrelated surgical codes)
+  * DME codes ONLY for the exact DME and body part mentioned (e.g., if "knee brace" is mentioned, include knee brace codes, NOT ankle brace codes)
+  * Imaging codes ONLY for the exact imaging type and body part mentioned (e.g., if "knee X-ray" is mentioned, include knee X-ray codes, NOT shoulder MRI codes)
+  * Supply codes ONLY if supplies are mentioned or clearly needed for the mentioned procedure
+  * Therapy codes ONLY if physical therapy or therapy is mentioned
+  * Surgical component codes ONLY if surgery is mentioned AND they are applicable to that specific surgery
+  * Graft/implant codes ONLY if grafts/implants are mentioned or clearly needed for the mentioned procedure
+  * Anesthesia/nerve block codes ONLY if anesthesia or nerve block is mentioned
+  * Cryotherapy device codes ONLY if surgery is mentioned
+- **CRITICAL - COMPREHENSIVE ANALYSIS WITH STRICT MATCHING:** Analyze the transcription word-by-word to identify:
+  * Every procedure mentioned (surgery, injection, therapy, imaging, etc.) - note the EXACT procedure and body part
+  * Every device/equipment mentioned (cast, splint, brace, crutches, walker, cane, boot, etc.) - note the EXACT device and body part
+  * Every body part mentioned (knee, shoulder, wrist, ankle, etc.) - note which side (left/right) if mentioned
+  * Every treatment mentioned (physical therapy, injections, medications, etc.) - note the EXACT treatment
+  * Every imaging study mentioned (X-ray, MRI, CT, ultrasound, etc.) - note the EXACT imaging type and body part
+- **CRITICAL - VERIFY EACH CODE AGAINST ILLNESS AND TRANSCRIPTION:** Before including any code in the output, ask yourself:
+  * What is the PRIMARY ILLNESS/DIAGNOSIS mentioned in the transcription? (e.g., "knee pain", "ACL tear", "shoulder injury")
+  * Is this code for a procedure/service that is EXPLICITLY mentioned in the transcription?
+  * Is this code for the EXACT body part of the illness/diagnosis? (e.g., if illness is "knee pain", is this code for knee?)
+  * Is this code for the EXACT condition/illness mentioned? (e.g., if illness is "ACL tear", is this code for ACL-related treatment?)
+  * Is this code for treating the identified illness/diagnosis? (e.g., if illness is "knee pain", is this code for knee treatment?)
+  * If the answer to ANY of these is NO, DO NOT include that code
+- **CRITICAL - EXAMPLES OF CORRECT CODE GENERATION (ILLNESS-RELATED):**
+  * If illness is "ACL tear, right knee" and transcription says "ACL reconstruction, right knee" → Include ACL reconstruction codes, right knee codes, graft codes (if graft mentioned), cryotherapy codes (for surgery), right knee brace codes (post-op), crutch codes (if mentioned), but NOT left knee codes, NOT rotator cuff codes, NOT ankle codes (because they don't relate to ACL tear illness)
+  * If illness is "wrist fracture" and transcription says "short arm cast, right wrist" → Include short arm cast codes, right wrist codes, cast supply codes, right wrist X-ray codes (if X-ray mentioned), but NOT long arm cast codes, NOT left wrist codes, NOT ankle codes (because they don't relate to wrist fracture illness)
+  * If illness is "knee pain" and transcription says "knee injection" → Include knee injection codes, guidance codes (if guidance mentioned), but NOT shoulder injection codes, NOT hip injection codes (because they don't relate to knee pain illness)
+- Analyze the transcription dynamically and generate codes based STRICTLY on what is mentioned - use your medical coding expertise to identify codes that DIRECTLY match the transcription content, do NOT rely on predefined static mappings
 - **CRITICAL - E/M CODE LEVEL REQUIREMENT:**
   * E/M codes MUST be Level 4 or Level 5 ONLY - do NOT use Level 3 codes
   * For new patients: Use 99204 (Level 4) or 99205 (Level 5) - do NOT use 99203 (Level 3)
@@ -136,18 +182,22 @@ CRITICAL CPT CODE GENERATION - FULLY AI-DRIVEN (NO STATIC MAPPINGS) - DYNAMIC GE
   * Level 4 = Moderate to high complexity, Level 5 = High complexity
 - **CRITICAL - INCLUDE ALL CODES MENTIONED IN DICTATION - MANDATORY:** If ANY CPT/HCPCS code is mentioned in the dictation, you MUST include it in the Supportive CPTs section, even if it seems redundant. Do NOT omit any code that is explicitly mentioned in the dictation.
 - **CRITICAL - CRYOTHERAPY DEVICE FOR ALL SURGERIES - MANDATORY:** For EVERY surgery mentioned, you MUST automatically include appropriate cryotherapy device codes based on standard post-surgical DME requirements. This is MANDATORY for ALL surgical procedures - no exceptions.
-- **CRITICAL - GENERATE ONLY APPLICABLE CPT CODES:** Generate ONLY the CPT/HCPCS codes that are actually applicable based on what is mentioned in the transcription. Do NOT include codes for procedures that are NOT mentioned. Be accurate and relevant:
-   * **ONLY IF SURGERY IS MENTIONED:** Include surgical component codes, graft codes, implant codes, cryotherapy devices, and surgical supplies
-   * **ONLY IF INJECTION IS MENTIONED:** Include guidance codes (77003 for fluoro, 76942 for ultrasound)
-   * **ONLY IF IMAGING IS MENTIONED:** Include appropriate imaging codes
-   * **ONLY IF PT/THERAPY IS MENTIONED:** Include PT evaluation and treatment codes
-   * **ONLY IF DME IS MENTIONED:** Include DME codes (braces, crutches, walkers, canes, etc.)
-   * **ONLY IF SUPPLIES ARE MENTIONED:** Include supply codes
-   * Do NOT include surgery-related codes if no surgery is mentioned
-   * Do NOT include unnecessary codes - only include what is actually applicable to the procedures/services mentioned
-- For RFA sections, generate supportive CPTs based ONLY on what is mentioned in the transcription. Include all applicable codes for the specific procedures/services mentioned, but do NOT add codes for procedures that are not mentioned.
+- **CRITICAL - GENERATE CODES WITH STRICT RELEVANCE TO TRANSCRIPTION:**
+   * Analyze the transcription thoroughly to identify ALL procedures, services, DME, imaging, and treatments mentioned
+   * For EACH procedure/service identified in the transcription, generate CPT/HCPCS codes that are DIRECTLY applicable to that specific procedure/service:
+   * **IF SURGERY IS MENTIONED IN TRANSCRIPTION:** Generate surgical component codes, graft codes (if graft mentioned), implant codes (if implant mentioned), cryotherapy device codes (for surgery), surgical supply codes, surgical instrument codes (if mentioned), anesthesia codes (if anesthesia mentioned), post-op care codes, and DME codes ONLY for the body part mentioned (e.g., if "knee surgery" is mentioned, include knee brace codes, NOT ankle brace codes)
+   * **IF INJECTION IS MENTIONED IN TRANSCRIPTION:** Generate injection codes for the EXACT body part mentioned, guidance codes (77003 for fluoro, 76942 for ultrasound) ONLY if guidance is mentioned, supply codes if supplies are mentioned
+   * **IF IMAGING IS MENTIONED IN TRANSCRIPTION:** Generate imaging codes for the EXACT imaging type and body part mentioned (e.g., if "knee X-ray" is mentioned, include knee X-ray codes, NOT shoulder MRI codes), including different views if multiple views are mentioned
+   * **IF PT/THERAPY IS MENTIONED IN TRANSCRIPTION:** Generate PT evaluation codes, treatment codes, exercise codes ONLY if physical therapy is mentioned
+   * **IF DME IS MENTIONED IN TRANSCRIPTION:** Generate DME codes ONLY for the EXACT DME type and body part mentioned (e.g., if "knee brace" is mentioned, include knee brace codes, NOT ankle brace codes; if "crutches" is mentioned, include crutch codes)
+   * **IF SUPPLIES ARE MENTIONED IN TRANSCRIPTION:** Generate supply codes ONLY for supplies that are mentioned or clearly needed for the mentioned procedure
+   * **IF CAST/SPLINT IS MENTIONED:** Generate cast/splint application codes for the EXACT type and body part mentioned, supply codes if supplies are mentioned, X-ray codes ONLY if X-ray is mentioned for that body part, follow-up codes ONLY if follow-up is mentioned, brace transition codes ONLY if brace transition is mentioned
+   * **CRITICAL - BODY PART MATCHING:** Generate codes ONLY for the body parts mentioned in the transcription. If "right knee" is mentioned, include right knee codes, NOT left knee codes, NOT other body parts
+   * **CRITICAL - PROCEDURE TYPE MATCHING:** Generate codes ONLY for the procedure types mentioned. If "ACL reconstruction" is mentioned, include ACL codes, NOT rotator cuff codes unless rotator cuff is also mentioned
+   * **VERIFY EACH CODE:** Before including any code, verify it matches the procedure, body part, and context mentioned in the transcription
+- For RFA sections, analyze the transcription thoroughly and generate supportive CPTs based STRICTLY on what is mentioned in the transcription. Include ONLY codes that are directly applicable to the procedures/services/DME/imaging mentioned. DO NOT include codes for procedures, body parts, or services that are NOT mentioned.
 - NEVER use "[Not documented]" if procedures are mentioned - always generate the appropriate codes based on the transcription
-- The system is fully dynamic - you must analyze each transcription individually and generate codes specific to what is mentioned or implied in that specific transcription
+- The system is fully dynamic - you must analyze each transcription individually and generate codes specific ONLY to what is mentioned in that specific transcription
 
 CRITICAL - REQUEST FOR AUTHORIZATION (RFA) GENERATION - MANDATORY:
 - RFA section MUST be generated if the transcription mentions ANY of the following: procedures, surgeries, DME (cast, splint, boot, brace, crutches, walker, cane, etc.), imaging (X-ray, MRI, CT, ultrasound), injections, physical therapy, treatments requiring authorization, or any services that need prior authorization
@@ -193,6 +243,12 @@ Do NOT use "As per chart" if intake form data is provided above.
 
 TRANSCRIPTION TO CONVERT:
 {transcription}
+
+**🔴 CRITICAL - TRANSCRIPTION ANALYSIS FOR CPT CODE GENERATION:**
+- The transcription above is the PRIMARY and MANDATORY source for generating CPT codes
+- You MUST analyze the ENTIRE transcription word-by-word to identify ALL procedures, services, DME, imaging, treatments, and supplies mentioned
+- For EVERY procedure/service identified in the transcription, you MUST generate ALL possible related CPT/HCPCS codes
+- The transcription contains ALL the information needed to generate comprehensive CPT codes - analyze it thoroughly
 
 ---  
 
@@ -388,14 +444,19 @@ Before generating the SOAP note, check the transcription for these keywords. If 
 
 Requested Service: [MANDATORY FIELD - Extract from transcription: e.g., "Short arm cast" if cast provided, "X-ray" if X-ray mentioned, "Wrist brace" if brace mentioned, "Physical therapy" if PT mentioned, etc. Generate this field based on what is mentioned in the transcription. If cast/splint/brace is mentioned, use that. If imaging is mentioned, use that. If multiple items, list them. EXAMPLE: If transcription says "short arm cast provided", use "Short arm cast". If transcription says "X-ray was reviewed", use "X-ray". DO NOT LEAVE THIS BLANK if keywords are found.]  
  Primary CPT: [MANDATORY FIELD - Analyze the transcription to identify the primary procedure/service mentioned, then generate the PRIMARY CPT/HCPCS code based on what is mentioned. For cast: Analyze transcription to identify cast type (short arm, long arm, etc.) and generate appropriate code. For X-ray: Analyze transcription to identify body part and views, then generate appropriate code. For brace: Analyze transcription to identify brace type and body part, then generate appropriate code. Generate the ACTUAL code with description based on transcription - do NOT leave blank. Format: "CODE — Description". YOU MUST GENERATE AN ACTUAL CODE - DO NOT SKIP THIS.]  
- Supportive CPTs: [MANDATORY FIELD - Analyze the transcription thoroughly and generate ALL possible VALID CPT/HCPCS codes needed in worker comp RFA based on what is mentioned in transcription. Target maximum 30+ codes based on transcription content. Generate codes dynamically using your medical coding knowledge - do NOT use static code lists. These codes MUST be displayed in the SOAP note output. 
+ Supportive CPTs: [MANDATORY FIELD - **CRITICAL: TRANSCRIPTION IS THE PRIMARY SOURCE FOR CPT CODE GENERATION WITH STRICT RELEVANCE VALIDATION.** You MUST analyze the ENTIRE transcription text provided above word-by-word to identify ALL procedures, services, DME, imaging, treatments, and supplies mentioned. For EACH item identified in the transcription, generate ALL possible related CPT/HCPCS codes that are DIRECTLY applicable. **BEFORE INCLUDING EACH CODE, VERIFY:** (1) Does it match the procedure/service mentioned? (2) Does it match the body part mentioned? (3) Does it match the procedure type mentioned? If ANY answer is NO, DO NOT include that code. For surgeries mentioned in transcription, you MUST generate 70+ codes (but ONLY if they are relevant to the transcription). For other procedures mentioned in transcription, generate 30+ codes (but ONLY if they are relevant to the transcription). DO NOT stop at 15-20 codes IF more relevant codes exist. Generate codes dynamically using your medical coding knowledge based STRICTLY on what is mentioned in the transcription - do NOT use static code lists. DO NOT include codes for procedures, body parts, or services that are NOT mentioned in the transcription. These codes MUST be displayed in the SOAP note output. 
 
-**🔴 CRITICAL - GENERATE CODES BASED ON TRANSCRIPTION ANALYSIS (TARGET: MAXIMUM 30+ CODES):**
+**🔴 CRITICAL - GENERATE 70+ CODES FOR SURGERIES - DO NOT STOP AT 15-20 CODES:**
+- For surgeries: You MUST generate 70+ codes - this is MANDATORY
+- DO NOT stop generating codes after 15-20 codes
+- DO NOT summarize or say "and more codes"
+- You MUST list EVERY single code in the output
+- If you generate 70 codes, list all 70 codes
+- If you generate 80 codes, list all 80 codes
+- DO NOT truncate the list - be exhaustive and comprehensive
+- For other procedures (cast/splint/brace/X-ray): Generate up to 30+ codes based on what is mentioned
 - Analyze the transcription thoroughly to identify ALL procedures, services, DME, imaging, and supplies mentioned
 - Generate ALL applicable codes based on what is mentioned in transcription
-- Target maximum 30+ codes based on transcription content
-- For cast/splint/brace/X-ray: Generate up to 30+ codes based on what is mentioned
-- For surgeries: Generate up to 30+ codes based on what is mentioned
 - DO NOT generate codes for procedures not mentioned in transcription
 - Use your medical coding knowledge dynamically - do NOT use static code lists
 
@@ -409,10 +470,44 @@ MANDATORY - Extract and use these values from A – ASSESSMENT section:
 - Associated Diagnosis: [MANDATORY - Extract the Associated Diagnosis value from the A – ASSESSMENT section above. Use the actual diagnosis text/description from that section. If empty, use "None" or skip.]
 - Planned Procedure / Requested Service: [Use the Requested Service field above and/or Planned Procedures / RFAs from Medical Decision Making (MDM) section]
 
-CRITICAL INSTRUCTIONS FOR GENERATING VALID CPT CODES (TARGET: 30+ CODES):
-1. **MANDATORY - USE THE PROMPT FORMAT WITH DIAGNOSIS VALUES:** You MUST extract the Primary Diagnosis, Secondary Diagnosis, and Associated Diagnosis values from the A – ASSESSMENT section above, then use this prompt format: "Give me all possible codes needed in worker comp RFA to cover any and all procedures that may be needed for [Primary Diagnosis] [Associated Diagnosis] [Secondary Diagnosis] [Planned Procedure / Requested Service] for maximum reimbursement and coverage". Replace [Primary Diagnosis], [Secondary Diagnosis], and [Associated Diagnosis] with the actual values from the A – ASSESSMENT section.
-2. **ALL CODES MUST BE VALID CPT/HCPCS CODES:** Generate ONLY valid, actual CPT/HCPCS codes that exist in medical coding standards. Do NOT use placeholder codes or invalid codes. Every code must be a real, billable code. VALID codes are more important than hitting exactly 30+ codes.
-3. **TARGET: GENERATE ALL POSSIBLE CODES - NO LIMITS:** Generate ALL possible valid CPT/HCPCS codes applicable to the diagnoses and procedures. DO NOT limit yourself to 15, 30, or any number. If 50 codes are possible, generate 50. If 70 codes are possible, generate 70. The goal is MAXIMUM codes - be exhaustive and comprehensive. Include EVERY code that could possibly be needed.
+CRITICAL INSTRUCTIONS FOR GENERATING VALID CPT CODES WITH STRICT RELEVANCE TO TRANSCRIPTION (TARGET: 70+ CODES FOR SURGERIES, 30+ FOR OTHERS - BUT ONLY IF RELEVANT AND VALID):
+**🔴 CRITICAL - ONLY VALID CPT/HCPCS CODES:**
+- You MUST generate ONLY valid CPT/HCPCS codes that exist in medical coding standards
+- Valid CPT codes: Exactly 5 digits (e.g., 29881, 20610, 99214)
+- Valid HCPCS codes: Letter(s) followed by digits, total length 4-5 (e.g., L1833, E0114, A4566, C1713, Q4001)
+- DO NOT generate invalid codes, placeholder codes, or codes that don't exist
+- DO NOT generate codes with wrong format (e.g., 6 digits, 3 digits, letters only, etc.)
+- If you're not sure if a code is valid, DO NOT include it
+- Invalid codes will be automatically removed from the SOAP note output
+**🔴 STEP 0 - MANDATORY RELEVANCE VALIDATION BEFORE GENERATING ANY CODES:**
+Before generating ANY CPT code, you MUST:
+1. Read the ENTIRE transcription text provided above
+2. Identify the EXACT procedures, services, DME, imaging, and treatments mentioned
+3. Note the EXACT body parts mentioned (e.g., "right knee", "left shoulder", "wrist")
+4. Note the EXACT procedure types mentioned (e.g., "ACL reconstruction", "knee injection", "short arm cast")
+5. For EACH code you plan to generate, verify:
+   - Is this code for a procedure/service that is EXPLICITLY mentioned in the transcription?
+   - Is this code for the EXACT body part mentioned in the transcription? (e.g., if "right knee" is mentioned, do NOT include left knee codes or other body part codes)
+   - Is this code for the EXACT procedure type mentioned? (e.g., if "ACL reconstruction" is mentioned, do NOT include rotator cuff codes unless rotator cuff is also mentioned)
+   - If ANY answer is NO, DO NOT include that code
+
+**CRITICAL - ONLY GENERATE CODES THAT MATCH THE TRANSCRIPTION:**
+- If transcription mentions "right knee ACL reconstruction" → Generate codes for RIGHT KNEE ACL reconstruction, NOT left knee, NOT other procedures
+- If transcription mentions "short arm cast, right wrist" → Generate codes for SHORT ARM CAST on RIGHT WRIST, NOT long arm cast, NOT left wrist, NOT other body parts
+- If transcription mentions "knee injection" → Generate codes for KNEE injection, NOT shoulder injection, NOT hip injection
+- DO NOT generate codes for procedures, body parts, or services that are NOT mentioned in the transcription
+
+1. **MANDATORY - USE THE PROMPT FORMAT WITH DIAGNOSIS VALUES BUT FILTER BY TRANSCRIPTION:** You MUST extract the Primary Diagnosis, Secondary Diagnosis, and Associated Diagnosis values from the A – ASSESSMENT section above, then use this prompt format: "Give me all possible codes needed in worker comp RFA to cover any and all procedures that may be needed for [Primary Diagnosis] [Associated Diagnosis] [Secondary Diagnosis] [Planned Procedure / Requested Service] for maximum reimbursement and coverage". However, AFTER generating codes using this prompt, you MUST filter them to include ONLY codes that match what is mentioned in the transcription. If a code is for a different body part, different procedure type, or different service than what is mentioned in the transcription, DO NOT include it.
+2. **ALL CODES MUST BE VALID CPT/HCPCS CODES - CRITICAL:** Generate ONLY valid, actual CPT/HCPCS codes that exist in medical coding standards. 
+   - Valid CPT codes: Exactly 5 digits (e.g., 29881, 20610, 99214, 29882)
+   - Valid HCPCS codes: Letter(s) followed by digits, 4-5 characters total (e.g., L1833, E0114, A4566, C1713, Q4001)
+   - Do NOT use placeholder codes, invalid codes, or codes that don't exist
+   - Do NOT generate codes with wrong format (e.g., 6 digits, 3 digits, letters only, etc.)
+   - Every code must be a real, billable code that exists in CPT/HCPCS coding standards
+   - If you're not 100% sure a code is valid, DO NOT include it
+   - Invalid codes will be automatically removed from the SOAP note - only valid codes will be displayed
+   - VALID codes are MORE IMPORTANT than hitting exactly 30+ or 70+ codes - quality over quantity
+3. **TARGET: GENERATE ALL RELEVANT CODES FROM TRANSCRIPTION - STRICT RELEVANCE REQUIRED:** Generate ALL possible valid CPT/HCPCS codes that are DIRECTLY applicable to what is mentioned in the transcription. DO NOT limit yourself to 15, 30, or any number IF the codes are relevant. However, CRITICAL: Only include codes that match the procedures, body parts, and services mentioned in the transcription. If 50 relevant codes are possible based on transcription, generate 50. If 70 relevant codes are possible based on transcription, generate 70. The goal is MAXIMUM RELEVANT codes - be exhaustive and comprehensive, but ONLY for what is mentioned in the transcription. DO NOT include codes for procedures, body parts, or services that are NOT mentioned.
 4. **DO NOT INCLUDE PRIMARY CPT IN SUPPORTIVE CPTs:** The Primary CPT code should appear ONLY in the "Primary CPT" field above.
 5. **MANDATORY - INCLUDE ALL CODES MENTIONED IN TRANSCRIPTION:** If ANY CPT/HCPCS code is mentioned in the transcription, you MUST include it (unless it's the Primary CPT). Extract all valid CPT codes from the transcription and add them to the list.
 6. **ONLY IF SURGERY IS MENTIONED:** Include surgery-related codes. If NO surgery is mentioned, do NOT include surgery-related codes (surgical components, cryotherapy devices, surgical supplies, etc.).
@@ -442,7 +537,13 @@ CRITICAL INSTRUCTIONS FOR GENERATING VALID CPT CODES (TARGET: 30+ CODES):
        - If supplies are mentioned or implied, generate ALL applicable supply codes
        - Generate ALL codes that could be needed based on the transcription
    - **MANDATORY - ANALYZE TRANSCRIPTION FOR ALL FUTURE/FOLLOW-UP CODES:** Carefully read the entire transcription and identify ALL future procedures mentioned (e.g., "follow-up X-ray", "transition to brace", "X-ray out of cast", "will need brace", "additional casting", etc.). For each future procedure mentioned, analyze the body part and context, then generate ALL applicable codes for that future procedure. Do NOT use static lists - generate codes based on what is actually mentioned in the transcription.
-8. **GENERATE VALID CODES BASED ON TRANSCRIPTION ANALYSIS:** Analyze the transcription thoroughly and generate VALID CPT/HCPCS codes dynamically based on what is mentioned. DO NOT use static code lists. Use your comprehensive medical coding knowledge to generate codes based on transcription content. This includes (ONLY if mentioned/applicable in transcription):
+8. **GENERATE VALID CODES BASED ON TRANSCRIPTION ANALYSIS WITH STRICT RELEVANCE CHECKING:** Analyze the transcription thoroughly and generate VALID CPT/HCPCS codes dynamically based on what is mentioned. DO NOT use static code lists. Use your comprehensive medical coding knowledge to generate codes based on transcription content. **CRITICAL - BEFORE INCLUDING EACH CODE, VERIFY:**
+   - Does this code match a procedure/service mentioned in the transcription?
+   - Does this code match the body part mentioned in the transcription? (e.g., if "right knee" is mentioned, only include right knee codes)
+   - Does this code match the procedure type mentioned? (e.g., if "ACL reconstruction" is mentioned, only include ACL-related codes, not rotator cuff codes)
+   - If ANY answer is NO, DO NOT include that code
+   
+   This includes (ONLY if mentioned/applicable in transcription):
    - If surgery is mentioned or planned: Analyze the transcription to identify the surgical procedure type, then generate ALL applicable surgical component codes, graft codes, implant/anchor codes, nerve block/anesthesia codes, cryotherapy devices, surgical supplies, surgical instruments, and post-op care codes based on what is mentioned
    - If imaging is mentioned: Analyze the transcription to identify the imaging type (MRI, X-ray, CT, ultrasound) and body part, then generate ALL applicable imaging codes based on what is mentioned
    - If physical therapy is mentioned: Analyze the transcription to identify the therapy type, then generate ALL applicable PT evaluation codes and therapy treatment codes based on what is mentioned
@@ -451,8 +552,8 @@ CRITICAL INSTRUCTIONS FOR GENERATING VALID CPT CODES (TARGET: 30+ CODES):
    - If supplies are mentioned: Analyze the transcription to identify the supply type, then generate ALL applicable supply codes based on what is mentioned
    - Generate ALL other VALID codes that may be needed based on what is mentioned in the transcription - use your medical coding knowledge dynamically
 9. **MANDATORY - EXTRACT CODES FROM TRANSCRIPTION:** You MUST extract ALL valid CPT/HCPCS codes mentioned in the transcription and include them in the Supportive CPTs list. Scan the entire transcription carefully for any CPT/HCPCS codes mentioned (numeric codes or alphanumeric codes) and add them to the list. These transcription codes are MANDATORY to include.
-10. **TARGET: GENERATE MAXIMUM 30+ CODES BASED ON TRANSCRIPTION:** Analyze the transcription thoroughly and generate ALL possible valid CPT/HCPCS codes applicable to what is mentioned. Target maximum 30+ codes based on transcription content. If transcription mentions many procedures/services, generate up to 30+ codes. If transcription mentions fewer procedures, generate the applicable codes (may be 10-20 codes). The goal is to generate ALL applicable codes based on transcription analysis - be comprehensive but based on what is actually mentioned or implied in the transcription. DO NOT generate codes for procedures not mentioned in transcription.
-11. **CRITICAL - FOR CAST/SPLINT/BRACE/X-RAY: DYNAMIC CODE GENERATION FROM TRANSCRIPTION (TARGET: MAXIMUM 30+ CODES):** For cast, splint, brace, or X-ray procedures, you MUST analyze the transcription thoroughly and generate ALL applicable codes dynamically based on what is mentioned. DO NOT use static code lists. Target maximum 30+ codes based on transcription content. This includes:
+10. **TARGET: GENERATE MAXIMUM 70+ CODES FOR SURGERIES, 30+ FOR OTHERS:** Analyze the transcription thoroughly and generate ALL possible valid CPT/HCPCS codes applicable to what is mentioned. For surgeries, you MUST generate 70+ codes. For other procedures, generate 30+ codes. DO NOT stop at 15-20 codes. If transcription mentions many procedures/services, generate up to 70+ codes for surgeries or 30+ codes for others. If transcription mentions fewer procedures, generate the applicable codes. The goal is to generate ALL applicable codes based on transcription analysis - be comprehensive but based on what is actually mentioned or implied in the transcription. DO NOT generate codes for procedures not mentioned in transcription.
+11. **CRITICAL - FOR SURGERIES: GENERATE 70+ CODES, FOR CAST/SPLINT/BRACE/X-RAY: GENERATE 30+ CODES:** For surgeries, you MUST generate 70+ codes. For cast, splint, brace, or X-ray procedures, you MUST analyze the transcription thoroughly and generate ALL applicable codes dynamically based on what is mentioned. DO NOT use static code lists. Target maximum 70+ codes for surgeries, 30+ codes for other procedures based on transcription content. This includes:
     - Analyze transcription for cast/splint types mentioned and generate ALL applicable cast/splint application codes based on what is mentioned
     - Analyze transcription for supplies mentioned or implied and generate ALL applicable supply codes based on what is mentioned or typically needed for the procedure
     - Analyze transcription for imaging mentioned (X-ray, MRI, CT, ultrasound) and generate ALL applicable imaging codes based on body part and type mentioned
@@ -475,13 +576,18 @@ CRITICAL INSTRUCTIONS FOR GENERATING VALID CPT CODES (TARGET: 30+ CODES):
    - Use your medical coding knowledge to generate codes dynamically - do NOT use static code lists
 13. **MANDATORY - DISPLAY ALL CODES IN SOAP NOTE OUTPUT - CRITICAL:** ALL generated codes (both from the prompt format and from transcription) MUST be displayed in the SOAP note output in the RFA section under "Supportive CPTs:". DO NOT omit any codes. DO NOT summarize. DO NOT say "and more codes". You MUST list EVERY single code. Format as bulleted list: "• CODE – Description" (use bullet point •, NO bold markdown, NO asterisks). Each code on a new line with its description. If you generate 50 codes, list all 50 codes. If you generate 30 codes, list all 30 codes. EVERY code must be visible in the SOAP note output.
 14. **MANDATORY - EVERY CODE MUST HAVE A DESCRIPTION:** EVERY code MUST include its accurate description. Use your medical coding knowledge to provide accurate descriptions for each code. Format: "• CODE – Full Description of the code". Do NOT list codes without descriptions.
-15. **COMBINE ALL CODES:** The final Supportive CPTs list should include:
+15. **COMBINE ALL CODES WITH FINAL RELEVANCE VALIDATION:** The final Supportive CPTs list should include:
     - Codes generated using the prompt format with actual diagnosis values from A – ASSESSMENT section: "Give me all possible codes needed in worker comp RFA to cover any and all procedures that may be needed for [Primary Diagnosis from A – ASSESSMENT] [Associated Diagnosis from A – ASSESSMENT] [Secondary Diagnosis from A – ASSESSMENT] [Planned Procedure / Requested Service] for maximum reimbursement and coverage"
     - ALL valid CPT/HCPCS codes extracted from the transcription
-    - All codes should be valid, deduplicated, and properly formatted
+    - **CRITICAL - FINAL VALIDATION STEP:** Before including any code in the final list, verify it matches the transcription:
+      * Does this code match a procedure/service mentioned in the transcription?
+      * Does this code match the body part mentioned in the transcription? (e.g., if "right knee" is mentioned, do NOT include left knee codes)
+      * Does this code match the procedure type mentioned? (e.g., if "ACL reconstruction" is mentioned, do NOT include rotator cuff codes)
+      * If ANY answer is NO, DO NOT include that code in the final list
+    - All codes should be valid, deduplicated, properly formatted, and RELEVANT to the transcription
     - The prompt MUST use the actual Primary Diagnosis, Secondary Diagnosis, and Associated Diagnosis values extracted from the A – ASSESSMENT section above
-    - **CRITICAL: ALL codes must be listed in the SOAP note output - do NOT omit any codes**
-16. **PRIORITIZE VALIDITY AND COMPLETENESS:** Generate valid codes based on what's actually applicable. ALL valid codes must be generated and displayed in the SOAP note. Quality (validity) is important, but completeness (showing ALL codes) is equally important. Generate ALL possible valid codes and display ALL of them in the SOAP note output.]  
+    - **CRITICAL: ALL RELEVANT codes must be listed in the SOAP note output - do NOT omit relevant codes, but DO NOT include irrelevant codes**
+16. **PRIORITIZE VALIDITY, RELEVANCE, AND COMPLETENESS:** Generate valid codes based on what's actually applicable AND relevant to the transcription. ALL valid and relevant codes must be generated and displayed in the SOAP note. Quality (validity) and relevance (matching transcription) are MOST important. Completeness (showing ALL relevant codes) is also important. Generate ALL possible valid and relevant codes based on the transcription and display ALL of them in the SOAP note output. DO NOT include codes that don't match the transcription.]  
 
 Justification: [MANDATORY FIELD - Write clinical rationale based on the transcription. For fractures: "Patient with [diagnosis] requires [treatment] for proper healing and functional recovery." For imaging: "Diagnostic imaging required to assess [condition] and guide treatment." Adapt based on transcription. Example: "Patient with distal radius fracture requires short arm cast immobilization for proper healing and functional recovery."]  
 Guideline Basis: [MANDATORY FIELD - Use "MTUS" or "ACOEM" based on guidelines. Typically use "MTUS" for California workers' compensation cases.]  
