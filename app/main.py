@@ -60,8 +60,9 @@ from bson import ObjectId
 from app.prompts import (
     MEDICAL_TERMINOLOGY_CORRECTIONS,
     ORTHOPEDIC_SOAP_SYSTEM_PROMPT,
-    ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE
-)
+    ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE,
+    WORKERS_COMP_ORTHO_MASTER_PROMPT,
+ )
 
 # Load environment variables
 load_dotenv()
@@ -998,6 +999,13 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
         
         formatted_soap_note = response.choices[0].message.content.strip()
         
+        # Post-process: Remove all markdown bold formatting (**) from output
+        import re
+        # Remove ** from headings and any text
+        formatted_soap_note = re.sub(r'\*\*([^*]+)\*\*', r'\1', formatted_soap_note)
+        # Also remove any standalone ** that might remain
+        formatted_soap_note = formatted_soap_note.replace('**', '')
+        
         # Post-process: Inject intake form data directly if available
         if intake_doc:
             intake_values = extract_intake_form_values(intake_doc)
@@ -1779,7 +1787,7 @@ async def get_default_soap_prompts():
     """
     return JSONResponse({
         "system_prompt": ORTHOPEDIC_SOAP_SYSTEM_PROMPT,
-        "user_prompt_template": ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE,
+        "user_prompt_template": WORKERS_COMP_ORTHO_MASTER_PROMPT,
         "placeholders": [
             "{transcription}",
             "{patient_context}",
