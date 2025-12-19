@@ -44,6 +44,7 @@ from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_gene
 from app.api.soap_storage import (
     save_soap_note_to_db, 
     get_all_soap_notes_by_transcription_id,
+    get_soap_note_by_transcription_id,
     update_soap_note
 )
 from app.api.transcription_storage import (
@@ -61,7 +62,6 @@ from app.prompts import (
     MEDICAL_TERMINOLOGY_CORRECTIONS,
     ORTHOPEDIC_SOAP_SYSTEM_PROMPT,
     ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE,
-    WORKERS_COMP_ORTHO_MASTER_PROMPT,
  )
 
 # Load environment variables
@@ -86,13 +86,11 @@ AUTH_USERNAME = os.getenv('AUTH_USERNAME', 'admin')
 AUTH_PASSWORD = os.getenv('AUTH_PASSWORD', 'admin')
 MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', 100))
 
-# OpenAI Model Configuration - Latest ChatGPT model for SOAP note generation
-OPENAI_MODEL = 'gpt-5.1'  # Latest GPT-5.1 model
-
-# OpenAI Model Configuration - Latest ChatGPT model for SOAP note generation
-# Options: 'gpt-4o' (latest GPT-4o), 'gpt-4o-2024-11-20' (specific version), 'gpt-4-turbo' (older)
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o')  # Default to latest gpt-4o model
-logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
+# OpenAI Model Configuration - Use GPT-5.1 for comprehensive CPT code generation
+# GPT-5.1 is used for all AI-generated CPT codes - NO static code lists
+# Options: 'gpt-5.1' (recommended for CPT generation), 'gpt-4o' (fallback)
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-5.1')  # Default to GPT-5.1 for comprehensive code generation
+logger.info(f"Using OpenAI model: {OPENAI_MODEL} (All CPT codes generated dynamically via AI)")
 
 # Medical keyterms for Deepgram
 MEDICAL_KEYTERMS = [
@@ -339,11 +337,100 @@ def extract_intake_form_values(intake_doc: Optional[dict]) -> dict:
     return values
 
 
+def aggressive_validate_rfa_supportive_cpts(soap_note: str) -> str:
+    """
+    Aggressively validate RFA Supportive CPTs section to ensure 100% valid codes.
+    This function specifically targets the RFA Supportive CPTs section and validates every code.
+    """
+    import re
+    from app.cpt_mappings import is_valid_cpt_code
+    
+    if not soap_note:
+        return soap_note
+    
+    result = soap_note
+    invalid_codes_removed = []
+    valid_codes_kept = []
+    
+    # Find RFA Supportive CPTs section
+    rfa_supportive_pattern = r'(Supportive CPTs:\s*)(.*?)(?=\n\n|\nJustification:|$)'
+    match = re.search(rfa_supportive_pattern, result, re.DOTALL | re.IGNORECASE)
+    
+    if not match:
+        return result  # No RFA section found
+    
+    supportive_section = match.group(2)
+    original_section = supportive_section
+    
+    # Find all potential CPT codes in the section (comprehensive pattern)
+    # Match codes in formats: "CODE — Description", "• CODE — Description", "CODE, CODE", standalone
+    code_pattern = r'\b([A-Z][A-Z0-9]{3,4}|[0-9]{5})\b'
+    
+    # Extract all codes from the section
+    all_codes = re.findall(code_pattern, supportive_section, re.IGNORECASE)
+    
+    # Validate each code and track invalid ones
+    invalid_codes_set = set()
+    for code in all_codes:
+        code_upper = code.upper()
+        if not is_valid_cpt_code(code_upper):
+            invalid_codes_set.add(code_upper)
+            invalid_codes_removed.append(code_upper)
+            logger.warning(f"🔴 Removed invalid CPT code from RFA Supportive CPTs: '{code_upper}'")
+        else:
+            valid_codes_kept.append(code_upper)
+    
+    # Remove lines containing invalid codes
+    lines = supportive_section.split('\n')
+    validated_lines = []
+    
+    for line in lines:
+        # Check if line contains any invalid codes
+        line_has_invalid = False
+        line_codes = re.findall(code_pattern, line, re.IGNORECASE)
+        
+        for code in line_codes:
+            if code.upper() in invalid_codes_set:
+                line_has_invalid = True
+                break
+        
+        if line_has_invalid:
+            # Try to clean the line - remove invalid codes but keep the line structure
+            cleaned_line = line
+            for invalid_code in invalid_codes_set:
+                # Remove invalid code from line (case insensitive)
+                cleaned_line = re.sub(rf'\b{re.escape(invalid_code)}\b', '', cleaned_line, flags=re.IGNORECASE)
+            # Clean up extra spaces
+            cleaned_line = re.sub(r'\s+', ' ', cleaned_line).strip()
+            # Only keep line if it still has content (might have valid codes or description)
+            if cleaned_line and (cleaned_line.startswith('•') or any(c.upper() not in invalid_codes_set for c in re.findall(code_pattern, cleaned_line, re.IGNORECASE))):
+                validated_lines.append(cleaned_line)
+            # Otherwise, skip the line entirely
+        else:
+            # Line is valid, keep it
+            validated_lines.append(line)
+    
+    # Rebuild the section
+    new_supportive_section = '\n'.join(validated_lines)
+    
+    if new_supportive_section != original_section:
+        result = result[:match.start(2)] + new_supportive_section + result[match.end(2):]
+        logger.info(f"✅ Aggressive RFA Validation: Kept {len(valid_codes_kept)} valid codes, removed {len(invalid_codes_removed)} invalid codes")
+        if invalid_codes_removed:
+            logger.warning(f"   Invalid codes removed: {invalid_codes_removed[:20]}")
+    
+    return result
+
+
 def validate_all_cpt_codes_in_soap(soap_note: str) -> str:
     """
     Comprehensive validation of all CPT codes in SOAP note.
     Removes all invalid CPT codes and keeps only valid ones.
     Focuses on CPT code sections: Primary Procedure, Supportive CPTs, RFA sections.
+    
+    NOTE: This function only removes codes that are INVALID (not properly formatted).
+    It does NOT remove valid codes. If codes are being removed, they are likely invalid format.
+    For maximum code inclusion, ensure the AI generates properly formatted CPT/HCPCS codes.
     """
     import re
     from app.cpt_mappings import is_valid_cpt_code
@@ -372,8 +459,9 @@ def validate_all_cpt_codes_in_soap(soap_note: str) -> str:
             original_content = section_content
             
             # Find all potential CPT codes in this section
-            # Pattern: 4-5 character codes (CPT: 5 digits, HCPCS: letter + digits)
-            code_pattern = r'\b([A-Z][A-Z0-9]{3,4}|[0-9]{5})\b'
+            # STRICT Pattern: Only match valid CPT/HCPCS formats
+            # CPT: Exactly 5 digits | HCPCS: Letter(s) + digits, total 4-5 chars
+            code_pattern = r'\b((?:[A-Z][A-Z0-9]{3,4})|(?:[0-9]{5}))\b'
             
             def validate_and_replace_code(code_match):
                 nonlocal total_codes_checked, valid_codes_kept, invalid_codes_removed
@@ -794,6 +882,163 @@ def inject_intake_data_into_soap(soap_note: str, intake_values: dict) -> str:
     return result
 
 
+def extract_soap_sections_from_formatted_note(formatted_soap_note: str) -> dict:
+    """
+    Extract S/O/A/P sections from the generated consolidated note.
+
+    The backend historically produced Markdown headings like:
+      - "## S – SUBJECTIVE"
+    But the current `ORTHOPEDIC_SOAP_SYSTEM_PROMPT` template uses plain headings like:
+      - "SUBJECTIVE"
+      - "O – OBJECTIVE/Physical Exam"
+      - "ASSESSMENT"
+      - "PLAN"
+
+    The frontend UI renders `subjective/objective/assessment/plan`, so this extraction
+    must support BOTH formats (backwards compatible).
+    """
+    import re
+
+    sections = {"subjective": "", "objective": "", "assessment": "", "plan": ""}
+    if not formatted_soap_note:
+        return sections
+
+    note = formatted_soap_note.replace("\r\n", "\n").replace("\r", "\n")
+
+    def _between(start_regex: str, end_regexes: list[str]) -> str:
+        start_match = re.search(start_regex, note, flags=re.IGNORECASE | re.MULTILINE)
+        if not start_match:
+            return ""
+        start_idx = start_match.end()
+
+        end_idx = len(note)
+        tail = note[start_idx:]
+        for end_regex in end_regexes:
+            m = re.search(end_regex, tail, flags=re.IGNORECASE | re.MULTILINE)
+            if m:
+                end_idx = min(end_idx, start_idx + m.start())
+
+        return note[start_idx:end_idx].strip()
+
+    # 1) Preferred: Markdown-style headings (older outputs)
+    subj = _between(
+        r"^##\s*S\s*[–-]\s*SUBJECTIVE\s*$",
+        [r"^##\s*O\s*[–-]\s*OBJECTIVE\s*$", r"^---\s*$"],
+    )
+    obj = _between(
+        r"^##\s*O\s*[–-]\s*OBJECTIVE\s*$",
+        [r"^##\s*A\s*[–-]\s*ASSESSMENT\s*$", r"^---\s*$"],
+    )
+    assess = _between(
+        r"^##\s*A\s*[–-]\s*ASSESSMENT\s*$",
+        [r"^##\s*P\s*[–-]\s*PLAN\s*$", r"^---\s*$"],
+    )
+    plan = _between(
+        r"^##\s*P\s*[–-]\s*PLAN\s*$",
+        [r"^---\s*$", r"^\s*$"],
+    )
+
+    if any([subj, obj, assess, plan]):
+        sections["subjective"] = subj
+        sections["objective"] = obj
+        sections["assessment"] = assess
+        sections["plan"] = plan
+        return sections
+
+    # 2) Current plain-template headings (from prompts.py)
+    dash = r"[\u2013\u2014-]"  # en-dash, em-dash, hyphen
+
+    sections["subjective"] = _between(
+        r"^SUBJECTIVE\s*$",
+        [
+            r"^---\s*$",
+            rf"^O\s*{dash}\s*OBJECTIVE/Physical\s+Exam\s*$",
+            r"^ASSESSMENT\s*$",
+        ],
+    )
+    sections["objective"] = _between(
+        rf"^O\s*{dash}\s*OBJECTIVE/Physical\s+Exam\s*$",
+        [r"^---\s*$", r"^ASSESSMENT\s*$"],
+    )
+    sections["assessment"] = _between(
+        r"^ASSESSMENT\s*$",
+        [r"^---\s*$", r"^PLAN\s*$"],
+    )
+    sections["plan"] = _between(
+        r"^PLAN\s*$",
+        [
+            r"^---\s*$",
+            r"^CPT\s*/\s*BILLING\s*CODES\s*$",
+            r"^REQUEST\s+FOR\s+AUTHORIZATION\s*\(RFA\)\s*$",
+            r"^WORK\s+STATUS\s*$",
+            r"^SIGNATURE\s*/\s*PROVIDER\s+INFORMATION\s*$",
+        ],
+    )
+
+    return sections
+
+
+def format_prompts_for_chatgpt(
+    system_prompt: str,
+    user_prompt: str,
+    model: str,
+    temperature: float = 0.2,
+    max_tokens: int = 12000,
+    top_p: float = 0.95
+) -> dict:
+    """
+    Format the exact prompts used for SOAP generation in a way that can be copied to ChatGPT.
+    Returns a dictionary with formatted prompts and instructions.
+    
+    This helps debug differences between API-generated SOAP notes and ChatGPT-generated notes.
+    
+    **Why outputs differ even with same prompts:**
+    1. Post-processing steps: CPT validation, intake data injection, markdown cleanup
+    2. Multiple AI calls: Main SOAP generation + CPT code generation/correction
+    3. API parameters: Exact temperature/top_p values that ChatGPT may not support
+    4. Pre-processing: Medical terminology corrections applied before sending to AI
+    
+    **Solution:**
+    - Use POST /api/v1/soap-prompts/debug to get exact prompts
+    - Copy system_prompt and user_prompt to ChatGPT
+    - Note: Outputs may still differ due to post-processing mentioned above
+    """
+    formatted_prompts = {
+        "model": model,
+        "parameters": {
+            "temperature": temperature,
+            "max_completion_tokens": max_tokens,
+            "top_p": top_p
+        },
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
+        "chatgpt_instructions": {
+            "note": "To use these prompts in ChatGPT, you need to provide the system prompt first, then the user prompt.",
+            "step_1": "Copy the system_prompt and paste it as a system message or in the first message",
+            "step_2": "Copy the user_prompt and paste it as the user message",
+            "note_2": "Note: ChatGPT may not support exact temperature/top_p parameters, which can cause output differences",
+            "note_3": "Also note: The API applies post-processing (CPT validation, intake data injection, markdown cleanup) which ChatGPT won't do automatically"
+        },
+        "full_chat_format": f"""SYSTEM MESSAGE:
+{system_prompt}
+
+---
+
+USER MESSAGE:
+{user_prompt}
+
+---
+
+PARAMETERS USED (for reference):
+- Model: {model}
+- Temperature: {temperature}
+- Max Tokens: {max_tokens}
+- Top P: {top_p}"""
+    }
+    
+    return formatted_prompts
+
+
 def format_intake_form_data_for_prompt(intake_doc: Optional[dict]) -> str:
     """Format intake form data for inclusion in SOAP prompt"""
     if not intake_doc:
@@ -912,6 +1157,12 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
     Args:
         soap_request: SOAPRequest object with transcription and patient info
         intake_form_data: Optional formatted intake form data string for prompt inclusion
+        intake_doc: Optional raw intake form document for post-processing
+        model: Optional model override
+    
+    If skip_post_processing=True in soap_request:
+    - Returns raw AI output without any post-processing (matches ChatGPT output)
+    - No CPT validation, no intake injection, no markdown cleanup
     """
     try:
         # Apply medical terminology corrections to transcription
@@ -977,6 +1228,34 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
         selected_model = model or soap_request.model or OPENAI_MODEL
         logger.info(f"Using OpenAI model: {selected_model}")
         
+        # Log formatted prompts for ChatGPT comparison (detailed logging)
+        formatted_prompts_info = format_prompts_for_chatgpt(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model=selected_model,
+            temperature=0.2,
+            max_tokens=12000,
+            top_p=0.95
+        )
+        logger.info("=" * 80)
+        logger.info("📋 PROMPTS USED FOR SOAP GENERATION (for ChatGPT comparison)")
+        logger.info("=" * 80)
+        logger.info(f"Model: {selected_model}")
+        logger.info(f"Temperature: 0.2 | Max Tokens: 12000 | Top P: 0.95")
+        logger.info("-" * 80)
+        logger.info("SYSTEM PROMPT (first {:.0f} chars): {}".format(
+            len(system_prompt), 
+            system_prompt[:200] + "..." if len(system_prompt) > 200 else system_prompt
+        ))
+        logger.info("-" * 80)
+        logger.info("USER PROMPT (first {:.0f} chars): {}".format(
+            len(user_prompt),
+            user_prompt[:200] + "..." if len(user_prompt) > 200 else user_prompt
+        ))
+        logger.info("=" * 80)
+        logger.info("💡 To get full prompts for ChatGPT, use: POST /api/v1/soap-prompts/debug with same request")
+        logger.info("=" * 80)
+        
         # Call OpenAI GPT-4 with explicit configuration
         client = create_openai_client()
         
@@ -992,80 +1271,48 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
                     "content": user_prompt
                 }
             ],
-            temperature=0.1,  # Lower temperature for more consistent CPT code generation
-            max_completion_tokens=8000,  # Increased to allow 50+ CPT codes with descriptions
+            temperature=0.2,  # Slightly higher to encourage comprehensive code generation
+            max_completion_tokens=12000,  # Increased to allow 60+ CPT codes with full descriptions
             top_p=0.95  # Slightly lower for more deterministic output
         )
         
-        formatted_soap_note = response.choices[0].message.content.strip()
+        # Store raw AI output (before any post-processing) - for comparison with ChatGPT
+        raw_soap_note = response.choices[0].message.content.strip()
+        formatted_soap_note = raw_soap_note
         
-        # Post-process: Remove all markdown bold formatting (**) from output
-        import re
-        # Remove ** from headings and any text
-        formatted_soap_note = re.sub(r'\*\*([^*]+)\*\*', r'\1', formatted_soap_note)
-        # Also remove any standalone ** that might remain
-        formatted_soap_note = formatted_soap_note.replace('**', '')
+        # Check if post-processing should be skipped (returns raw output like ChatGPT)
+        # NOTE: Use getattr for backwards compatibility if SOAPRequest schema doesn't include this field.
+        skip_post_processing = getattr(soap_request, "skip_post_processing", False) or False
         
-        # Post-process: Inject intake form data directly if available
-        if intake_doc:
-            intake_values = extract_intake_form_values(intake_doc)
-            if intake_values:
-                logger.info(f"🔧 Post-processing SOAP note to inject intake form data: {intake_values}")
-                formatted_soap_note = inject_intake_data_into_soap(formatted_soap_note, intake_values)
+        if skip_post_processing:
+            logger.info("⏭️  Skipping post-processing - returning raw AI output (matches ChatGPT behavior)")
+        else:
+            # Post-process: Preserve ** markdown syntax for subheadings so they appear bold
+            # Subheadings (like "Chief Complaint:", "Problem Complexity:", etc.) should remain bold
+            # Main section headings (SUBJECTIVE, OBJECTIVE, etc.) are handled by frontend/PDF generator
+            # No need to remove ** - keep bold formatting for all subheadings
+            
+            # Post-process: Inject intake form data directly if available
+            if intake_doc:
+                intake_values = extract_intake_form_values(intake_doc)
+                if intake_values:
+                    logger.info(f"🔧 Post-processing SOAP note to inject intake form data: {intake_values}")
+                    formatted_soap_note = inject_intake_data_into_soap(formatted_soap_note, intake_values)
+            
+            # Post-process: Validate and correct CPT codes using AI-enhanced system (GPT-5.1)
+            # All CPT codes are generated dynamically by AI - NO static code lists
+            formatted_soap_note = validate_and_correct_cpt_codes(formatted_soap_note, corrected_transcription, client)
+            
+            # Final validation: Remove any remaining invalid CPT codes (double-check)
+            # Note: This only validates format, not content - all codes are AI-generated
+            formatted_soap_note = validate_all_cpt_codes_in_soap(formatted_soap_note)
+            
+            # AGGRESSIVE FINAL VALIDATION: Ensure 100% valid codes in RFA Supportive CPTs section
+            formatted_soap_note = aggressive_validate_rfa_supportive_cpts(formatted_soap_note)
         
-        # Post-process: Validate and correct CPT codes using AI-enhanced system
-        formatted_soap_note = validate_and_correct_cpt_codes(formatted_soap_note, corrected_transcription, client)
-        
-        # Final validation: Remove any remaining invalid CPT codes (double-check)
-        formatted_soap_note = validate_all_cpt_codes_in_soap(formatted_soap_note)
-        
-        # Extract sections from the formatted note (simple parsing)
-        # This is a best-effort extraction for structured access
-        sections = {
-            "subjective": "",
-            "objective": "",
-            "assessment": "",
-            "plan": ""
-        }
-        
-        # Try to extract sections from Markdown format
-        import re
-        
-        # Extract Subjective section
-        subjective_match = re.search(
-            r'## S – SUBJECTIVE\s*\n(.*?)(?=## O – OBJECTIVE|---)',
-            formatted_soap_note,
-            re.DOTALL
-        )
-        if subjective_match:
-            sections["subjective"] = subjective_match.group(1).strip()
-        
-        # Extract Objective section
-        objective_match = re.search(
-            r'## O – OBJECTIVE\s*\n(.*?)(?=## A – ASSESSMENT|---)',
-            formatted_soap_note,
-            re.DOTALL
-        )
-        if objective_match:
-            sections["objective"] = objective_match.group(1).strip()
-        
-        # Extract Assessment section
-        assessment_match = re.search(
-            r'## A – ASSESSMENT\s*\n(.*?)(?=## P – PLAN|---)',
-            formatted_soap_note,
-            re.DOTALL
-        )
-        if assessment_match:
-            sections["assessment"] = assessment_match.group(1).strip()
-        
-        # Extract Plan section
-        plan_match = re.search(
-            r'## P – PLAN\s*\n(.*?)(?=---|$)',
-            formatted_soap_note,
-            re.DOTALL
-        )
-        if plan_match:
-            sections["plan"] = plan_match.group(1).strip()
+        # Extract sections from the formatted note for the frontend UI.
+        # Supports both legacy markdown headings and the current prompts.py template headings.
+        sections = extract_soap_sections_from_formatted_note(formatted_soap_note)
         
         return {
             "transcription": soap_request.transcription,
@@ -1076,6 +1323,7 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
             "assessment": sections["assessment"],
             "plan": sections["plan"],
             "formatted_soap_note": formatted_soap_note,
+            "raw_soap_note": raw_soap_note,  # Raw AI output before post-processing (for ChatGPT comparison)
             "created_at": datetime.utcnow().isoformat(),
             "patient_info": {
                 "name": soap_request.patient.name if soap_request.patient else None,
@@ -1758,6 +2006,135 @@ async def delete_transcription_endpoint(transcription_id: str):
         )
 
 
+@app.post("/api/v1/soap-prompts/debug")
+async def get_formatted_prompts_for_chatgpt(
+    soap_request: SOAPRequest,
+    intake_id: Optional[str] = Query(None, description="MongoDB intake form ID to use for PMH, Medications, and Social/Occupational History"),
+    use_latest_intake: Optional[bool] = Query(False, description="Use latest intake form if True")
+):
+    """
+    Get the exact formatted prompts used for SOAP generation, formatted for ChatGPT comparison.
+    
+    This endpoint helps debug differences between API-generated SOAP notes and ChatGPT-generated notes.
+    It returns the exact system prompt, user prompt, and all parameters that were/would be used.
+    
+    **Use Case:**
+    - Copy the prompts to ChatGPT to test if you get the same output
+    - Debug why outputs differ between API and ChatGPT
+    - Understand what prompts are actually being sent to the AI
+    
+    **Returns:**
+    - system_prompt: Exact system prompt used
+    - user_prompt: Exact user prompt used (with transcription and context)
+    - model: Model name used
+    - parameters: API parameters (temperature, max_tokens, top_p)
+    - chatgpt_instructions: Instructions on how to use these prompts in ChatGPT
+    - full_chat_format: Complete formatted text ready to copy-paste
+    
+    **Note:** The API applies post-processing (CPT validation, intake data injection, markdown cleanup)
+    which ChatGPT won't do automatically, so outputs may still differ even with same prompts.
+    """
+    try:
+        # Fetch transcription from database if transcription_id is provided
+        if soap_request.transcription_id:
+            transcription = await get_transcription_by_id(soap_request.transcription_id)
+            if not transcription:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Transcription not found with ID: {soap_request.transcription_id}"
+                )
+            soap_request.transcription = transcription.get("text", "")
+        
+        if not soap_request.transcription:
+            raise HTTPException(
+                status_code=400,
+                detail="Either transcription_id or transcription text must be provided"
+            )
+        
+        # Apply medical terminology corrections (same as in generate_comprehensive_soap_note)
+        corrected_transcription = fix_terms(soap_request.transcription)
+        
+        # Build patient context section (same logic as generate_comprehensive_soap_note)
+        patient_context = ""
+        header_section = ""
+        
+        if soap_request.patient:
+            patient_info = []
+            if soap_request.patient.name:
+                patient_info.append(f"Name: {soap_request.patient.name}")
+            if soap_request.patient.age:
+                patient_info.append(f"Age: {soap_request.patient.age}")
+            if soap_request.patient.gender:
+                patient_info.append(f"Gender: {soap_request.patient.gender}")
+            
+            if patient_info:
+                patient_context = "**PATIENT INFORMATION:**\n" + "\n".join(patient_info)
+                header_section = f"Patient: {', '.join(patient_info)}\n"
+        
+        if soap_request.date_of_service:
+            header_section += f"Date of Service: {soap_request.date_of_service}\n"
+        
+        if soap_request.location:
+            header_section += f"Location: {soap_request.location}\n"
+        
+        if soap_request.reason_for_visit:
+            header_section += f"Reason for Visit: {soap_request.reason_for_visit}\n"
+        
+        # Use custom prompts if provided, otherwise use default prompts
+        system_prompt = soap_request.system_prompt if soap_request.system_prompt else ORTHOPEDIC_SOAP_SYSTEM_PROMPT
+        
+        # Fetch and format intake form data if requested
+        intake_form_data = ""
+        if intake_id:
+            intake_doc = await fetch_intake_form_by_id(intake_id)
+            if intake_doc:
+                intake_form_data = format_intake_form_data_for_prompt(intake_doc)
+        elif use_latest_intake:
+            intake_doc = await fetch_latest_intake_form()
+            if intake_doc:
+                intake_form_data = format_intake_form_data_for_prompt(intake_doc)
+        
+        # Build the user prompt (same logic as generate_comprehensive_soap_note)
+        if soap_request.user_prompt_template:
+            user_prompt = soap_request.user_prompt_template.format(
+                transcription=corrected_transcription,
+                patient_context=patient_context,
+                header_section=header_section,
+                intake_form_data=intake_form_data
+            )
+        else:
+            user_prompt = ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE.format(
+                transcription=corrected_transcription,
+                patient_context=patient_context,
+                header_section=header_section,
+                intake_form_data=intake_form_data
+            )
+        
+        # Get model
+        selected_model = soap_request.model or OPENAI_MODEL
+        
+        # Format prompts for ChatGPT
+        formatted_prompts = format_prompts_for_chatgpt(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model=selected_model,
+            temperature=0.2,
+            max_tokens=12000,
+            top_p=0.95
+        )
+        
+        return formatted_prompts
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error formatting prompts: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to format prompts: {str(e)}"
+        )
+
+
 @app.get("/api/v1/soap-prompts/default")
 async def get_default_soap_prompts():
     """
@@ -1787,7 +2164,7 @@ async def get_default_soap_prompts():
     """
     return JSONResponse({
         "system_prompt": ORTHOPEDIC_SOAP_SYSTEM_PROMPT,
-        "user_prompt_template": WORKERS_COMP_ORTHO_MASTER_PROMPT,
+        "user_prompt_template": ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE,
         "placeholders": [
             "{transcription}",
             "{patient_context}",
@@ -1818,11 +2195,15 @@ async def generate_soap_comprehensive(
     - reason_for_visit: Optional reason for visit
     - system_prompt: Optional custom system prompt for SOAP generation
     - user_prompt_template: Optional custom user prompt template (use {transcription}, {patient_context}, {header_section}, {intake_form_data} placeholders)
+    - model: Optional model selection ('gpt-4o' or 'gpt-5.1')
+    - skip_post_processing: Optional boolean (default: False). If True, returns raw AI output without post-processing (matches ChatGPT output)
     - intake_id: Optional query parameter - MongoDB intake form ID to use for PMH, Medications, and Social/Occupational History
     - use_latest_intake: Optional query parameter - Use latest intake form if True (default: False)
-    - intake_id: Optional MongoDB intake form ID to use for PMH, Medications, and Social/Occupational History
-    - use_latest_intake: Optional boolean to use latest intake form (default: False)
     - Additional structured data for S/O/A/P sections (optional)
+    
+    **Note on skip_post_processing:**
+    - If True: Returns raw AI output (no CPT validation, no intake injection, no markdown cleanup) - matches ChatGPT behavior
+    - If False (default): Applies all post-processing steps (validated, cleaned, and processed output)
     
     **Returns:**
     - Original and corrected transcription
@@ -1850,6 +2231,32 @@ async def generate_soap_comprehensive(
         
         # Fetch transcription from database if transcription_id is provided
         if soap_request.transcription_id:
+            # Check cache first - if SOAP note already exists for this transcription_id, return it
+            cached_soap_note = await get_soap_note_by_transcription_id(soap_request.transcription_id)
+            if cached_soap_note:
+                logger.info(f"✅ Found cached SOAP note for transcription_id: {soap_request.transcription_id}")
+                # Convert to SOAPResponse format
+                created_at_str = cached_soap_note.get("created_at")
+                if isinstance(created_at_str, datetime):
+                    created_at_str = created_at_str.isoformat()
+                elif not created_at_str:
+                    created_at_str = datetime.utcnow().isoformat()
+                
+                soap_response = SOAPResponse(
+                    transcription=cached_soap_note.get("transcription", ""),
+                    corrected_transcription=cached_soap_note.get("corrected_transcription", ""),
+                    subjective=cached_soap_note.get("subjective", ""),
+                    objective=cached_soap_note.get("objective", ""),
+                    assessment=cached_soap_note.get("assessment", ""),
+                    plan=cached_soap_note.get("plan", ""),
+                    formatted_soap_note=cached_soap_note.get("formatted_soap_note", ""),
+                    created_at=created_at_str,
+                    patient_info=cached_soap_note.get("patient_info"),
+                    format=cached_soap_note.get("format", "markdown"),
+                    document_id=cached_soap_note.get("_id")
+                )
+                return soap_response
+            
             transcription = await get_transcription_by_id(soap_request.transcription_id)
             if not transcription:
                 raise HTTPException(
@@ -1927,6 +2334,7 @@ async def generate_soap_simple(
     system_prompt: Optional[str] = Form(None),
     user_prompt_template: Optional[str] = Form(None),
     model: Optional[str] = Form(None, description="OpenAI model to use: 'gpt-4o' or 'gpt-5.1'"),
+    skip_post_processing: Optional[bool] = Form(False, description="If True, returns raw AI output without post-processing (matches ChatGPT output)"),
     intake_id: Optional[str] = Form(None),
     use_latest_intake: Optional[bool] = Form(True)
 ):
@@ -1951,12 +2359,15 @@ async def generate_soap_simple(
     - reason_for_visit: Chief complaint
     - system_prompt: Custom system prompt for SOAP generation
     - user_prompt_template: Custom user prompt template (use {transcription}, {patient_context}, {header_section}, {intake_form_data} placeholders)
+    - model: OpenAI model to use ('gpt-4o' or 'gpt-5.1')
+    - skip_post_processing: If True, returns raw AI output without post-processing (matches ChatGPT output). Default: False
     - intake_id: Optional MongoDB intake form ID to use for PMH, Medications, and Social/Occupational History (if provided, this takes precedence over use_latest_intake)
     - use_latest_intake: Optional boolean to use latest intake form (default: True - automatically uses latest intake form unless intake_id is provided)
     
     **Returns:**
     - Comprehensive SOAP note with structured sections
-    - Formatted note ready for PDF export
+    - Formatted note ready for PDF export (or raw note if skip_post_processing=True)
+    - raw_soap_note: Raw AI output before post-processing (for ChatGPT comparison)
     - ICD-10 codes in assessment section
     - document_id: MongoDB document ID of the saved SOAP note (if successfully saved)
     
@@ -1975,6 +2386,32 @@ async def generate_soap_simple(
         
         # Fetch transcription from database if transcription_id is provided
         if transcription_id:
+            # Check cache first - if SOAP note already exists for this transcription_id, return it
+            cached_soap_note = await get_soap_note_by_transcription_id(transcription_id)
+            if cached_soap_note:
+                logger.info(f"✅ Found cached SOAP note for transcription_id: {transcription_id}")
+                # Convert to SOAPResponse format
+                created_at_str = cached_soap_note.get("created_at")
+                if isinstance(created_at_str, datetime):
+                    created_at_str = created_at_str.isoformat()
+                elif not created_at_str:
+                    created_at_str = datetime.utcnow().isoformat()
+                
+                soap_response = SOAPResponse(
+                    transcription=cached_soap_note.get("transcription", ""),
+                    corrected_transcription=cached_soap_note.get("corrected_transcription", ""),
+                    subjective=cached_soap_note.get("subjective", ""),
+                    objective=cached_soap_note.get("objective", ""),
+                    assessment=cached_soap_note.get("assessment", ""),
+                    plan=cached_soap_note.get("plan", ""),
+                    formatted_soap_note=cached_soap_note.get("formatted_soap_note", ""),
+                    created_at=created_at_str,
+                    patient_info=cached_soap_note.get("patient_info"),
+                    format=cached_soap_note.get("format", "markdown"),
+                    document_id=cached_soap_note.get("_id")
+                )
+                return soap_response
+            
             transcription_doc = await get_transcription_by_id(transcription_id)
             if not transcription_doc:
                 raise HTTPException(
@@ -2015,7 +2452,8 @@ async def generate_soap_simple(
             reason_for_visit=reason_for_visit,
             system_prompt=system_prompt,
             user_prompt_template=user_prompt_template,
-            model=model
+            model=model,
+            skip_post_processing=skip_post_processing
         )
         
         # Fetch intake form data if requested
