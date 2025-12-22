@@ -997,9 +997,10 @@ ________________________________________
 ________________________________________
 4️⃣ DISPLAY REQUIREMENT — STRUCTURED GROUPED OUTPUT
 To improve readability for providers, ALL Supportive CPTs must be output in grouped, labeled categories, using this exact structure:
+CRITICAL: ALL headings and category labels MUST be formatted as bold using markdown syntax **text**
 ________________________________________
-Supportive CPTs (Grouped):
-Surgical Procedure Codes
+**Supportive CPTs (Grouped):**
+**Surgical Procedure Codes**
 (Only if surgery is ordered)
 • 29888 — ACL reconstruction
 • 29882 — Medial meniscus repair
@@ -1009,27 +1010,27 @@ Surgical Procedure Codes
 …
 (continue listing all valid surgical CPTs)
 ________________________________________
-Graft / Tissue / Implant Codes
+**Graft / Tissue / Implant Codes**
 • 20924 — Allograft
 • 20922 — Autograft
 • C1713 — Anchors/screws
 • C1776 — Synthetic ligament
 …
 ________________________________________
-Imaging Codes (Ordered or required for surgical planning)
+**Imaging Codes (Ordered or required for surgical planning)**
 • 73721 — MRI knee without contrast
 • 73564 — Knee X-ray 4+ views
 • 73560 — Knee X-ray 1–2 views
 …
 ________________________________________
-Guidance / Localization Codes
+**Guidance / Localization Codes**
 (Only if explicitly applicable or standard for that ordered procedure)
 • 77002 — Fluoroscopic guidance
 • 77003 — Fluoro w/ needle placement
 • 76942 — Ultrasound needle guidance
 …
 ________________________________________
-DME / Post-Op Equipment Codes
+**DME / Post-Op Equipment Codes**
 • L1832 — Hinged knee brace
 • L1833 — Knee immobilizer
 • E0114 — Crutches
@@ -1037,7 +1038,7 @@ DME / Post-Op Equipment Codes
 • E0849 — CPM device (if appropriate)
 …
 ________________________________________
-Physical Therapy / Rehabilitation Codes
+**Physical Therapy / Rehabilitation Codes**
 (If PT is ordered OR post-op protocol requires PT)
 • 97161 — PT evaluation
 • 97110 — Therapeutic exercise
@@ -1046,7 +1047,7 @@ Physical Therapy / Rehabilitation Codes
 • 97140 — Manual therapy
 …
 ________________________________________
-Supplies / Disposable Surgical Items
+**Supplies / Disposable Surgical Items**
 • A4550 — Surgical trays
 • A4649 — Miscellaneous surgical supply
 • A4467 — Compression sleeve/strap
@@ -1057,6 +1058,7 @@ RULES FOR GROUPING
 •	No empty groups.
 •	Codes MUST appear only once, deduplicated.
 •	Primary CPT MUST NOT appear in any group.
+•	ALL category headings MUST be bold formatted using **text** syntax.
 ________________________________________
 5️⃣ MANDATORY EXTRACT RULE
 Any actual CPT/HCPCS code mentioned in transcription MUST be included in the Supportive CPTs list.
@@ -1099,10 +1101,11 @@ ________________________________________
   - Sub-headings under ASSESSMENT: Primary Diagnosis:, Secondary Diagnosis:, Associated Diagnosis:, Functional Impairment Statement:, Medical Necessity & MTUS Compliance:, Medical Decision Making (MDM):, Problem Complexity:, Data Reviewed:, Risk Level:, Planned Procedures / RFAs:
   - Sub-headings under PLAN: Immediate Treatment / Plan:, Follow-Up Instructions:, Surgical Plan (if applicable):, Patient Education:
   - Sub-headings under CPT / BILLING CODES: E/M Code:, Procedure (Performed Today Only):, Workers' Comp (CA):
-  - Sub-headings under RFA: Requested Service:, Primary CPT:, Supportive CPTs:, Modifier Requirement:, Justification:, Guideline Basis:, Intent:
+  - Sub-headings under RFA: Requested Service:, Primary CPT:, Supportive CPTs:, Supportive CPTs (Grouped):, Modifier Requirement:, Justification:, Guideline Basis:, Intent:
+  - Category headings under Supportive CPTs (Grouped): Surgical Procedure Codes, Graft / Tissue / Implant Codes, Imaging Codes, Guidance / Localization Codes, DME / Post-Op Equipment Codes, Physical Therapy / Rehabilitation Codes, Supplies / Disposable Surgical Items - ALL must be bold formatted
   - Sub-headings under WORK STATUS: Restrictions (ONLY if Modified Duty):, Effective Date:, Duration:
   - Sub-headings under SIGNATURE: Provider Name:, Specialty:, NPI:, Date & Time:, Electronic Signature:
-  Example: **Inspection:** or **Range of Motion (ROM):** should be formatted with ** markers.
+  Example: **Inspection:** or **Range of Motion (ROM):** or **Supportive CPTs (Grouped):** or **Surgical Procedure Codes** should be formatted with ** markers.
 • No extra spacing, no markdown tables except the ones defined above.  
 • Final output must be PDF-safe and match this structure exactly.
 
