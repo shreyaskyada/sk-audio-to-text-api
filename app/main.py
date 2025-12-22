@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import logging
 import os
+import re
 import jwt
 import requests
 import tempfile
@@ -44,7 +45,6 @@ from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_gene
 from app.api.soap_storage import (
     save_soap_note_to_db, 
     get_all_soap_notes_by_transcription_id,
-    get_soap_note_by_transcription_id,
     update_soap_note
 )
 from app.api.transcription_storage import (
@@ -216,7 +216,9 @@ def fix_terms(text: str) -> str:
     """Fix common medical terminology errors in transcription"""
     corrected_text = text
     for incorrect, correct in MEDICAL_CORRECTIONS.items():
-        corrected_text = corrected_text.replace(incorrect, correct)
+        # Use case-insensitive replacement with word boundaries
+        pattern = r'\b' + re.escape(incorrect) + r'\b'
+        corrected_text = re.sub(pattern, correct, corrected_text, flags=re.IGNORECASE)
     return corrected_text
 
 
@@ -2231,32 +2233,7 @@ async def generate_soap_comprehensive(
         
         # Fetch transcription from database if transcription_id is provided
         if soap_request.transcription_id:
-            # Check cache first - if SOAP note already exists for this transcription_id, return it
-            cached_soap_note = await get_soap_note_by_transcription_id(soap_request.transcription_id)
-            if cached_soap_note:
-                logger.info(f"✅ Found cached SOAP note for transcription_id: {soap_request.transcription_id}")
-                # Convert to SOAPResponse format
-                created_at_str = cached_soap_note.get("created_at")
-                if isinstance(created_at_str, datetime):
-                    created_at_str = created_at_str.isoformat()
-                elif not created_at_str:
-                    created_at_str = datetime.utcnow().isoformat()
-                
-                soap_response = SOAPResponse(
-                    transcription=cached_soap_note.get("transcription", ""),
-                    corrected_transcription=cached_soap_note.get("corrected_transcription", ""),
-                    subjective=cached_soap_note.get("subjective", ""),
-                    objective=cached_soap_note.get("objective", ""),
-                    assessment=cached_soap_note.get("assessment", ""),
-                    plan=cached_soap_note.get("plan", ""),
-                    formatted_soap_note=cached_soap_note.get("formatted_soap_note", ""),
-                    created_at=created_at_str,
-                    patient_info=cached_soap_note.get("patient_info"),
-                    format=cached_soap_note.get("format", "markdown"),
-                    document_id=cached_soap_note.get("_id")
-                )
-                return soap_response
-            
+            # Always generate new SOAP note (removed cache check to allow regeneration)
             transcription = await get_transcription_by_id(soap_request.transcription_id)
             if not transcription:
                 raise HTTPException(
@@ -2386,32 +2363,7 @@ async def generate_soap_simple(
         
         # Fetch transcription from database if transcription_id is provided
         if transcription_id:
-            # Check cache first - if SOAP note already exists for this transcription_id, return it
-            cached_soap_note = await get_soap_note_by_transcription_id(transcription_id)
-            if cached_soap_note:
-                logger.info(f"✅ Found cached SOAP note for transcription_id: {transcription_id}")
-                # Convert to SOAPResponse format
-                created_at_str = cached_soap_note.get("created_at")
-                if isinstance(created_at_str, datetime):
-                    created_at_str = created_at_str.isoformat()
-                elif not created_at_str:
-                    created_at_str = datetime.utcnow().isoformat()
-                
-                soap_response = SOAPResponse(
-                    transcription=cached_soap_note.get("transcription", ""),
-                    corrected_transcription=cached_soap_note.get("corrected_transcription", ""),
-                    subjective=cached_soap_note.get("subjective", ""),
-                    objective=cached_soap_note.get("objective", ""),
-                    assessment=cached_soap_note.get("assessment", ""),
-                    plan=cached_soap_note.get("plan", ""),
-                    formatted_soap_note=cached_soap_note.get("formatted_soap_note", ""),
-                    created_at=created_at_str,
-                    patient_info=cached_soap_note.get("patient_info"),
-                    format=cached_soap_note.get("format", "markdown"),
-                    document_id=cached_soap_note.get("_id")
-                )
-                return soap_response
-            
+            # Always generate new SOAP note (removed cache check to allow regeneration)
             transcription_doc = await get_transcription_by_id(transcription_id)
             if not transcription_doc:
                 raise HTTPException(

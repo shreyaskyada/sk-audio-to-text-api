@@ -31,7 +31,9 @@ MEDICAL_TERMINOLOGY_CORRECTIONS = {
     "De Quervain": "De Quervain's",
     "de Quervain": "De Quervain's",
     "De Quervain's tenosynovitis": "De Quervain's tenosynovitis",
-    "de Quervain tenosynovitis": "De Quervain's tenosynovitis"
+    "de Quervain tenosynovitis": "De Quervain's tenosynovitis",
+    "curvature encephalitis": "De Quervain's tenosynovitis",
+    "Curvature encephalitis": "De Quervain's tenosynovitis"
 }
 
 # System Prompt for Orthopedic SOAP Note Generation
@@ -113,10 +115,13 @@ Enforcement
 ________________________________________
 STAGE 3 — SERVICES PERFORMED TODAY (BILLING)
 BILLING SECTION RULES (TODAY ONLY)
+HARD NON-BILLABLE ITEM RULE (GLOBAL OVERRIDE)
+If an item is OTC, low-cost, and for comfort or home care →
+DO NOT generate CPT, HCPCS/DME, or RFA
 Include ONLY:
-•	E/M code
-•	Procedures physically performed today
-•	Workers’ Comp code (WC002 or WC003)
+E/M code
+Procedures physically performed today
+Workers’ Comp code (WC002 or WC003)
 E/M CODE DEFAULT RULE:
 • If visit type is explicitly stated → select appropriate E/M.
 • If visit type is NOT explicitly stated:
@@ -124,16 +129,16 @@ E/M CODE DEFAULT RULE:
   – Assign E/M based on documented MDM complexity.
 • NEVER omit E/M solely due to missing visit type.
 If no procedure performed today:
-•	Billing section MUST include ONLY:
-o	E/M code
-o	Workers’ Comp code
+Billing section MUST include ONLY:
+E/M code
+Workers’ Comp code
 
 ❌ Do NOT include:
-•	Future-ordered services
-•	Imaging unless performed today
-•	Injections unless administered today
-•	DME unless physically provided today
-•	Surgical CPTs unless surgery occurred today (rare)
+Future-ordered services
+Imaging unless performed today
+Injections unless administered today
+DME unless physically provided today
+Surgical CPTs unless surgery occurred today (rare)
 
 PROVIDER-SPECIFIC DME INTENT RULE (HARD OVERRIDE):
 For this clinic, phrases such as:
@@ -151,6 +156,7 @@ Only treat DME as FUTURE / RFA if the transcription explicitly states:
 • “to be provided after approval”
 • “authorization requested for DME”
 
+
 WORKERS’ COMP CODE RULE (CA):
 • WC002 — Use if transcription indicates:
   – New patient
@@ -166,55 +172,58 @@ WORKERS’ COMP CODE RULE (CA):
     ▸ Post-op care, suture removal, or follow-up language → WC003
 • If no reasonable inference can be made → OMIT the WC line entirely.
 STAGE 4 — FUTURE ORDERS (RFA)
+HARD NON-BILLABLE ITEM RULE (GLOBAL OVERRIDE):
+OTC, low-cost comfort items (e.g., ice packs, heat pads) MUST NOT generate RFA.
 RFA GENERATION — HARD RULE (AUTHORITATIVE)
 Generate REQUEST FOR AUTHORIZATION (RFA) ONLY when the transcription contains an explicit provider order for a future service.
 Explicit RFA Triggers
-•	DME ordered for home use
-•	Imaging ordered (MRI / X-ray / CT / US)
-•	Surgery ordered
-•	Injection ordered
-•	Physical therapy ordered
+DME ordered for home use
+Imaging ordered (MRI / X-ray / CT / US)
+Surgery ordered
+Injection ordered
+Physical therapy ordered
 Does NOT Trigger RFA
-•	Imaging reviewed
-•	Past treatment
-•	Prior surgery
-•	DME already owned
-•	DME provided today (Billing only)
-•	Discussion or recommendation without order
+Imaging reviewed
+Past treatment
+Prior surgery
+DME already owned
+DME provided today (Billing only)
+Discussion or recommendation without order
 Keyword Scan Rule (Preserved)
 Keywords alone do NOT trigger RFA
 BUT
 If a keyword represents an explicit future order, RFA MUST be generated.
 If NO explicit order exists → OMIT RFA ENTIRELY
-________________________________________
+
 RFA CPT GENERATION (FUTURE ONLY)
 Primary CPT
-•	ONE CPT/HCPCS representing the ordered service
+ONE CPT/HCPCS representing the ordered service
 Supportive CPTs
-•	Generate ALL applicable codes tied to the ordered service
-•	TARGET: 10–30+ VALID CODES when clinically appropriate
-•	Surgical orders → full surgical bundle
-•	Non-surgical orders → relevant non-surgical codes
+Generate ALL applicable codes tied to the ordered service
+TARGET: 10–30+ VALID CODES when clinically appropriate
+Surgical orders → full surgical bundle
+Non-surgical orders → relevant non-surgical codes
 ❌ Never include:
-•	E/M
-•	Anesthesia
-•	A-codes unless explicitly justified
-•	Performed-today services
-________________________________________
+E/M
+Anesthesia
+A-codes unless explicitly justified
+Performed-today services
+
+
 A-CODE DECISION & BUNDLING (AUTHORITATIVE)
 A-codes are NOT generated blindly.
 Generate A-codes ONLY when:
-•	Supply explicitly dispensed for home use
-•	Supply is NOT bundled
-•	Supply is NOT DME (use L/E codes instead)
+Supply explicitly dispensed for home use
+Supply is NOT bundled
+Supply is NOT DME (use L/E codes instead)
 ABSOLUTE HARD STOPS
-•	NEVER generate A-codes for:
-o	Cast visits
-o	Splint visits
-o	Injection visits
-o	Surgical procedures
-•	NEVER guess A-codes
-•	If uncertain → generate NO A-codes
+NEVER generate A-codes for:
+Cast visits
+Splint visits
+Injection visits
+Surgical procedures
+NEVER guess A-codes
+If uncertain → generate NO A-codes
 ________________________________________
 STAGE 5 — WORK STATUS (AUTHORITATIVE)
 Select ONE AND ONLY ONE:
