@@ -30,6 +30,7 @@ async def save_transcription_to_db(transcription_data: dict) -> Dict:
             - duration: Audio duration
             - filename: Original filename (optional)
             - username: Username who created the transcription (optional)
+            - user_id: User ID who created the transcription (optional)
             
     Returns:
         Dictionary with saved document including _id
@@ -46,7 +47,9 @@ async def save_transcription_to_db(transcription_data: dict) -> Dict:
             "language": transcription_data.get("language", "unknown"),
             "duration": transcription_data.get("duration", 0.0),
             "filename": transcription_data.get("filename"),
+            "audio_file_path": transcription_data.get("audio_file_path"),  # Store audio file path
             "username": transcription_data.get("username"),
+            "user_id": transcription_data.get("user_id"),
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
@@ -168,6 +171,7 @@ async def update_transcription_in_db(transcription_id: str, update_data: dict) -
             - duration: Updated duration
             - filename: Updated filename
             - username: Updated username
+            - user_id: Updated user ID
             
     Returns:
         True if updated successfully, False otherwise

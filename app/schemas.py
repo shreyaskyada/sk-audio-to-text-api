@@ -52,6 +52,7 @@ class TranscriptionListItem(BaseModel):
     duration: float
     filename: Optional[str] = None
     username: Optional[str] = None
+    user_id: Optional[str] = None
     created_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
@@ -73,6 +74,7 @@ class TranscriptionCreateRequest(BaseModel):
     duration: Optional[float] = 0.0
     filename: Optional[str] = None
     username: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class TranscriptionUpdateRequest(BaseModel):
@@ -83,6 +85,7 @@ class TranscriptionUpdateRequest(BaseModel):
     duration: Optional[float] = None
     filename: Optional[str] = None
     username: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 # ============================================
