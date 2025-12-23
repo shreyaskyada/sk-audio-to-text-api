@@ -86,14 +86,19 @@ AUTH_USERNAME = os.getenv('AUTH_USERNAME', 'admin')
 AUTH_PASSWORD = os.getenv('AUTH_PASSWORD', 'admin')
 MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', 100))
 
+# Audio file storage configuration
+AUDIO_STORAGE_DIR = os.getenv('AUDIO_STORAGE_DIR', 'audio_storage')
+os.makedirs(AUDIO_STORAGE_DIR, exist_ok=True)
+
 # OpenAI Model Configuration - Use GPT-5.1 for comprehensive CPT code generation
 # GPT-5.1 is used for all AI-generated CPT codes - NO static code lists
 # Options: 'gpt-5.1' (recommended for CPT generation), 'gpt-4o' (fallback)
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-5.1')  # Default to GPT-5.1 for comprehensive code generation
 logger.info(f"Using OpenAI model: {OPENAI_MODEL} (All CPT codes generated dynamically via AI)")
 
-# Medical keyterms for Deepgram
+# Medical keyterms for Deepgram - Expanded list for better accuracy
 MEDICAL_KEYTERMS = [
+    # Anatomical terms
     "pes anserine", "antalgic gait", "corticosteroid injection",
     "intra-articular", "ligamentous", "osteoarthritis",
     "bursitis", "MCL", "ACL", "PCL", "LCL", "McMurray test",
@@ -101,7 +106,32 @@ MEDICAL_KEYTERMS = [
     "range of motion", "joint line tenderness",
     "effusion", "crepitus", "meniscus", "patellofemoral",
     "De Quervain's", "de Quervain's", "De Quervain", "de Quervain",
-    "De Quervain's tenosynovitis", "de Quervain tenosynovitis"
+    "De Quervain's tenosynovitis", "de Quervain tenosynovitis",
+    # Additional common medical terms
+    "tenosynovitis", "tendinitis", "tendonitis", "arthroscopy",
+    "arthroscopic", "meniscectomy", "chondroplasty", "synovectomy",
+    "rotator cuff", "biceps", "triceps", "quadriceps", "hamstring",
+    "patella", "tibia", "fibula", "femur", "humerus", "radius", "ulna",
+    "carpal tunnel", "cubital tunnel", "ulnar nerve", "median nerve",
+    "radial nerve", "sciatic nerve", "peroneal nerve",
+    "anterior", "posterior", "medial", "lateral", "proximal", "distal",
+    "supination", "pronation", "flexion", "extension", "abduction", "adduction",
+    "arthralgia", "myalgia", "neuralgia", "radiculopathy", "neuropathy",
+    "herniated disc", "bulging disc", "spinal stenosis", "spondylolisthesis",
+    "fracture", "dislocation", "subluxation", "sprain", "strain",
+    "tear", "rupture", "avulsion", "contusion", "laceration",
+    "inflammation", "edema", "swelling", "tenderness", "pain",
+    "numbness", "tingling", "weakness", "stiffness", "instability",
+    "gait", "limp", "antalgic", "ataxic",
+    "MRI", "CT scan", "X-ray", "ultrasound", "EMG", "NCV",
+    "physical therapy", "occupational therapy", "rehabilitation",
+    "injection", "aspiration", "arthrocentesis", "corticosteroid",
+    "lidocaine", "bupivacaine", "Marcaine",
+    "surgery", "surgical", "operative", "non-operative", "conservative",
+    "brace", "splint", "cast", "immobilizer", "orthosis",
+    "crutches", "walker", "cane", "boot", "CAM boot",
+    "workers compensation", "work status", "modified duty", "full duty",
+    "TTD", "temporary total disability", "P&S", "permanent and stationary"
 ]
 
 # Use medical terminology corrections from prompts module
@@ -166,21 +196,47 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 # HELPER FUNCTIONS
 # ============================================
 
-def convert_opus_to_wav(opus_data: bytes) -> bytes:
-    """Convert OPUS audio to WAV format using ffmpeg"""
+def check_ffmpeg_available() -> bool:
+    """Check if FFmpeg is available on the system"""
+    try:
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True)
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+
+def convert_audio_to_wav(audio_data: bytes, input_format: str = 'webm') -> bytes:
+    """Convert audio (OPUS/WebM/MP3) to WAV format using ffmpeg"""
+    # Note: This function assumes FFmpeg is available. Check before calling.
+    if not check_ffmpeg_available():
+        raise FileNotFoundError("FFmpeg not found. Please install FFmpeg to convert audio files.")
+    
     try:
         # Create temporary files
-        with tempfile.NamedTemporaryFile(suffix='.opus', delete=False) as opus_file:
-            opus_file.write(opus_data)
-            opus_path = opus_file.name
+        input_ext = f'.{input_format}' if input_format else '.webm'
+        with tempfile.NamedTemporaryFile(suffix=input_ext, delete=False) as input_file:
+            input_file.write(audio_data)
+            input_path = input_file.name
         
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_file:
             wav_path = wav_file.name
         
-        # Convert using ffmpeg
+        # Convert using ffmpeg - ensure proper audio format for Deepgram with enhancement
+        # -ar 16000: Optimal sample rate (16kHz) for speech recognition (Deepgram recommended)
+        # -ac 1: Mono channel
+        # -acodec pcm_s16le: PCM 16-bit little-endian (WAV format)
+        # -af filters: Enhance audio for better speech recognition
+        #   - highpass: Remove low-frequency noise (below 60Hz)
+        #   - lowpass: Preserve speech frequencies (up to 8000Hz) - human speech is 85-8000Hz
+        #   - volume: Normalize volume for consistent levels
+        #   - dynaudnorm: Dynamic audio normalization for better clarity
         cmd = [
-            'ffmpeg', '-i', opus_path, '-acodec', 'pcm_s16le', 
-            '-ar', '16000', '-ac', '1', '-y', wav_path
+            'ffmpeg', '-i', input_path, 
+            '-acodec', 'pcm_s16le', 
+            '-ar', '16000',  # Optimal sample rate (16kHz) for speech recognition - Deepgram recommended
+            '-ac', '1',      # Mono channel
+            '-af', 'highpass=f=60,lowpass=f=8000,volume=1.0,dynaudnorm=p=0.95:m=10.0:r=0.0',  # Audio enhancement filters
+            '-y', wav_path
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -194,21 +250,44 @@ def convert_opus_to_wav(opus_data: bytes) -> bytes:
             wav_data = f.read()
         
         # Clean up temporary files
-        os.unlink(opus_path)
-        os.unlink(wav_path)
+        try:
+            os.unlink(input_path)
+            os.unlink(wav_path)
+        except:
+            pass
         
+        logger.info(f"Successfully converted {input_format} to WAV format ({len(wav_data)} bytes)")
         return wav_data
         
-    except FileNotFoundError:
-        logger.error("FFmpeg not found. Please install FFmpeg to convert OPUS files.")
-        raise Exception("FFmpeg not found. Please install FFmpeg to convert OPUS files.")
     except Exception as e:
-        logger.error(f"OPUS conversion error: {str(e)}")
+        logger.error(f"Audio conversion error: {str(e)}")
         raise
 
 
+def get_audio_content_type(filename: str) -> str:
+    """Get appropriate Content-Type for audio file"""
+    filename_lower = filename.lower()
+    if filename_lower.endswith('.webm'):
+        return 'audio/webm'
+    elif filename_lower.endswith('.opus'):
+        return 'audio/opus'
+    elif filename_lower.endswith('.mp3'):
+        return 'audio/mpeg'
+    elif filename_lower.endswith('.m4a'):
+        return 'audio/mp4'
+    elif filename_lower.endswith('.wav'):
+        return 'audio/wav'
+    else:
+        return 'audio/wav'  # Default to WAV
+
+
+def convert_opus_to_wav(opus_data: bytes) -> bytes:
+    """Convert OPUS audio to WAV format using ffmpeg (legacy function for backward compatibility)"""
+    return convert_audio_to_wav(opus_data, 'opus')
+
+
 def normalize_audio_bytes(audio_data: bytes) -> bytes:
-    """Normalize audio bytes (for MP3/WAV files)"""
+    """Normalize audio bytes (for MP3/WAV files that don't need conversion)"""
     return audio_data
 
 
@@ -1442,7 +1521,9 @@ async def login(request: LoginRequest):
 @app.post("/api/v1/transcribe", response_model=TranscriptionResponse)
 async def transcribe_audio(
     file: UploadFile = File(...),
-    generate_soap: bool = Form(False)
+    generate_soap: bool = Form(False),
+    username: Optional[str] = Form(None),
+    user_id: Optional[str] = Form(None)
 ):
     """
     Transcribe audio file with optional SOAP note generation.
@@ -1450,6 +1531,8 @@ async def transcribe_audio(
     **Parameters:**
     - file: Audio file (WAV, MP3, OPUS, etc.)
     - generate_soap: Set to true to generate SOAP note (default: false)
+    - username: Username who created the transcription (optional)
+    - user_id: User ID who created the transcription (optional)
     
     **Returns:**
     - Transcription with confidence, duration, language
@@ -1475,20 +1558,90 @@ async def transcribe_audio(
         
         logger.info(f"Processing file: {file.filename}, Size: {len(file_content)} bytes, SOAP: {generate_soap}")
         
+        # Save original audio file to storage BEFORE any conversions
+        saved_file_path = None
+        original_file_content = file_content  # Keep original for saving
+        try:
+            # Generate unique filename with timestamp
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            original_filename = file.filename or "recording"
+            # Get file extension from original filename or content type
+            if '.' in original_filename:
+                file_ext = os.path.splitext(original_filename)[1]
+            else:
+                # Determine extension from content type
+                content_type = file.content_type or 'audio/webm'
+                ext_map = {
+                    'audio/webm': '.webm',
+                    'audio/wav': '.wav',
+                    'audio/mpeg': '.mp3',
+                    'audio/mp4': '.m4a',
+                    'audio/ogg': '.ogg',
+                    'audio/opus': '.opus'
+                }
+                file_ext = ext_map.get(content_type, '.webm')
+            
+            safe_filename = f"{timestamp}_{original_filename.replace(' ', '_').replace('/', '_')}"
+            if not safe_filename.endswith(file_ext):
+                safe_filename += file_ext
+            
+            saved_file_path = os.path.join(AUDIO_STORAGE_DIR, safe_filename)
+            
+            # Write original file to disk
+            with open(saved_file_path, 'wb') as f:
+                f.write(original_file_content)
+            
+            logger.info(f"✅ Audio file saved to: {saved_file_path}")
+        except Exception as save_error:
+            logger.warning(f"⚠️ Failed to save audio file: {save_error}")
+            logger.warning("Continuing without file storage...")
+        
         soap_note = None
         
         # If SOAP generation is requested, use enhanced Deepgram API
         if generate_soap:
             logger.info(f"SOAP generation requested for file: {file.filename}")
             
-            # Convert OPUS to WAV if needed
+            # Deepgram supports WebM directly, but we convert to WAV for better accuracy
+            # This ensures Live recordings have the same quality as Upload files
             filename_lower = file.filename.lower()
-            if filename_lower.endswith(".opus"):
-                file_content = convert_opus_to_wav(file_content)
+            content_type = get_audio_content_type(file.filename)
+            
+            # ALWAYS convert WebM/Opus to WAV for better transcription accuracy
+            # This ensures Live recordings have the same quality as Upload files
+            if filename_lower.endswith(".webm") or filename_lower.endswith(".opus") or "live_recording" in filename_lower:
+                ffmpeg_available = check_ffmpeg_available()
+                logger.info(f"FFmpeg available: {ffmpeg_available} for file: {file.filename}")
+                if ffmpeg_available:
+                    try:
+                        input_format = 'webm' if filename_lower.endswith(".webm") else 'opus'
+                        file_content = convert_audio_to_wav(file_content, input_format)
+                        content_type = 'audio/wav'
+                        logger.info(f"✅ Converted {input_format.upper()} to WAV using FFmpeg for better accuracy")
+                    except (FileNotFoundError, Exception) as e:
+                        logger.warning(f"FFmpeg conversion failed ({type(e).__name__}), sending WebM directly: {str(e)}")
+                        # Continue with original WebM file - Deepgram supports it
+                        # Reset content_type to WebM since conversion failed
+                        content_type = get_audio_content_type(file.filename)
+                else:
+                    logger.warning("⚠️ FFmpeg not available - WebM will be sent directly (may have lower accuracy)")
+                    logger.info("For best results, install FFmpeg to convert WebM to WAV")
+                    content_type = get_audio_content_type(file.filename)
+            elif filename_lower.endswith(".mp3") or filename_lower.endswith(".m4a"):
+                if check_ffmpeg_available():
+                    try:
+                        file_content = convert_audio_to_wav(file_content, 'mp3' if filename_lower.endswith(".mp3") else 'm4a')
+                        content_type = 'audio/wav'
+                        logger.info("Converted MP3/M4A to WAV using FFmpeg")
+                    except Exception as e:
+                        logger.warning(f"FFmpeg conversion failed: {str(e)}")
+                        raise HTTPException(status_code=500, detail=f"Audio conversion failed: {str(e)}")
+                else:
+                    raise HTTPException(status_code=500, detail="FFmpeg required for MP3/M4A conversion. Please install FFmpeg or use WebM/WAV format.")
             else:
                 file_content = normalize_audio_bytes(file_content)
             
-            # Build enhanced Deepgram API URL
+            # Build enhanced Deepgram API URL with optimal settings for accuracy
             query_params = {
                 "model": "nova-3-medical",
                 "numerals": "true",
@@ -1498,7 +1651,10 @@ async def transcribe_audio(
                 "diarize": "true",
                 "custom_intent": "orthopedic_patient_assessment",
                 "custom_intent_mode": "extended",
-                "sentiment": "false"
+                "sentiment": "false",
+                "punctuate": "true",      # Add punctuation for better readability
+                "utterances": "false",     # Don't split into utterances
+                "paragraphs": "false"      # Don't split into paragraphs
             }
             
             # Build URL with keyterms
@@ -1506,7 +1662,7 @@ async def transcribe_audio(
             for term in MEDICAL_KEYTERMS:
                 url += f"&keyterm={quote(term)}"
             
-            headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}", "Content-Type": "audio/wav"}
+            headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}", "Content-Type": content_type}
             
             # Get transcription from Deepgram
             response = requests.post(url, headers=headers, data=file_content)
@@ -1533,10 +1689,51 @@ async def transcribe_audio(
             }
         else:
             # Use standard Deepgram transcription without SOAP
+            # Convert WebM to WAV for better accuracy (same as SOAP path)
+            filename_lower = file.filename.lower()
+            content_type = get_audio_content_type(file.filename)
+            
+            # ALWAYS convert WebM/Opus to WAV for better transcription accuracy
+            # This ensures Live recordings have the same quality as Upload files
+            if filename_lower.endswith(".webm") or filename_lower.endswith(".opus") or "live_recording" in filename_lower:
+                ffmpeg_available = check_ffmpeg_available()
+                logger.info(f"FFmpeg available: {ffmpeg_available} for file: {file.filename}")
+                if ffmpeg_available:
+                    try:
+                        input_format = 'webm' if filename_lower.endswith(".webm") else 'opus'
+                        file_content = convert_audio_to_wav(file_content, input_format)
+                        content_type = 'audio/wav'
+                        logger.info(f"✅ Converted {input_format.upper()} to WAV using FFmpeg for better accuracy")
+                    except (FileNotFoundError, Exception) as e:
+                        logger.warning(f"FFmpeg conversion failed ({type(e).__name__}), sending WebM directly: {str(e)}")
+                        # Continue with original WebM file - Deepgram supports it
+                        # Reset content_type to WebM since conversion failed
+                        content_type = get_audio_content_type(file.filename)
+                else:
+                    logger.warning("⚠️ FFmpeg not available - WebM will be sent directly (may have lower accuracy)")
+                    logger.info("For best results, install FFmpeg to convert WebM to WAV")
+                    content_type = get_audio_content_type(file.filename)
+            elif filename_lower.endswith(".mp3") or filename_lower.endswith(".m4a"):
+                if check_ffmpeg_available():
+                    try:
+                        file_content = convert_audio_to_wav(file_content, 'mp3' if filename_lower.endswith(".mp3") else 'm4a')
+                        content_type = 'audio/wav'
+                        logger.info("Converted MP3/M4A to WAV using FFmpeg")
+                    except Exception as e:
+                        logger.warning(f"FFmpeg conversion failed: {str(e)}")
+                        raise HTTPException(status_code=500, detail=f"Audio conversion failed: {str(e)}")
+                else:
+                    raise HTTPException(status_code=500, detail="FFmpeg required for MP3/M4A conversion. Please install FFmpeg or use WebM/WAV format.")
+            else:
+                file_content = normalize_audio_bytes(file_content)
+            
             query_params = {
                 "model": "nova-3-medical",
                 "smart_format": "true",
-                "language": "en-US"
+                "language": "en-US",
+                "punctuate": "true",      # Add punctuation for better readability
+                "utterances": "false",     # Don't split into utterances
+                "paragraphs": "false"     # Don't split into paragraphs
             }
             
             # Build URL with keyterms (same as SOAP path)
@@ -1544,7 +1741,7 @@ async def transcribe_audio(
             for term in MEDICAL_KEYTERMS:
                 url += f"&keyterm={quote(term)}"
             
-            headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}", "Content-Type": "audio/wav"}
+            headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}", "Content-Type": content_type}
             
             response = requests.post(url, headers=headers, data=file_content)
             response.raise_for_status()
@@ -1574,14 +1771,32 @@ async def transcribe_audio(
                 'language': transcription_result.get('language', 'unknown'),
                 'duration': transcription_result.get('duration', 0.0),
                 'filename': file.filename,
-                'username': None
+                'audio_file_path': saved_file_path,  # Store the saved audio file path
+                'username': username,
+                'user_id': user_id
             }
             saved_doc = await save_transcription_to_db(transcription_data)
             document_id = saved_doc.get('_id')
             logger.info(f"✅ Transcription saved to database with ID: {document_id}")
+            
+            # Delete audio file after successful transcription save (no longer needed)
+            if saved_file_path and os.path.exists(saved_file_path):
+                try:
+                    os.remove(saved_file_path)
+                    logger.info(f"🗑️ Audio file deleted: {saved_file_path}")
+                except Exception as delete_error:
+                    logger.warning(f"⚠️ Failed to delete audio file {saved_file_path}: {delete_error}")
+                    # Continue even if deletion fails - transcription is already saved
         except Exception as db_error:
             logger.error(f"⚠️ Failed to save transcription to database: {db_error}")
             logger.warning("Continuing without database storage...")
+            # Still try to delete audio file even if DB save failed
+            if saved_file_path and os.path.exists(saved_file_path):
+                try:
+                    os.remove(saved_file_path)
+                    logger.info(f"🗑️ Audio file deleted after transcription: {saved_file_path}")
+                except Exception as delete_error:
+                    logger.warning(f"⚠️ Failed to delete audio file: {delete_error}")
         
         return TranscriptionResponse(
             transcription_id=document_id or f"temp_{datetime.utcnow().timestamp()}",
@@ -1644,6 +1859,7 @@ async def get_transcriptions(
                     duration=trans.get("duration", 0.0),
                     filename=trans.get("filename"),
                     username=trans.get("username"),
+                    user_id=trans.get("user_id"),
                     created_at=trans.get("created_at", datetime.utcnow())
                 )
             )
@@ -1712,7 +1928,8 @@ async def create_transcription_endpoint(
             'language': create_request.language if create_request.language else "unknown",
             'duration': create_request.duration if create_request.duration is not None else 0.0,
             'filename': create_request.filename,
-            'username': create_request.username
+            'username': create_request.username,
+            'user_id': create_request.user_id
         }
         
         # Save transcription to database
@@ -1730,6 +1947,7 @@ async def create_transcription_endpoint(
             duration=saved_doc.get("duration", 0.0),
             filename=saved_doc.get("filename"),
             username=saved_doc.get("username"),
+            user_id=saved_doc.get("user_id"),
             created_at=saved_doc.get("created_at", datetime.utcnow())
         )
         
@@ -1773,6 +1991,7 @@ async def get_transcription_by_id_endpoint(
             duration=transcription.get("duration", 0.0),
             filename=transcription.get("filename"),
             username=transcription.get("username"),
+            user_id=transcription.get("user_id"),
             created_at=transcription.get("created_at", datetime.utcnow())
         )
         
