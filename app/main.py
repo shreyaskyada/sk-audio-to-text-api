@@ -41,7 +41,7 @@ from app.schemas import (
 from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
-from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_generator, work_status_forms
+from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_generator, work_status_forms, pr2_forms
 from app.api.soap_storage import (
     save_soap_note_to_db, 
     get_all_soap_notes_by_transcription_id,
@@ -2698,6 +2698,9 @@ app.include_router(pr1_generator.router, prefix="/api/v1", tags=["pr1-generator"
 
 # Include work status forms router
 app.include_router(work_status_forms.router, prefix="/api/v1", tags=["work-status-forms"])
+
+# Include PR2 forms router
+app.include_router(pr2_forms.router, prefix="/api/v1", tags=["pr2-forms"])
 
 
 # ============================================
