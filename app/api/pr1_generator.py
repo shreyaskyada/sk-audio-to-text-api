@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from pypdf import PdfReader
 from openai import OpenAI
 import httpx
+import asyncio
 from dotenv import load_dotenv
 
 from app.models.pr1_models import (
@@ -24,7 +25,8 @@ from app.models.pr1_models import (
     FollowUpFormForPR1,
     SOAPNoteForPR1,
     SOAPDiagnosis,
-    SOAPRFAItem
+    SOAPRFAItem,
+    SavedPR1Form
 )
 from app.mongodb import get_database
 
@@ -39,6 +41,7 @@ router = APIRouter()
 COLL_INTAKE = "intake_forms"
 COLL_FOLLOWUP = "followup_intake_forms"
 COLL_SOAP = "soap_notes"
+COLL_SAVED_PR1 = "saved_pr1_forms"
 
 # OpenAI Model Configuration - Latest ChatGPT model for PR1 generation
 OPENAI_MODEL = 'gpt-5.1'  # Latest GPT-5.1 model
@@ -3488,7 +3491,7 @@ def normalize_pr1_header(
     }
 
 
-def build_pr1_payload(
+async def build_pr1_payload(
     intake_doc: Optional[Dict[str, Any]],
     follow_doc: Optional[Dict[str, Any]],
     soap_doc: Optional[Dict[str, Any]],
@@ -3497,10 +3500,19 @@ def build_pr1_payload(
     """Build complete PR-1 payload structure"""
     header = normalize_pr1_header(intake_doc, soap_doc)
     checkboxes = calc_checkboxes(soap_doc, follow_doc, flags)
-    section_a = build_section_a_rfa(soap_doc, intake_doc)
-    # Pass intake_doc to build_section_b so it can extract HPI and Objective Findings
-    section_b = build_section_b(soap_doc, intake_doc)
-    section_c = build_section_c(intake_doc, follow_doc, soap_doc)
+    
+    # CRITICAL PERFORMANCE OPTIMIZATION: Parallelize the heavy section builders
+    # which use sequential blocking GPT calls for data extraction.
+    # We use asyncio.to_thread to run these sync functions in parallel threads.
+    logger.info("🚀 Starting parallel extraction for Sections A, B and C...")
+    tasks = [
+        asyncio.to_thread(build_section_a_rfa, soap_doc, intake_doc),
+        asyncio.to_thread(build_section_b, soap_doc, intake_doc),
+        asyncio.to_thread(build_section_c, intake_doc, follow_doc, soap_doc)
+    ]
+    
+    section_a, section_b, section_c = await asyncio.gather(*tasks)
+    logger.info("✅ Parallel extraction complete")
     
     # Page 2 signature block
     # Check if section_a has any requests (new format uses "requests" array)
@@ -3690,7 +3702,7 @@ async def generate_pr1(payload: PR1GenerateRequest):
             )
         
         # Build PR-1 JSON structure
-        pr1 = build_pr1_payload(intake_doc, follow_doc, soap_doc, payload.flags or {})
+        pr1 = await build_pr1_payload(intake_doc, follow_doc, soap_doc, payload.flags or {})
         
         # Prepare response with metadata about which documents were used
         response_data = {
@@ -4221,7 +4233,7 @@ async def generate_pr1_from_soap(
         
         # Step 10: Build PR-1 payload using extracted SOAP data
         try:
-            pr1 = build_pr1_payload(intake_doc, follow_doc, soap_data_dict, pr1_flags or {})
+            pr1 = await build_pr1_payload(intake_doc, follow_doc, soap_data_dict, pr1_flags or {})
         except Exception as e:
             error_msg = f"Failed to build PR-1 payload: {str(e)}"
             logger.error(error_msg)
@@ -4397,8 +4409,8 @@ async def extract_work_status_from_pr1(payload: PR1GenerateRequest):
                 detail="Provide at least one of: intake/followup/soap (object), intake_id/followup_id/soap_id (Mongo IDs), or use_latest_intake/use_latest_followup (boolean flags)."
             )
         
-        # Build PR-1 JSON structure
-        pr1 = build_pr1_payload(intake_doc, follow_doc, soap_doc, payload.flags or {})
+        # Build PR-1 and extract payload with parallel optimization
+        pr1 = await build_pr1_payload(intake_doc, follow_doc, soap_doc, payload.flags or {})
         
         # Extract work status in new format
         work_status_data = extract_work_status_format(pr1, intake_doc, soap_doc)
@@ -4427,6 +4439,77 @@ async def extract_work_status_from_pr1(payload: PR1GenerateRequest):
             status_code=500,
             detail=f"Failed to extract work status from PR1: {str(e)}"
         )
+
+
+@router.post("/pr1/save")
+async def save_pr1_form(payload: SavedPR1Form):
+    """
+    Save or update a PR1 form in MongoDB.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise HTTPException(status_code=500, detail="Database connection not available")
+        
+        collection = db[COLL_SAVED_PR1]
+        
+        now = datetime.utcnow().isoformat()
+        
+        # Check if a form already exists for this soap_id
+        existing = await collection.find_one({"soap_id": payload.soap_id})
+        
+        form_dict = payload.dict()
+        if existing:
+            # Update existing form
+            form_dict["updated_at"] = now
+            form_dict["created_at"] = existing.get("created_at", now)
+            await collection.update_one(
+                {"soap_id": payload.soap_id},
+                {"$set": form_dict}
+            )
+            logger.info(f"✅ Updated saved PR1 form for SOAP ID: {payload.soap_id}")
+            return {"status": "success", "message": "PR1 form updated", "id": str(existing["_id"])}
+        else:
+            # Create new form
+            form_dict["created_at"] = now
+            form_dict["updated_at"] = now
+            result = await collection.insert_one(form_dict)
+            logger.info(f"✅ Saved new PR1 form for SOAP ID: {payload.soap_id}")
+            return {"status": "success", "message": "PR1 form saved", "id": str(result.inserted_id)}
+            
+    except Exception as e:
+        logger.error(f"Error saving PR1 form: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to save PR1 form: {str(e)}")
+
+
+@router.get("/pr1/saved/{soap_id}")
+async def get_saved_pr1_form(soap_id: str):
+    """
+    Retrieve a saved PR1 form by its associated SOAP ID.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise HTTPException(status_code=500, detail="Database connection not available")
+        
+        collection = db[COLL_SAVED_PR1]
+        
+        form = await collection.find_one({"soap_id": soap_id})
+        
+        if not form:
+            return {"status": "not_found", "message": "No saved PR1 form found for this SOAP note"}
+        
+        # Convert ObjectId to string
+        form["_id"] = str(form["_id"])
+        
+        return {
+            "status": "success",
+            "data": form
+        }
+            
+    except Exception as e:
+        logger.error(f"Error retrieving saved PR1 form: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve PR1 form: {str(e)}")
 
 
 @router.post("/pr1/extract-work-status-from-soap")

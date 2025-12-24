@@ -138,3 +138,12 @@ class PR1GenerateRequest(BaseModel):
     # Optional: treat this request as a specific PR-1 purpose (checkboxes up top)
     flags: Optional[Dict[str, bool]] = None  # e.g., {"progress_report": True, "request_for_authorization": True}
 
+
+class SavedPR1Form(BaseModel):
+    """Model for saving PR1 form data in MongoDB"""
+    soap_id: str
+    patient_name: str
+    form_data: Dict[str, Any]
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+

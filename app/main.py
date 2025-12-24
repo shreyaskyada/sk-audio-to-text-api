@@ -738,7 +738,7 @@ def _validate_cpt_in_match_standalone(match, invalid_codes_list):
         return ""  # Remove invalid code line
 
 
-def validate_and_correct_cpt_codes(soap_note: str, transcription: str, openai_client) -> str:
+async def validate_and_correct_cpt_codes(soap_note: str, transcription: str, openai_client) -> str:
     """
     Post-process SOAP note to validate and correct CPT codes.
     Uses AI to generate CPT codes for procedures not in the mapping, making the system unlimited.
@@ -746,12 +746,12 @@ def validate_and_correct_cpt_codes(soap_note: str, transcription: str, openai_cl
     Also validates and removes invalid CPT codes.
     """
     import re
+    import asyncio
     
     if not soap_note or not transcription:
         return soap_note
     
     result = soap_note
-    changes_made = []
     
     # Extract procedures/treatments from transcription
     transcription_lower = transcription.lower()
@@ -773,35 +773,54 @@ def validate_and_correct_cpt_codes(soap_note: str, transcription: str, openai_cl
     cpt_patterns = [
         # Primary Procedure
         (r'(Primary Procedure:\s*\[)(Not documented|\[Not documented\])(\]\s*—\s*\[Procedure Name\])', 
-         lambda m: _generate_cpt_for_procedure(transcription, openai_client, m)),
+         _generate_cpt_for_procedure),
         # Supportive CPTs
         (r'(Supportive CPTs:\s*\[)(Not documented|\[Not documented\])(\])',
-         lambda m: _generate_supportive_cpts(transcription, openai_client, m)),
+         _generate_supportive_cpts),
         # RFA Primary CPT
         (r'(Primary CPT:\s*\[)(Not documented|\[Not documented\]|Code)(\])',
-         lambda m: _generate_cpt_for_rfa(transcription, openai_client, m)),
+         _generate_cpt_for_rfa),
         # RFA Supportive CPTs
         (r'(Supportive CPTs:\s*\[)(Not documented|\[Not documented\]|Codes)(\])',
-         lambda m: _generate_supportive_cpts_rfa(transcription, openai_client, m)),
+         _generate_supportive_cpts_rfa),
     ]
     
-    for pattern, replacement_func in cpt_patterns:
-        matches = list(re.finditer(pattern, result, re.IGNORECASE | re.MULTILINE))
-        for match in matches:
-            try:
-                replacement = replacement_func(match)
-                if replacement and replacement != match.group(0):
-                    result = result.replace(match.group(0), replacement)
-                    changes_made.append(f"Corrected CPT: {match.group(0)[:50]}...")
-            except Exception as e:
-                logger.warning(f"Error correcting CPT code: {e}")
-                continue
+    # Collect all matches and their corresponding generator functions
+    tasks_to_run = []
     
-    if changes_made:
-        logger.info(f"✅ CPT code corrections made: {len(changes_made)} changes")
+    # We use a unique marker for each replacement to avoid issues with .replace()
+    # when multiple placeholders have the same text
+    placeholder_map = {}
+    
+    for pattern, generator_func in cpt_patterns:
+        matches = list(re.finditer(pattern, result, re.IGNORECASE | re.MULTILINE))
+        for i, match in enumerate(matches):
+            match_text = match.group(0)
+            # Create a unique marker for this specific match instance
+            marker = f"__CPT_MARKER_{len(tasks_to_run)}__"
+            # Replace only the FIRST occurrence of match_text with marker
+            # this works because we iterate in order
+            result = result.replace(match_text, marker, 1)
+            
+            # Prepare the parallel task
+            tasks_to_run.append(
+                asyncio.to_thread(generator_func, transcription, openai_client, match)
+            )
+            placeholder_map[marker] = None
+    
+    if tasks_to_run:
+        logger.info(f"🚀 Starting parallel CPT generation for {len(tasks_to_run)} items...")
+        replacements = await asyncio.gather(*tasks_to_run)
+        
+        # Map markers back to their generated results
+        for i, marker in enumerate(placeholder_map.keys()):
+            replacement = replacements[i]
+            # Replace the marker with the actual generated CPT text
+            result = result.replace(marker, replacement)
+            
+        logger.info(f"✅ Parallel CPT generation complete")
     
     # CRITICAL: Validate and remove ALL invalid CPT codes before returning
-    # This ensures only valid CPT codes are shown in the SOAP note
     result = validate_all_cpt_codes_in_soap(result)
     
     return result
@@ -1229,7 +1248,7 @@ def generate_soap_note_from_transcription(text: str) -> str:
         return text
 
 
-def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data: Optional[str] = None, intake_doc: Optional[dict] = None, model: Optional[str] = None) -> dict:
+async def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data: Optional[str] = None, intake_doc: Optional[dict] = None, model: Optional[str] = None) -> dict:
     """
     Generate a comprehensive orthopedic SOAP note from transcription with optional structured data.
     Returns a dictionary with structured SOAP sections and formatted note.
@@ -1340,7 +1359,9 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
         # Call OpenAI GPT-4 with explicit configuration
         client = create_openai_client()
         
-        response = client.chat.completions.create(
+        # Use asyncio.to_thread for the blocking OpenAI call
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
             model=selected_model,
             messages=[
                 {
@@ -1382,7 +1403,7 @@ def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_form_data
             
             # Post-process: Validate and correct CPT codes using AI-enhanced system (GPT-5.1)
             # All CPT codes are generated dynamically by AI - NO static code lists
-            formatted_soap_note = validate_and_correct_cpt_codes(formatted_soap_note, corrected_transcription, client)
+            formatted_soap_note = await validate_and_correct_cpt_codes(formatted_soap_note, corrected_transcription, client)
             
             # Final validation: Remove any remaining invalid CPT codes (double-check)
             # Note: This only validates format, not content - all codes are AI-generated
@@ -2489,7 +2510,7 @@ async def generate_soap_comprehensive(
             logger.warning("⚠️ No intake form data available - will use 'As per chart'")
         
         # Generate comprehensive SOAP note (pass both formatted data and raw doc for post-processing)
-        soap_result = generate_comprehensive_soap_note(soap_request, intake_form_data, intake_doc, model=soap_request.model)
+        soap_result = await generate_comprehensive_soap_note(soap_request, intake_form_data, intake_doc, model=soap_request.model)
         
         # Save to MongoDB
         document_id = None
@@ -2649,7 +2670,7 @@ async def generate_soap_simple(
             logger.warning("⚠️ No intake form data available - will use 'As per chart'")
         
         # Generate comprehensive SOAP note (pass both formatted data and raw doc for post-processing)
-        soap_result = generate_comprehensive_soap_note(soap_request, intake_form_data, intake_doc, model=model)
+        soap_result = await generate_comprehensive_soap_note(soap_request, intake_form_data, intake_doc, model=model)
         
         # Save to MongoDB
         document_id = None
