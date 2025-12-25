@@ -596,18 +596,56 @@ def build_pr2_from_data(
     """
     logger.info(f"🔍 Building PR2 from data - Has intake: {bool(intake_doc)}, Has followup: {bool(follow_doc)}, Has SOAP: {bool(soap_doc)}, Has PR1: {bool(pr1_doc)}")
     
-    # Extract patient information
+    # Extract comprehensive patient information from intake form
     patient_name = ""
     patient_dob = ""
     patient_doi = ""
+    patient_address = ""
+    patient_city = ""
+    patient_state = ""
+    patient_zip = ""
+    patient_phone = ""
+    patient_occupation = ""
+    patient_sex = ""
+    claims_administrator = ""
+    claim_number = ""
+    employer_name = ""
     
     if intake_doc:
+        # Section A - Patient Demographics
         section_a = intake_doc.get("section_a", {})
         patient_name = section_a.get("full_name", "")
         patient_dob = section_a.get("date_of_birth", "")
+        patient_sex = section_a.get("gender", "") or section_a.get("sex", "")
+        
+        # Address information
+        patient_address = section_a.get("address", "") or section_a.get("street_address", "")
+        patient_city = section_a.get("city", "")
+        patient_state = section_a.get("state", "")
+        patient_zip = section_a.get("zip_code", "") or section_a.get("zipcode", "")
+        
+        # Contact information
+        patient_phone = section_a.get("phone", "") or section_a.get("phone_number", "") or section_a.get("telephone", "")
+        
+        # Section B - Employment/Occupation
+        section_b = intake_doc.get("section_b", {})
+        patient_occupation = section_b.get("occupation", "") or section_b.get("job_title", "")
+        employer_name = section_b.get("employer_name", "") or section_b.get("employer", "")
+        
+        # Section C - Injury Information
         section_c = intake_doc.get("section_c", {})
         patient_doi = section_c.get("date_of_injury", "")
+        
+        # Section D - Claims Information
+        section_d = intake_doc.get("section_d", {})
+        claims_administrator = section_d.get("claims_administrator", "") or section_d.get("insurance_company", "")
+        claim_number = section_d.get("claim_number", "") or section_d.get("claim_id", "")
+        
+        logger.info(f"✅ Extracted from intake - Name: {patient_name}, DOB: {patient_dob}, Address: {patient_address}, City: {patient_city}")
+        logger.info(f"✅ Extracted from intake - Phone: {patient_phone}, Occupation: {patient_occupation}, Sex: {patient_sex}")
+        logger.info(f"✅ Extracted from intake - Claims Admin: {claims_administrator}, Claim#: {claim_number}, Employer: {employer_name}")
     
+    # Fallback to SOAP note if intake data not available
     if soap_doc:
         # Extract patient info from patient_info object
         patient_info = soap_doc.get("patient_info", {})
@@ -616,6 +654,10 @@ def build_pr2_from_data(
                 patient_name = patient_info.get("name", "") or soap_doc.get("patient_name", "")
             if not patient_dob:
                 patient_dob = patient_info.get("dob", "") or soap_doc.get("dob", "")
+            if not patient_phone:
+                patient_phone = patient_info.get("phone", "") or soap_doc.get("phone", "")
+            if not patient_address:
+                patient_address = patient_info.get("address", "")
         else:
             # Fallback to direct fields
             if not patient_name:
@@ -626,11 +668,15 @@ def build_pr2_from_data(
         if not patient_doi:
             patient_doi = soap_doc.get("date_of_injury", "")
     
-    # Split patient name
+    # Split patient name into components
     name_parts = patient_name.split() if patient_name else []
     first_name = name_parts[0] if len(name_parts) > 0 else ""
     last_name = name_parts[-1] if len(name_parts) > 1 else (name_parts[0] if len(name_parts) == 1 else "")
     middle_initial = name_parts[1][0] if len(name_parts) > 2 else ""
+    
+    logger.info(f"👤 Final Patient Info - Name: {first_name} {middle_initial} {last_name}, DOB: {patient_dob}, DOI: {patient_doi}")
+    logger.info(f"📍 Final Patient Address - {patient_address}, {patient_city}, {patient_state} {patient_zip}")
+    logger.info(f"📞 Final Patient Contact - Phone: {patient_phone}, Occupation: {patient_occupation}")
     
     # Extract diagnoses - Using comprehensive extraction like PR1
     diagnoses = []
@@ -1902,27 +1948,27 @@ def build_pr2_from_data(
             "lastName": last_name,
             "firstName": first_name,
             "middleInitial": middle_initial,
-            "streetAddress": "",
-            "city": "",
-            "state": "",
-            "zipCode": "",
-            "sex": "",
-            "occupation": "",
-            "phoneNumber": "",
+            "streetAddress": patient_address,
+            "city": patient_city,
+            "state": patient_state,
+            "zipCode": patient_zip,
+            "sex": patient_sex,
+            "occupation": patient_occupation,
+            "phoneNumber": patient_phone,
             "dateOfBirth": patient_dob,
-            "claimsAdministrator": "",
+            "claimsAdministrator": claims_administrator,
             "dateOfInjury": patient_doi
         },
         "claimsAdministrator": {
-            "name": "",
-            "claimNumber": "",
+            "name": claims_administrator,
+            "claimNumber": claim_number,
             "streetAddress": "",
             "city": "",
             "state": "",
             "zipCode": "",
             "phoneNumber": "",
             "faxNumber": "",
-            "employerName": "",
+            "employerName": employer_name,
             "employerPhoneNumber": ""
         },
         "subjectiveComplaints": subjective_complaints_obj if subjective_complaints_obj else subjective_complaints,
@@ -2260,6 +2306,69 @@ async def get_pr2_form_by_id(form_id: str):
         raise
     except Exception as e:
         logger.error(f"Error retrieving PR2 form: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve PR2 form: {str(e)}"
+        )
+
+
+@router.get("/pr2/saved/{soap_id}")
+async def get_pr2_form_by_soap_id(soap_id: str):
+    """
+    Get a PR2 form associated with a specific SOAP ID
+    
+    **Parameters:**
+    - soap_id: MongoDB document ID of the SOAP note
+    
+    **Returns:**
+    - Complete PR2 form document
+    - Returns 404 if form not found
+    """
+    try:
+        # Get the database
+        db = get_database()
+        if db is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Database connection not available"
+            )
+        
+        collection = db[PR2_FORMS_COLLECTION]
+        
+        # Find the form by soap_id
+        # Try both string and ObjectId match just in case
+        query = {"$or": [{"soap_id": soap_id}]}
+        try:
+            query["$or"].append({"soap_id": ObjectId(soap_id)})
+        except:
+            pass
+            
+        # Sort by created_at desc to get latest
+        form = await collection.find_one(
+            query,
+            sort=[("created_at", -1)]
+        )
+        
+        if form is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"PR2 form not found for SOAP ID: {soap_id}"
+            )
+        
+        # Serialize MongoDB document
+        serialized_form = serialize_mongodb_doc(form)
+        
+        # Add document_id
+        serialized_form["document_id"] = serialized_form.get("_id")
+        
+        logger.info(f"✅ Retrieved PR2 form for SOAP ID: {soap_id}")
+        
+        return JSONResponse(serialized_form)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving PR2 form by SOAP ID: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve PR2 form: {str(e)}"
