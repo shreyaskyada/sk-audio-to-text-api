@@ -240,3 +240,14 @@ class SOAPResponse(BaseModel):
     patient_info: Optional[dict] = None
     format: str = "markdown"  # Format of the SOAP note
     document_id: Optional[str] = None  # MongoDB document ID if saved to database
+
+
+class ClientLogRequest(BaseModel):
+    """Request model for client-side logs"""
+    level: str  # error, warning, info
+    message: str
+    component: Optional[str] = None
+    stack_trace: Optional[str] = None
+    url: Optional[str] = None
+    user_agent: Optional[str] = None
+    additional_data: Optional[dict] = None

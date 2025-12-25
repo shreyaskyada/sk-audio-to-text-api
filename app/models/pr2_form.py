@@ -79,4 +79,6 @@ class PR2Form(BaseModel):
     treatmentPlan: Optional[str] = None
     workStatus: WorkStatus
     physician: Physician
+    soap_id: Optional[str] = None
+    transcription_id: Optional[str] = None
 
