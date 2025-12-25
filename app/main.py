@@ -107,6 +107,7 @@ MEDICAL_KEYTERMS = [
     "effusion", "crepitus", "meniscus", "patellofemoral",
     "De Quervain's", "de Quervain's", "De Quervain", "de Quervain",
     "De Quervain's tenosynovitis", "de Quervain tenosynovitis",
+    "curvature encephalitis", "curvature tendinitis", "curvature tendonitis",
     # Additional common medical terms
     "tenosynovitis", "tendinitis", "tendonitis", "arthroscopy",
     "arthroscopic", "meniscectomy", "chondroplasty", "synovectomy",
@@ -362,13 +363,29 @@ def normalize_audio_bytes(audio_data: bytes) -> bytes:
 
 
 def fix_terms(text: str) -> str:
-    """Fix common medical terminology errors in transcription"""
-    corrected_text = text
-    for incorrect, correct in MEDICAL_CORRECTIONS.items():
-        # Use case-insensitive replacement with word boundaries
-        pattern = r'\b' + re.escape(incorrect) + r'\b'
-        corrected_text = re.sub(pattern, correct, corrected_text, flags=re.IGNORECASE)
-    return corrected_text
+    """
+    Fix common medical terminology errors in transcription using a single-pass regex replacement.
+    This prevents double-replacements where a corrected term is further incorrectly modified.
+    """
+    if not text:
+        return text
+    
+    # Sort keys by length (longest first) to ensure best match
+    sorted_corrections = sorted(MEDICAL_CORRECTIONS.items(), key=lambda x: len(x[0]), reverse=True)
+    
+    # Escape keys and join with | for regex
+    pattern_string = "|".join([r'\b' + re.escape(k) + r'\b' for k, _ in sorted_corrections])
+    pattern = re.compile(pattern_string, flags=re.IGNORECASE)
+    
+    # Case-insensitive mapping for the replacement function
+    # Note: We need a lower-case map to find the correct replacement while ignoring case
+    mapping = {k.lower(): v for k, v in MEDICAL_CORRECTIONS.items()}
+    
+    def replace_func(match):
+        match_text = match.group(0).lower()
+        return mapping.get(match_text, match.group(0))
+    
+    return pattern.sub(replace_func, text)
 
 
 def create_openai_client():
