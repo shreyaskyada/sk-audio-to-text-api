@@ -98,41 +98,14 @@ logger.info(f"Using OpenAI model: {OPENAI_MODEL} (All CPT codes generated dynami
 
 # Medical keyterms for Deepgram - Expanded list for better accuracy
 MEDICAL_KEYTERMS = [
-    # Anatomical terms
-    "pes anserine", "antalgic gait", "corticosteroid injection",
-    "intra-articular", "ligamentous", "osteoarthritis",
-    "bursitis", "MCL", "ACL", "PCL", "LCL", "McMurray test",
-    "contralateral", "neurovascularly intact",
-    "range of motion", "joint line tenderness",
-    "effusion", "crepitus", "meniscus", "patellofemoral",
-    "De Quervain's", "de Quervain's", "De Quervain", "de Quervain",
-    "De Quervain's tenosynovitis", "de Quervain tenosynovitis",
-    "curvature encephalitis", "curvature tendinitis", "curvature tendonitis",
-    # Additional common medical terms
-    "tenosynovitis", "tendinitis", "tendonitis", "arthroscopy",
-    "arthroscopic", "meniscectomy", "chondroplasty", "synovectomy",
-    "rotator cuff", "biceps", "triceps", "quadriceps", "hamstring",
-    "patella", "tibia", "fibula", "femur", "humerus", "radius", "ulna",
-    "carpal tunnel", "cubital tunnel", "ulnar nerve", "median nerve",
-    "radial nerve", "sciatic nerve", "peroneal nerve",
-    "anterior", "posterior", "medial", "lateral", "proximal", "distal",
-    "supination", "pronation", "flexion", "extension", "abduction", "adduction",
-    "arthralgia", "myalgia", "neuralgia", "radiculopathy", "neuropathy",
-    "herniated disc", "bulging disc", "spinal stenosis", "spondylolisthesis",
-    "fracture", "dislocation", "subluxation", "sprain", "strain",
-    "tear", "rupture", "avulsion", "contusion", "laceration",
-    "inflammation", "edema", "swelling", "tenderness", "pain",
-    "numbness", "tingling", "weakness", "stiffness", "instability",
-    "gait", "limp", "antalgic", "ataxic",
-    "MRI", "CT scan", "X-ray", "ultrasound", "EMG", "NCV",
-    "physical therapy", "occupational therapy", "rehabilitation",
-    "injection", "aspiration", "arthrocentesis", "corticosteroid",
-    "lidocaine", "bupivacaine", "Marcaine",
-    "surgery", "surgical", "operative", "non-operative", "conservative",
-    "brace", "splint", "cast", "immobilizer", "orthosis",
-    "crutches", "walker", "cane", "boot", "CAM boot",
+    # Critical anatomical and procedure terms ONLY (to avoid over-priming)
+    "De Quervain's Tenosynovitis", "stenosing tenosynovitis", "MCL", "ACL", "PCL", "LCL", 
+    "McMurray test", "Lachman test", "Finkelstein test", "Hoffman's test",
+    "bicep", "tricep", "quadricep", "meniscectomy", "chondroplasty",
+    "corticosteroid", "lidocaine", "bupivacaine", "Marcaine",
     "workers compensation", "work status", "modified duty", "full duty",
-    "TTD", "temporary total disability", "P&S", "permanent and stationary"
+    "TTD", "temporary total disability", "P&S", "permanent and stationary",
+    "abductor pollicis longus", "extensor pollicis brevis"
 ]
 
 # Use medical terminology corrections from prompts module
@@ -292,21 +265,12 @@ def convert_audio_to_wav(audio_data: bytes, input_format: str = 'webm') -> bytes
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as wav_file:
             wav_path = wav_file.name
         
-        # Convert using ffmpeg - ensure proper audio format for Deepgram with enhancement
-        # -ar 16000: Optimal sample rate (16kHz) for speech recognition (Deepgram recommended)
-        # -ac 1: Mono channel
-        # -acodec pcm_s16le: PCM 16-bit little-endian (WAV format)
-        # -af filters: Enhance audio for better speech recognition
-        #   - highpass: Remove low-frequency noise (below 60Hz)
-        #   - lowpass: Preserve speech frequencies (up to 8000Hz) - human speech is 85-8000Hz
-        #   - volume: Normalize volume for consistent levels
-        #   - dynaudnorm: Dynamic audio normalization for better clarity
+        # Convert using ffmpeg - High-fidelity conversion
+        # Preserves input sample rate and channels for best Deepgram accuracy
+        # -acodec pcm_s16le: Standard WAV format (Lossless PCM)
         cmd = [
             'ffmpeg', '-i', input_path, 
             '-acodec', 'pcm_s16le', 
-            '-ar', '16000',  # Optimal sample rate (16kHz) for speech recognition - Deepgram recommended
-            '-ac', '1',      # Mono channel
-            '-af', 'highpass=f=60,lowpass=f=8000,volume=1.0,dynaudnorm=p=0.95:m=10.0:r=0.0',  # Audio enhancement filters
             '-y', wav_path
         ]
         
@@ -1711,65 +1675,24 @@ async def transcribe_audio(
             logger.info(f"SOAP generation requested for file: {file.filename}")
             
             # Deepgram supports WebM directly, but we convert to WAV for better accuracy
-            # This ensures Live recordings have the same quality as Upload files
+            # Match Deepgram Web Playground behavior: send raw file, don't convert to WAV
             filename_lower = file.filename.lower()
             content_type = get_audio_content_type(file.filename)
+            logger.info(f"Uploading raw file for SOAP transcription: {file.filename} as {content_type}")
+            # Sending raw bytes directly to Deepgram for maximum fidelity
             
-            # ALWAYS convert WebM/Opus to WAV for better transcription accuracy
-            # This ensures Live recordings have the same quality as Upload files
-            if filename_lower.endswith(".webm") or filename_lower.endswith(".opus") or "live_recording" in filename_lower:
-                ffmpeg_available = check_ffmpeg_available()
-                logger.info(f"FFmpeg available: {ffmpeg_available} for file: {file.filename}")
-                if ffmpeg_available:
-                    try:
-                        input_format = 'webm' if filename_lower.endswith(".webm") else 'opus'
-                        file_content = convert_audio_to_wav(file_content, input_format)
-                        content_type = 'audio/wav'
-                        logger.info(f"✅ Converted {input_format.upper()} to WAV using FFmpeg for better accuracy")
-                    except (FileNotFoundError, Exception) as e:
-                        logger.warning(f"FFmpeg conversion failed ({type(e).__name__}), sending WebM directly: {str(e)}")
-                        # Continue with original WebM file - Deepgram supports it
-                        # Reset content_type to WebM since conversion failed
-                        content_type = get_audio_content_type(file.filename)
-                else:
-                    logger.warning("⚠️ FFmpeg not available - WebM will be sent directly (may have lower accuracy)")
-                    logger.info("For best results, install FFmpeg to convert WebM to WAV")
-                    content_type = get_audio_content_type(file.filename)
-            elif filename_lower.endswith(".mp3") or filename_lower.endswith(".m4a"):
-                if check_ffmpeg_available():
-                    try:
-                        file_content = convert_audio_to_wav(file_content, 'mp3' if filename_lower.endswith(".mp3") else 'm4a')
-                        content_type = 'audio/wav'
-                        logger.info("Converted MP3/M4A to WAV using FFmpeg")
-                    except Exception as e:
-                        logger.warning(f"FFmpeg conversion failed: {str(e)}")
-                        raise HTTPException(status_code=500, detail=f"Audio conversion failed: {str(e)}")
-                else:
-                    raise HTTPException(status_code=500, detail="FFmpeg required for MP3/M4A conversion. Please install FFmpeg or use WebM/WAV format.")
-            else:
-                file_content = normalize_audio_bytes(file_content)
-            
-            # Build enhanced Deepgram API URL with optimal settings for accuracy
+            # Build standard Deepgram API URL for best consistency with web results
             query_params = {
-                "model": "nova-3-medical",
-                "numerals": "true",
-                "language": "en-US",
-                "version": "latest",
+                "model": "nova-2",
                 "smart_format": "true",
-                "diarize": "true",
-                "custom_intent": "orthopedic_patient_assessment",
-                "custom_intent_mode": "extended",
-                "sentiment": "false",
-                "punctuate": "true",      # Add punctuation for better readability
-                "utterances": "false",     # Don't split into utterances
-                "paragraphs": "false"      # Don't split into paragraphs
+                "language": "en",
+                "punctuate": "true",
+                "keywords": "Quervain:1,Tenosynovitis:1"  # Smart keywords with low boost
             }
+            # Re-enabled keywords with partial matches only to avoid "he"->"De" confusion
+            # Using intensity=1 (low) to gently guide without forcing
             
-            # Build URL with keyterms
             url = f"https://api.deepgram.com/v1/listen?" + urlencode(query_params)
-            for term in MEDICAL_KEYTERMS:
-                url += f"&keyterm={quote(term)}"
-            
             headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}", "Content-Type": content_type}
             
             # Get transcription from Deepgram
@@ -1778,6 +1701,7 @@ async def transcribe_audio(
             result = response.json()
             
             raw_transcript = result["results"]["channels"][0]["alternatives"][0]["transcript"].strip()
+            logger.info(f"Raw Deepgram Transcript: {raw_transcript}")
             raw_transcript = fix_terms(raw_transcript)
             
             # Generate SOAP note
@@ -1800,55 +1724,18 @@ async def transcribe_audio(
             # Convert WebM to WAV for better accuracy (same as SOAP path)
             filename_lower = file.filename.lower()
             content_type = get_audio_content_type(file.filename)
-            
-            # ALWAYS convert WebM/Opus to WAV for better transcription accuracy
-            # This ensures Live recordings have the same quality as Upload files
-            if filename_lower.endswith(".webm") or filename_lower.endswith(".opus") or "live_recording" in filename_lower:
-                ffmpeg_available = check_ffmpeg_available()
-                logger.info(f"FFmpeg available: {ffmpeg_available} for file: {file.filename}")
-                if ffmpeg_available:
-                    try:
-                        input_format = 'webm' if filename_lower.endswith(".webm") else 'opus'
-                        file_content = convert_audio_to_wav(file_content, input_format)
-                        content_type = 'audio/wav'
-                        logger.info(f"✅ Converted {input_format.upper()} to WAV using FFmpeg for better accuracy")
-                    except (FileNotFoundError, Exception) as e:
-                        logger.warning(f"FFmpeg conversion failed ({type(e).__name__}), sending WebM directly: {str(e)}")
-                        # Continue with original WebM file - Deepgram supports it
-                        # Reset content_type to WebM since conversion failed
-                        content_type = get_audio_content_type(file.filename)
-                else:
-                    logger.warning("⚠️ FFmpeg not available - WebM will be sent directly (may have lower accuracy)")
-                    logger.info("For best results, install FFmpeg to convert WebM to WAV")
-                    content_type = get_audio_content_type(file.filename)
-            elif filename_lower.endswith(".mp3") or filename_lower.endswith(".m4a"):
-                if check_ffmpeg_available():
-                    try:
-                        file_content = convert_audio_to_wav(file_content, 'mp3' if filename_lower.endswith(".mp3") else 'm4a')
-                        content_type = 'audio/wav'
-                        logger.info("Converted MP3/M4A to WAV using FFmpeg")
-                    except Exception as e:
-                        logger.warning(f"FFmpeg conversion failed: {str(e)}")
-                        raise HTTPException(status_code=500, detail=f"Audio conversion failed: {str(e)}")
-                else:
-                    raise HTTPException(status_code=500, detail="FFmpeg required for MP3/M4A conversion. Please install FFmpeg or use WebM/WAV format.")
-            else:
-                file_content = normalize_audio_bytes(file_content)
+            logger.info(f"Uploading raw file for standard transcription: {file.filename}")
             
             query_params = {
-                "model": "nova-3-medical",
+                "model": "nova-2",
                 "smart_format": "true",
-                "language": "en-US",
-                "punctuate": "true",      # Add punctuation for better readability
-                "utterances": "false",     # Don't split into utterances
-                "paragraphs": "false"     # Don't split into paragraphs
+                "language": "en",
+                "punctuate": "true",
+                "keywords": "Quervain:1,Tenosynovitis:1"  # Smart keywords with low boost
             }
+            # Re-enabled keywords with partial matches only
             
-            # Build URL with keyterms (same as SOAP path)
             url = f"https://api.deepgram.com/v1/listen?" + urlencode(query_params)
-            for term in MEDICAL_KEYTERMS:
-                url += f"&keyterm={quote(term)}"
-            
             headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}", "Content-Type": content_type}
             
             response = requests.post(url, headers=headers, data=file_content)
@@ -1856,6 +1743,7 @@ async def transcribe_audio(
             result = response.json()
             
             text = result["results"]["channels"][0]["alternatives"][0]["transcript"].strip()
+            logger.info(f"Raw Deepgram Transcript: {text}")
             # Apply medical terminology corrections
             text = fix_terms(text)
             confidence = result["results"]["channels"][0]["alternatives"][0].get("confidence", 0.0)
