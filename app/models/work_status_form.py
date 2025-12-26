@@ -99,6 +99,7 @@ class ProviderInfo(BaseModel):
 
 
 class WorkStatusForm(BaseModel):
+    soap_id: Optional[str] = None
     employeeInfo: EmployeeInfo
     workStatus: WorkStatus
     functionalRestrictions: FunctionalRestrictions

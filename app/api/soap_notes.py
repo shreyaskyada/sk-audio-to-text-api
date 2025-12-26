@@ -23,6 +23,8 @@ router = APIRouter()
 # SOAP NOTES API ENDPOINTS
 # ============================================
 
+from fastapi.encoders import jsonable_encoder
+
 @router.get("/all")
 async def get_all_stored_soap_notes(
     limit: int = Query(100, ge=1, le=500, description="Maximum number of notes to return"),
@@ -46,12 +48,12 @@ async def get_all_stored_soap_notes(
     try:
         soap_notes = await get_all_soap_notes(limit=limit, skip=skip)
         
-        return JSONResponse({
+        return JSONResponse(jsonable_encoder({
             "total_returned": len(soap_notes),
             "limit": limit,
             "skip": skip,
             "soap_notes": soap_notes
-        })
+        }))
         
     except Exception as e:
         logger.error(f"Error retrieving SOAP notes: {e}")
@@ -85,7 +87,7 @@ async def get_soap_statistics():
     try:
         stats = await get_soap_notes_stats()
         
-        return JSONResponse(stats)
+        return JSONResponse(jsonable_encoder(stats))
         
     except Exception as e:
         logger.error(f"Error getting SOAP notes statistics: {e}")
@@ -118,7 +120,7 @@ async def get_soap_note(soap_note_id: str):
                 detail=f"SOAP note not found: {soap_note_id}"
             )
         
-        return JSONResponse(soap_note)
+        return JSONResponse(jsonable_encoder(soap_note))
         
     except HTTPException:
         raise
