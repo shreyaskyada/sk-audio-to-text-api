@@ -195,6 +195,7 @@ class SOAPRequest(BaseModel):
     date_of_service: Optional[str] = None
     location: Optional[str] = None
     reason_for_visit: Optional[str] = None
+    userId: Optional[str] = None  # Patient ID/Unique identifier
     
     # Custom prompts (optional) - allows frontend to send dynamic prompts
     system_prompt: Optional[str] = None
@@ -238,6 +239,7 @@ class SOAPResponse(BaseModel):
     # Metadata
     created_at: str
     patient_info: Optional[dict] = None
+    userId: Optional[str] = None  # Patient ID/Unique identifier
     format: str = "markdown"  # Format of the SOAP note
     document_id: Optional[str] = None  # MongoDB document ID if saved to database
 

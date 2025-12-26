@@ -4565,3 +4565,31 @@ async def extract_work_status_from_soap(
             status_code=500,
             detail=f"Failed to extract work status from SOAP note: {str(e)}"
         )
+
+
+@router.get("/pr1/saved-ids")
+async def get_all_saved_pr1_soap_ids():
+    """
+    Retrieve all soap_ids that have a saved PR1 form.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise HTTPException(status_code=500, detail="Database connection not available")
+        
+        collection = db[COLL_SAVED_PR1]
+        
+        # Get all documents but only the soap_id field
+        cursor = collection.find({}, {"soap_id": 1, "_id": 0})
+        saved_forms = await cursor.to_list(length=1000)
+        
+        soap_ids = [str(doc["soap_id"]) for doc in saved_forms if "soap_id" in doc]
+        
+        return {
+            "status": "success",
+            "soap_ids": soap_ids
+        }
+            
+    except Exception as e:
+        logger.error(f"Error retrieving saved PR1 soap_ids: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve saved PR1 soap_ids: {str(e)}")

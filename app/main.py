@@ -1483,6 +1483,7 @@ async def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_for
                 "age": soap_request.patient.age if soap_request.patient else None,
                 "gender": soap_request.patient.gender if soap_request.patient else None,
             } if soap_request.patient else None,
+            "userId": soap_request.userId,  # Include patient ID
             "date_of_service": soap_request.date_of_service,
             "location": soap_request.location,
             "reason_for_visit": soap_request.reason_for_visit,
@@ -2523,6 +2524,7 @@ async def generate_soap_simple(
     date_of_service: Optional[str] = Form(None),
     location: Optional[str] = Form(None),
     reason_for_visit: Optional[str] = Form(None),
+    userId: Optional[str] = Form(None),
     system_prompt: Optional[str] = Form(None),
     user_prompt_template: Optional[str] = Form(None),
     model: Optional[str] = Form(None, description="OpenAI model to use: 'gpt-4o' or 'gpt-5.1'"),
@@ -2617,6 +2619,7 @@ async def generate_soap_simple(
             date_of_service=date_of_service,
             location=location,
             reason_for_visit=reason_for_visit,
+            userId=userId,
             system_prompt=system_prompt,
             user_prompt_template=user_prompt_template,
             model=model,

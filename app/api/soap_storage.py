@@ -50,6 +50,7 @@ async def save_soap_note_to_db(soap_data: dict) -> Dict:
             "plan": soap_data.get("plan", ""),
             "formatted_soap_note": soap_data.get("formatted_soap_note", ""),
             "patient_info": soap_data.get("patient_info"),
+            "userId": soap_data.get("userId"),  # Store patient ID
             "date_of_service": soap_data.get("date_of_service"),
             "location": soap_data.get("location"),
             "reason_for_visit": soap_data.get("reason_for_visit"),

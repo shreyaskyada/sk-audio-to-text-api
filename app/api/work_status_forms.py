@@ -118,12 +118,32 @@ async def create_work_status_form(data: WorkStatusForm):
         
         # Convert Pydantic model to dict and add timestamp
         form_data = data.model_dump()
-        form_data["created_at"] = datetime.utcnow()
+        now = datetime.utcnow()
         
-        # Insert into MongoDB
+        # Check if a form with this soap_id already exists
+        soap_id = form_data.get("soap_id")
+        if soap_id:
+            existing = await collection.find_one({"soap_id": soap_id})
+            if existing:
+                form_data["updated_at"] = now
+                form_data["created_at"] = existing.get("created_at", now)
+                await collection.update_one(
+                    {"soap_id": soap_id},
+                    {"$set": form_data}
+                )
+                logger.info(f"✅ Updated work status form for SOAP ID: {soap_id}")
+                return JSONResponse({
+                    "status": "success",
+                    "message": "Work status form updated successfully.",
+                    "document_id": str(existing["_id"])
+                })
+
+        # Create new form
+        form_data["created_at"] = now
+        form_data["updated_at"] = now
         result = await collection.insert_one(form_data)
         
-        logger.info(f"✅ Work status form saved with ID: {result.inserted_id}")
+        logger.info(f"✅ New work status form saved with ID: {result.inserted_id}")
         
         return JSONResponse({
             "status": "success",
@@ -208,6 +228,35 @@ async def get_latest_work_status_form():
             status_code=500,
             detail=f"Failed to retrieve latest work status form: {str(e)}"
         )
+
+
+@router.get("/work-status-form/saved-ids")
+async def get_all_saved_work_status_soap_ids():
+    """
+    Retrieve all soap_ids that have a saved Work Status form.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise HTTPException(status_code=500, detail="Database connection not available")
+        
+        # Consistent collection name from the top of the file
+        collection = db['work_status_forms']
+        
+        # Get all documents but only the soap_id field
+        cursor = collection.find({}, {"soap_id": 1, "_id": 0})
+        saved_forms = await cursor.to_list(length=1000)
+        
+        soap_ids = [str(doc["soap_id"]) for doc in saved_forms if doc.get("soap_id")]
+        
+        return {
+            "status": "success",
+            "soap_ids": soap_ids
+        }
+            
+    except Exception as e:
+        logger.error(f"Error retrieving saved Work Status soap_ids: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve saved Work Status soap_ids: {str(e)}")
 
 
 @router.get("/work-status-form/{form_id}")
