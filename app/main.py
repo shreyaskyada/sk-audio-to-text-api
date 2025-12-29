@@ -2121,56 +2121,22 @@ async def update_transcription_endpoint(
                 linked_soap_notes = await get_all_soap_notes_by_transcription_id(transcription_id)
                 
                 if linked_soap_notes:
-                    logger.info(f"Found {len(linked_soap_notes)} SOAP note(s) to regenerate")
+                    logger.info(f"Found {len(linked_soap_notes)} SOAP note(s) to reset due to transcription change")
                     
-                    # Get updated transcription text
-                    updated_transcription = await get_transcription_by_id(transcription_id)
-                    updated_text = updated_transcription.get("text", "") if updated_transcription else update_data.get("text", "")
+                    db = get_database()
+                    if db is not None:
+                        for soap_note in linked_soap_notes:
+                            soap_id = str(soap_note.get("_id"))
+                            # Reset completely: Delete PR1, Work Status, AND the SOAP note itself
+                            # This ensures the frontend only shows "SOAP note" in the dropdown
+                            await db["saved_pr1_forms"].delete_many({"soap_id": soap_id})
+                            await db["work_status_forms"].delete_many({"soap_id": soap_id})
+                            await db["soap_notes"].delete_one({"_id": ObjectId(soap_id)})
+                            logger.info(f"✅ Reset all reports and deleted SOAP note: {soap_id}")
+                    else:
+                        logger.warning("⚠️ Could not get database to reset report statuses")
                     
-                    # Regenerate each SOAP note
-                    for soap_note in linked_soap_notes:
-                        try:
-                            soap_note_id = soap_note.get("_id")
-                            
-                            # Create SOAPRequest with updated transcription and preserved metadata
-                            soap_request = SOAPRequest(
-                                transcription_id=transcription_id,
-                                transcription=updated_text,
-                                patient=PatientInfo(
-                                    name=soap_note.get("patient_info", {}).get("name") if soap_note.get("patient_info") else None,
-                                    age=soap_note.get("patient_info", {}).get("age") if soap_note.get("patient_info") else None,
-                                    gender=soap_note.get("patient_info", {}).get("gender") if soap_note.get("patient_info") else None
-                                ) if soap_note.get("patient_info") else None,
-                                date_of_service=soap_note.get("date_of_service"),
-                                location=soap_note.get("location"),
-                                reason_for_visit=soap_note.get("reason_for_visit"),
-                                system_prompt=soap_note.get("custom_prompts", {}).get("system_prompt") if soap_note.get("custom_prompts") else None,
-                                user_prompt_template=soap_note.get("custom_prompts", {}).get("user_prompt_template") if soap_note.get("custom_prompts") else None
-                            )
-                            
-                            # Regenerate SOAP note
-                            regenerated_soap = generate_comprehensive_soap_note(soap_request)
-                            
-                            # Update SOAP note in database (preserve transcription_id and created_at)
-                            update_soap_data = {
-                                "transcription": regenerated_soap.get("transcription", ""),
-                                "corrected_transcription": regenerated_soap.get("corrected_transcription", ""),
-                                "subjective": regenerated_soap.get("subjective", ""),
-                                "objective": regenerated_soap.get("objective", ""),
-                                "assessment": regenerated_soap.get("assessment", ""),
-                                "plan": regenerated_soap.get("plan", ""),
-                                "formatted_soap_note": regenerated_soap.get("formatted_soap_note", "")
-                            }
-                            
-                            await update_soap_note(soap_note_id, update_soap_data)
-                            logger.info(f"✅ Regenerated and updated SOAP note: {soap_note_id}")
-                            
-                        except Exception as soap_error:
-                            logger.error(f"⚠️ Failed to regenerate SOAP note {soap_note.get('_id')}: {soap_error}")
-                            # Continue with other SOAP notes even if one fails
-                            continue
-                    
-                    logger.info(f"✅ Completed regeneration of {len(linked_soap_notes)} SOAP note(s)")
+                    logger.info(f"✅ Completed reset of {len(linked_soap_notes)} SOAP note(s) and associated reports")
                 else:
                     logger.info(f"No SOAP notes found linked to transcription_id: {transcription_id}")
                     
