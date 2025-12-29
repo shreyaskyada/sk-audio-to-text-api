@@ -53,7 +53,9 @@ from app.api.transcription_storage import (
     get_transcription_by_id,
     get_transcriptions_count,
     update_transcription_in_db,
-    delete_transcription_in_db
+    delete_transcription_in_db,
+    get_user_ids_with_transcriptions,
+    get_latest_transcription_by_user_id
 )
 from bson import ObjectId
 
@@ -1813,6 +1815,42 @@ async def transcribe_audio(
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error during transcription: {str(e)}"
+        )
+
+
+@app.get("/api/v1/transcriptions/user-ids", response_model=list[str])
+async def get_transcription_user_ids():
+    """
+    Get a list of distinct user_ids that have transcriptions.
+    This is used to identify which appointments/patients already have a transcription.
+    """
+    try:
+        user_ids = await get_user_ids_with_transcriptions()
+        return user_ids
+    except Exception as e:
+        logger.error(f"Error getting transcription user IDs: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@app.get("/api/v1/transcriptions/user/{user_id}/latest", response_model=Optional[TranscriptionListItem])
+async def get_latest_transcription_user(user_id: str):
+    """
+    Get the latest transcription for a specific user ID.
+    Used for retrieving transcription data when editing a previous visit.
+    """
+    try:
+        transcription = await get_latest_transcription_by_user_id(user_id)
+        if not transcription:
+            return None
+        return transcription
+    except Exception as e:
+        logger.error(f"Error getting latest transcription for user {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
         )
 
 

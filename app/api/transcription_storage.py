@@ -55,6 +55,13 @@ async def save_transcription_to_db(transcription_data: dict) -> Dict:
             "needs_work_status": transcription_data.get("needs_work_status", False),
             "work_status": transcription_data.get("work_status"),
             "work_status_code": transcription_data.get("work_status_code"),
+            "chief_complaint": transcription_data.get("chief_complaint"),
+            "history": transcription_data.get("history"),
+            "examination": transcription_data.get("examination"),
+            "assessment": transcription_data.get("assessment"),
+            "treatment_plan": transcription_data.get("treatment_plan"),
+            "medications": transcription_data.get("medications"),
+            "follow_up": transcription_data.get("follow_up"),
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
@@ -98,6 +105,7 @@ async def get_transcription_by_id(transcription_id: str) -> Optional[Dict]:
         doc = await db[TRANSCRIPTIONS_COLLECTION].find_one({"_id": object_id})
         
         if doc:
+            doc["id"] = str(doc["_id"])
             doc["_id"] = str(doc["_id"])
             logger.info(f"Retrieved transcription: {transcription_id}")
             return doc
@@ -131,6 +139,7 @@ async def get_all_transcriptions(limit: int = 100, skip: int = 0) -> List[Dict]:
         
         # Convert ObjectId to string
         for doc in docs:
+            doc["id"] = str(doc["_id"])
             doc["_id"] = str(doc["_id"])
         
         logger.info(f"Retrieved {len(docs)} transcriptions (skip={skip}, limit={limit})")
@@ -255,4 +264,66 @@ async def delete_transcription_in_db(transcription_id: str) -> bool:
         
     except Exception as e:
         logger.error(f"Error deleting transcription: {e}")
+        raise
+
+
+async def get_user_ids_with_transcriptions() -> List[str]:
+    """
+    Get a list of distinct user_ids that have transcriptions.
+    
+    Returns:
+        List of user_id strings
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+        
+        # Get distinct user_ids
+        user_ids = await db[TRANSCRIPTIONS_COLLECTION].distinct("user_id")
+        
+        # Filter out None values and ensure strings
+        valid_user_ids = [str(uid) for uid in user_ids if uid]
+        
+        logger.info(f"Retrieved {len(valid_user_ids)} user_ids with transcriptions")
+        
+        return valid_user_ids
+        
+    except Exception as e:
+        logger.error(f"Error getting user_ids with transcriptions: {e}")
+        return []
+
+
+async def get_latest_transcription_by_user_id(user_id: str) -> Optional[Dict]:
+    """
+    Retrieve the latest transcription for a specific user ID.
+    
+    Args:
+        user_id: The user_id string to filter by
+        
+    Returns:
+        Dictionary with transcription data or None if not found
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+        
+        # Find latest document for this user_id
+        doc = await db[TRANSCRIPTIONS_COLLECTION].find_one(
+            {"user_id": user_id},
+            sort=[("created_at", -1)]
+        )
+        
+        if doc:
+            doc["id"] = str(doc["_id"])
+            doc["_id"] = str(doc["_id"])
+            logger.info(f"Retrieved latest transcription for user {user_id}")
+            return doc
+        else:
+            logger.warning(f"No transcription found for user {user_id}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error retrieving latest transcription for user {user_id}: {e}")
         raise
