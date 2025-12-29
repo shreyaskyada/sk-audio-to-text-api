@@ -50,6 +50,11 @@ async def save_transcription_to_db(transcription_data: dict) -> Dict:
             "audio_file_path": transcription_data.get("audio_file_path"),  # Store audio file path
             "username": transcription_data.get("username"),
             "user_id": transcription_data.get("user_id"),
+            "needs_rfa": transcription_data.get("needs_rfa", False),
+            "rfa_name": transcription_data.get("rfa_name"),
+            "needs_work_status": transcription_data.get("needs_work_status", False),
+            "work_status": transcription_data.get("work_status"),
+            "work_status_code": transcription_data.get("work_status_code"),
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         }
