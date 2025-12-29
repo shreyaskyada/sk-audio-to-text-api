@@ -2141,6 +2141,103 @@ async def update_transcription_endpoint(
                 # Don't fail the transcription update if SOAP regeneration fails
                 logger.warning("Continuing with transcription update despite SOAP regeneration error...")
         
+        # Check if RFA/Work Status info is being updated
+        # We do this after potential regeneration to ensure the info persists even if the note was just regenerated
+        if any(k in update_data for k in ['needs_rfa', 'rfa_name', 'needs_work_status', 'work_status']):
+            try:
+                # Re-fetch linked notes (in case they were just regenerated or to get fresh state)
+                linked_notes_for_update = await get_all_soap_notes_by_transcription_id(transcription_id)
+                
+                if linked_notes_for_update:
+                    logger.info(f"Processing {len(linked_notes_for_update)} linked SOAP notes for visit info injection")
+                    for note in linked_notes_for_update:
+                        try:
+                            note_id = note.get("_id")
+                            # Get current content (try formatted check first, then raw)
+                            content = note.get("formatted_soap_note") or note.get("soap_note") or ""
+                            
+                            if not content:
+                                continue
+                                
+                            modified_content = content
+                            changes_made = False
+                            
+                            # Handle RFA
+                            if update_data.get("needs_rfa") and update_data.get("rfa_name"):
+                                rfa_val = update_data.get("rfa_name")
+                                # Regex to find the RFA section: Starts with **REQUEST FOR AUTHORIZATION...** (flexible match)
+                                # and ends at the next section header (line starting with ** and uppercase text) or end of string
+                                rfa_header_pattern = r"(\*\*REQUEST FOR AUTHORIZATION.*?\*\*)"
+                                
+                                match = re.search(rfa_header_pattern, modified_content, re.IGNORECASE | re.DOTALL)
+                                if match:
+                                    # Section exists, finding the end of the section
+                                    start_index = match.start()
+                                    
+                                    # Find the next header after this one to define the range
+                                    remaining_content = modified_content[match.end():]
+                                    # Allow for various dashes/lines and whitespace
+                                    next_header_match = re.search(r"\n\s*\*\*[A-Z0-9\s\/–-]+\*\*", remaining_content)
+                                    
+                                    end_relative_index = next_header_match.start() if next_header_match else len(remaining_content)
+                                    end_index = match.end() + end_relative_index
+                                    
+                                    existing_body = remaining_content[:end_relative_index]
+                                    # Remove existing "Requested Service:" header from body to avoid duplication
+                                    cleaned_body = re.sub(r"^\s*\*\*Requested Service:?(\(s\))?\*\*\s*", "", existing_body, count=1, flags=re.IGNORECASE | re.MULTILINE).strip()
+                                    
+                                    # Construct new section content: Header + New Value + Cleaned Old Body
+                                    new_rfa_section = f"{match.group(1)}\n\n**Requested Service:**\n- {rfa_val}\n{cleaned_body}"
+                                    
+                                    # Replace the old section with the new one
+                                    modified_content = modified_content[:start_index] + new_rfa_section + modified_content[end_index:]
+                                    changes_made = True
+                                else:
+                                    # Section doesn't exist, append it
+                                    # Only add if not already present in some other form (simple check)
+                                    if rfa_val not in modified_content:
+                                        modified_content += f"\n\n**REQUEST FOR AUTHORIZATION (RFA)**\n\n**Requested Service:**\n- {rfa_val}"
+                                        changes_made = True
+                            
+                            # Handle Work Status
+                            if update_data.get("needs_work_status") and update_data.get("work_status"):
+                                ws_val = update_data.get("work_status")
+                                # Regex for Work Status section (flexible match)
+                                ws_header_pattern = r"(\*\*WORK STATUS.*?\*\*)"
+                                
+                                match = re.search(ws_header_pattern, modified_content, re.IGNORECASE | re.DOTALL)
+                                if match:
+                                    # Section exists, replace content
+                                    start_index = match.start()
+                                    
+                                    remaining_content = modified_content[match.end():]
+                                    # Allow for various dashes/lines and whitespace
+                                    next_header_match = re.search(r"\n\s*\*\*[A-Z0-9\s\/–-]+\*\*", remaining_content)
+                                    
+                                    end_relative_index = next_header_match.start() if next_header_match else len(remaining_content)
+                                    end_index = match.end() + end_relative_index
+                                    
+                                    existing_body = remaining_content[:end_relative_index]
+                                    new_ws_section = f"{match.group(1)}\n\n{ws_val}\n{existing_body}"
+                                    
+                                    modified_content = modified_content[:start_index] + new_ws_section + modified_content[end_index:]
+                                    changes_made = True
+                                else:
+                                    # Section doesn't exist, append it
+                                    if ws_val not in modified_content:
+                                        modified_content += f"\n\n**WORK STATUS**\n\n{ws_val}"
+                                        changes_made = True
+                                    
+                            if changes_made:
+                                await update_soap_note(note_id, {"formatted_soap_note": modified_content})
+                                logger.info(f"✅ Injected/Updated visit info in SOAP note: {note_id}")
+                                
+                        except Exception as inner_e:
+                            logger.error(f"Error updating individual SOAP note {note.get('_id')}: {inner_e}")
+                            
+            except Exception as e:
+                logger.error(f"Error injecting visit info into SOAP notes: {e}")
+
         # Retrieve updated transcription
         updated_transcription = await get_transcription_by_id(transcription_id)
         
@@ -2158,6 +2255,12 @@ async def update_transcription_endpoint(
             duration=updated_transcription.get("duration", 0.0),
             filename=updated_transcription.get("filename"),
             username=updated_transcription.get("username"),
+            user_id=updated_transcription.get("user_id"),
+            needs_rfa=updated_transcription.get("needs_rfa", False),
+            rfa_name=updated_transcription.get("rfa_name"),
+            needs_work_status=updated_transcription.get("needs_work_status", False),
+            work_status=updated_transcription.get("work_status"),
+            work_status_code=updated_transcription.get("work_status_code"),
             created_at=updated_transcription.get("created_at", datetime.utcnow())
         )
         
@@ -2448,16 +2551,17 @@ async def generate_soap_comprehensive(
         logger.info("Generating comprehensive orthopedic SOAP note with GPT-4...")
         
         # Fetch transcription from database if transcription_id is provided
+        transcription_doc = None
         if soap_request.transcription_id:
             # Always generate new SOAP note (removed cache check to allow regeneration)
-            transcription = await get_transcription_by_id(soap_request.transcription_id)
-            if not transcription:
+            transcription_doc = await get_transcription_by_id(soap_request.transcription_id)
+            if not transcription_doc:
                 raise HTTPException(
                     status_code=404,
                     detail=f"Transcription not found with ID: {soap_request.transcription_id}"
                 )
             # Set transcription text from database
-            soap_request.transcription = transcription.get("text", "")
+            soap_request.transcription = transcription_doc.get("text", "")
         elif not soap_request.transcription:
             raise HTTPException(
                 status_code=400,
@@ -2488,6 +2592,74 @@ async def generate_soap_comprehensive(
         # Generate comprehensive SOAP note (pass both formatted data and raw doc for post-processing)
         soap_result = await generate_comprehensive_soap_note(soap_request, intake_form_data, intake_doc, model=soap_request.model)
         
+        # --- INJECT TRANSCRIPTION METADATA (RFA/WORK STATUS) IF MISSED BY AIM ---
+        if transcription_doc:
+            try:
+                modified_content = soap_result.get("formatted_soap_note", "")
+                changes_made = False
+                
+                # Check for RFA
+                if transcription_doc.get("needs_rfa") and transcription_doc.get("rfa_name"):
+                    rfa_val = transcription_doc.get("rfa_name")
+                    if rfa_val not in modified_content:
+                        logger.info(f"Injecting missing RFA '{rfa_val}' into generated SOAP note")
+                        
+                        # Regex to find RFA section
+                        rfa_header_pattern = r"(\*\*REQUEST FOR AUTHORIZATION.*?\*\*)"
+                        match = re.search(rfa_header_pattern, modified_content, re.IGNORECASE | re.DOTALL)
+                        
+                        if match:
+                             # Insert into existing section
+                            start_index = match.start()
+                            remaining_content = modified_content[match.end():]
+                            next_header_match = re.search(r"\n\s*\*\*[A-Z0-9\s\/–-]+\*\*", remaining_content)
+                            
+                            end_relative_index = next_header_match.start() if next_header_match else len(remaining_content)
+                            end_index = match.end() + end_relative_index
+                            
+                            existing_body = remaining_content[:end_relative_index]
+                            # Remove existing "Requested Service:" header from body to avoid duplication
+                            cleaned_body = re.sub(r"^\s*\*\*Requested Service:?(\(s\))?\*\*\s*", "", existing_body, count=1, flags=re.IGNORECASE | re.MULTILINE).strip()
+                            
+                            new_rfa_section = f"{match.group(1)}\n\n**Requested Service:**\n- {rfa_val}\n{cleaned_body}"
+                            modified_content = modified_content[:start_index] + new_rfa_section + modified_content[end_index:]
+                        else:
+                             # Append new section
+                             modified_content += f"\n\n**REQUEST FOR AUTHORIZATION**\n\n**Requested Service:**\n- {rfa_val}"
+                        changes_made = True
+
+                # Check for Work Status
+                if transcription_doc.get("needs_work_status") and transcription_doc.get("work_status"):
+                    ws_val = transcription_doc.get("work_status")
+                    if ws_val not in modified_content:
+                        logger.info(f"Injecting missing Work Status '{ws_val}' into generated SOAP note")
+                        
+                        ws_header_pattern = r"(\*\*WORK STATUS.*?\*\*)"
+                        match = re.search(ws_header_pattern, modified_content, re.IGNORECASE | re.DOTALL)
+                        
+                        if match:
+                            start_index = match.start()
+                            remaining_content = modified_content[match.end():]
+                            next_header_match = re.search(r"\n\s*\*\*[A-Z0-9\s\/–-]+\*\*", remaining_content)
+                            end_relative_index = next_header_match.start() if next_header_match else len(remaining_content)
+                            end_index = match.end() + end_relative_index
+                            
+                            existing_body = remaining_content[:end_relative_index]
+                            new_ws_section = f"{match.group(1)}\n\n{ws_val}\n{existing_body}"
+                            modified_content = modified_content[:start_index] + new_ws_section + modified_content[end_index:]
+                        else:
+                            modified_content += f"\n\n**WORK STATUS**\n\n{ws_val}"
+                        changes_made = True
+                
+                if changes_made:
+                    soap_result["formatted_soap_note"] = modified_content
+                    # Also update raw soap_note field if it exists
+                    if "soap_note" in soap_result:
+                        soap_result["soap_note"] = modified_content
+                        
+            except Exception as e:
+                logger.error(f"Error injecting metadata into generated SOAP note: {e}")
+
         # Save to MongoDB
         document_id = None
         try:

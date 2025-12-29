@@ -39,6 +39,11 @@ class TranscriptionResponse(BaseModel):
     created_at: datetime
     soap_note: Optional[str] = None
     document_id: Optional[str] = None  # MongoDB document ID if saved to database
+    needs_rfa: Optional[bool] = False
+    rfa_name: Optional[str] = None
+    needs_work_status: Optional[bool] = False
+    work_status: Optional[str] = None
+    work_status_code: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -53,7 +58,14 @@ class TranscriptionListItem(BaseModel):
     filename: Optional[str] = None
     username: Optional[str] = None
     user_id: Optional[str] = None
+    username: Optional[str] = None
+    user_id: Optional[str] = None
     created_at: datetime
+    needs_rfa: Optional[bool] = False
+    rfa_name: Optional[str] = None
+    needs_work_status: Optional[bool] = False
+    work_status: Optional[str] = None
+    work_status_code: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -75,6 +87,11 @@ class TranscriptionCreateRequest(BaseModel):
     filename: Optional[str] = None
     username: Optional[str] = None
     user_id: Optional[str] = None
+    needs_rfa: Optional[bool] = False
+    rfa_name: Optional[str] = None
+    needs_work_status: Optional[bool] = False
+    work_status: Optional[str] = None
+    work_status_code: Optional[str] = None
 
 
 class TranscriptionUpdateRequest(BaseModel):
@@ -86,6 +103,11 @@ class TranscriptionUpdateRequest(BaseModel):
     filename: Optional[str] = None
     username: Optional[str] = None
     user_id: Optional[str] = None
+    needs_rfa: Optional[bool] = None
+    rfa_name: Optional[str] = None
+    needs_work_status: Optional[bool] = None
+    work_status: Optional[str] = None
+    work_status_code: Optional[str] = None
 
 
 # ============================================
