@@ -99,7 +99,7 @@ If intake data is not provided → you may use “As per chart”.
 
 STAGE 1 — CLINICAL EXTRACTION 
 •	Extract patient-reported information → HPI only
-•	Extract exam findings → O – OBJECTIVE only
+•	Extract exam findings → OBJECTIVE only
 •	Extract imaging findings → Imaging / Studies Review only
 ❌ Do NOT think about CPT, RFA, Billing, or Work Status in this stage.
 
@@ -279,7 +279,7 @@ Visit Type: [Consultation / Follow-up / Procedure / Post-Op - Use this to determ
 [Primary symptom or reason for visit]  
 
 **History of Present Illness (HPI):**  
-[Write a narrative paragraph describing the patient's presentation, including: onset date, mechanism of injury, context, pain scale, aggravating/reducing factors, functional limitations, progression, and symptoms reported by the patient. Format as a flowing paragraph similar to: "The patient is a [age]-year-old [gender] presenting with [chief complaint] after [mechanism/context]. [Additional relevant clinical details about symptoms, timeline, and patient-reported information.]" [CRITICAL: HPI should ONLY include patient-reported information, symptoms, mechanism of injury, timeline, and functional limitations. DO NOT include objective examination findings (e.g., "ACL drawer is positive", "Lachman is positive", "McMurray test is positive") or imaging results (e.g., "MRI confirms", "MRI shows", "complete tear of ACL") in HPI - these belong in the Physical Exam section under O – OBJECTIVE/Physical Exam.]  
+[Write a narrative paragraph describing the patient's presentation, including: onset date, mechanism of injury, context, pain scale, aggravating/reducing factors, functional limitations, progression, and symptoms reported by the patient. Format as a flowing paragraph similar to: "The patient is a [age]-year-old [gender] presenting with [chief complaint] after [mechanism/context]. [Additional relevant clinical details about symptoms, timeline, and patient-reported information.]" [CRITICAL: HPI should ONLY include patient-reported information, symptoms, mechanism of injury, timeline, and functional limitations. DO NOT include objective examination findings (e.g., "ACL drawer is positive", "Lachman is positive", "McMurray test is positive") or imaging results (e.g., "MRI confirms", "MRI shows", "complete tear of ACL") in HPI - these belong in the Physical Exam section under OBJECTIVE/Physical Exam.]  
 
 **Past Medical History:**  
 [CRITICAL: If intake form data is provided below with "Past Medical History (from intake form)", you MUST use that exact data. Do NOT use "As per chart" if intake form data is provided. List the specific comorbidities exactly as shown in the intake form data (e.g., "Hypertension, Diabetes"). Only use "As per chart" if NO intake form data is provided for this section.]  
@@ -292,7 +292,7 @@ Visit Type: [Consultation / Follow-up / Procedure / Post-Op - Use this to determ
 
 ---
 
-**O – OBJECTIVE/Physical Exam**  
+**OBJECTIVE/Physical Exam**  
 
 **General Exam:**  
 [Write a narrative paragraph format: "The patient is [alert/oriented status], [well-nourished/poorly nourished], and in [distress level - no distress/mild/moderate/severe discomfort] due to [specific complaint if applicable]. Vitals [stable/unstable/as documented]." Adapt based on what is mentioned in the transcription.]  
@@ -677,7 +677,7 @@ INSTRUCTIONS FOR THE AI
     * If the sentence/paragraph contains imaging findings or diagnostic results → goes to Physical Exam AND Imaging/Studies Review, NOT HPI
     * If the sentence/paragraph describes the mechanism of injury, timeline, or patient's subjective experience → goes to HPI
   - **ABSOLUTE RULE FOR ANY TRANSCRIPTION FORMAT:** 
-    * When you encounter ANY phrase indicating examination, testing, imaging, or objective findings (regardless of exact wording or format), that content MUST go to the "O – OBJECTIVE/Physical Exam" section, NOT in HPI
+    * When you encounter ANY phrase indicating examination, testing, imaging, or objective findings (regardless of exact wording or format), that content MUST go to the "OBJECTIVE/Physical Exam" section, NOT in HPI
     * HPI should flow naturally with patient-reported information only, regardless of how the transcription is structured
     * If uncertain whether something is patient-reported or examination finding, err on the side of placing it in Physical Exam if it contains objective measurements, test results, or observations
   - **EXAMPLES FOR DIFFERENT TRANSCRIPTION STYLES:**
@@ -762,7 +762,7 @@ Enforcement: If imaging or operative plan documents a structural lesion (tear, r
   - Examples: "ACL reconstruction with medial meniscus repair, right knee" or "Rotator cuff repair, left shoulder" or "Total hip arthroplasty, left hip"
   - Pay careful attention to the dictation to ensure the correct side is specified - do not assume or guess
   - If laterality is not clearly mentioned in the dictation, infer from context (e.g., if diagnosis mentions "right arm", the surgical plan should also specify "right")
-• **CRITICAL FOR PHYSICAL EXAM (O – OBJECTIVE/Physical Exam) - INCLUDE EXAMINATION FINDINGS AND DOCTOR-REVIEWED REPORTS:**
+• **CRITICAL FOR PHYSICAL EXAM (OBJECTIVE/Physical Exam) - INCLUDE EXAMINATION FINDINGS AND DOCTOR-REVIEWED REPORTS:**
   - The Physical Exam section MUST include ALL examination findings and doctor-reviewed reports
   - Include phrases like "Examination reveals", "Physical examination shows", "Clinical examination demonstrates", "On examination, there is" in the Physical Exam section (typically under Special Tests or as appropriate)
   - When reports (MRI, X-ray, CT, EMG, etc.) have been reviewed by the doctor and findings are mentioned (e.g., "MRI confirms", "X-ray shows", "MRI reveals", "Imaging demonstrates", "On MRI review"), these findings MUST be included in BOTH:
@@ -1107,7 +1107,7 @@ ________________________________________
 • Correct grammar but preserve medical meaning.  
 • Keep all formatting identical to this template.  
 • Format all main section headings and ALL sub-headings as bold using markdown syntax `**text**`. This includes:
-  - Main headings: SUBJECTIVE, O – OBJECTIVE/Physical Exam, ASSESSMENT, PLAN, CPT / BILLING CODES, REQUEST FOR AUTHORIZATION (RFA), WORK STATUS, SIGNATURE / PROVIDER INFORMATION
+  - Main headings: SUBJECTIVE, OBJECTIVE/Physical Exam, ASSESSMENT, PLAN, CPT / BILLING CODES, REQUEST FOR AUTHORIZATION (RFA), WORK STATUS, SIGNATURE / PROVIDER INFORMATION
   - Sub-headings under SUBJECTIVE: Chief Complaint:, History of Present Illness (HPI):, Past Medical History:, Medications:, Social / Occupational History:
   - Sub-headings under OBJECTIVE: General Exam:, Local Musculoskeletal Exam – [Joint / Region]:, Inspection:, Palpation:, Range of Motion (ROM):, Strength:, Neurovascular Status:, Special Tests:, Imaging / Studies Review:
   - Sub-headings under ASSESSMENT: Primary Diagnosis:, Secondary Diagnosis:, Associated Diagnosis:, Functional Impairment Statement:, Medical Necessity & MTUS Compliance:, Medical Decision Making (MDM):, Problem Complexity:, Data Reviewed:, Risk Level:, Planned Procedures / RFAs:

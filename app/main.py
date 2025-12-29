@@ -1043,7 +1043,7 @@ def extract_soap_sections_from_formatted_note(formatted_soap_note: str) -> dict:
       - "## S – SUBJECTIVE"
     But the current `ORTHOPEDIC_SOAP_SYSTEM_PROMPT` template uses plain headings like:
       - "SUBJECTIVE"
-      - "O – OBJECTIVE/Physical Exam"
+      - "OBJECTIVE/Physical Exam"
       - "ASSESSMENT"
       - "PLAN"
 
