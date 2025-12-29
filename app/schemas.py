@@ -1,7 +1,7 @@
 """
 Pydantic schemas for API request/response models
 """
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, Field
 from typing import Optional, List
 from datetime import datetime
 
@@ -45,7 +45,16 @@ class TranscriptionResponse(BaseModel):
     work_status: Optional[str] = None
     work_status_code: Optional[str] = None
     
-    model_config = ConfigDict(from_attributes=True)
+    # New SOAP section fields
+    chief_complaint: Optional[str] = None
+    history: Optional[str] = None
+    examination: Optional[str] = None
+    assessment: Optional[str] = None
+    treatment_plan: Optional[str] = None
+    medications: Optional[str] = None
+    follow_up: Optional[str] = None
+    
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class TranscriptionListItem(BaseModel):
@@ -58,8 +67,6 @@ class TranscriptionListItem(BaseModel):
     filename: Optional[str] = None
     username: Optional[str] = None
     user_id: Optional[str] = None
-    username: Optional[str] = None
-    user_id: Optional[str] = None
     created_at: datetime
     needs_rfa: Optional[bool] = False
     rfa_name: Optional[str] = None
@@ -67,7 +74,16 @@ class TranscriptionListItem(BaseModel):
     work_status: Optional[str] = None
     work_status_code: Optional[str] = None
     
-    model_config = ConfigDict(from_attributes=True)
+    # New SOAP section fields
+    chief_complaint: Optional[str] = None
+    history: Optional[str] = None
+    examination: Optional[str] = None
+    assessment: Optional[str] = None
+    treatment_plan: Optional[str] = None
+    medications: Optional[str] = None
+    follow_up: Optional[str] = None
+    
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class TranscriptionListResponse(BaseModel):
@@ -92,6 +108,15 @@ class TranscriptionCreateRequest(BaseModel):
     needs_work_status: Optional[bool] = False
     work_status: Optional[str] = None
     work_status_code: Optional[str] = None
+    
+    # New SOAP section fields
+    chief_complaint: Optional[str] = None
+    history: Optional[str] = None
+    examination: Optional[str] = None
+    assessment: Optional[str] = None
+    treatment_plan: Optional[str] = None
+    medications: Optional[str] = None
+    follow_up: Optional[str] = None
 
 
 class TranscriptionUpdateRequest(BaseModel):
@@ -108,6 +133,15 @@ class TranscriptionUpdateRequest(BaseModel):
     needs_work_status: Optional[bool] = None
     work_status: Optional[str] = None
     work_status_code: Optional[str] = None
+    
+    # New SOAP section fields
+    chief_complaint: Optional[str] = None
+    history: Optional[str] = None
+    examination: Optional[str] = None
+    assessment: Optional[str] = None
+    treatment_plan: Optional[str] = None
+    medications: Optional[str] = None
+    follow_up: Optional[str] = None
 
 
 # ============================================
