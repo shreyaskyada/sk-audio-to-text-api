@@ -1436,6 +1436,11 @@ async def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_for
         raw_soap_note = response.choices[0].message.content.strip()
         formatted_soap_note = raw_soap_note
         
+        # Remove any --- separators if the AI still generates them
+        formatted_soap_note = re.sub(r'^\s*---\s*$', '', formatted_soap_note, flags=re.MULTILINE)
+        # Clean up multiple newlines that might be left behind
+        formatted_soap_note = re.sub(r'\n{3,}', '\n\n', formatted_soap_note)
+        
         # Check if post-processing should be skipped (returns raw output like ChatGPT)
         # NOTE: Use getattr for backwards compatibility if SOAPRequest schema doesn't include this field.
         skip_post_processing = getattr(soap_request, "skip_post_processing", False) or False
