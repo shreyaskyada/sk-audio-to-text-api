@@ -262,17 +262,14 @@ OUTPUT TEMPLATE
 The Output Template must contain ONLY the following sections, in this exact order, with exact headings, exact spacing, and exact labels.
 
 
-PATIENT DEMOGRAPHICS 
- Name: [Patient Name - CRITICAL: If patient name is not available in the transcription or provided context, OMIT this entire line - do not include "Name:" at all]  
+
+Name: [Patient Name - CRITICAL: If patient name is not available in the transcription or provided context, OMIT this entire line - do not include "Name:" at all]  
  Age / Gender: [Age, Gender - CRITICAL: If NOT available in intake form, extract Age and Gender from the transcription.If age or gender is not available in the transcription or provided context, OMIT this entire line - do not include "Age / Gender:" at all]  
  Date of Visit: [MM/DD/YYYY - CRITICAL: If date of visit is not available in the transcription or provided context, OMIT this entire line - do not include "Date of Visit:" at all]  
  Examiner: [Provider Name - CRITICAL: If examiner/provider name is not available in the transcription or provided context, OMIT this entire line - do not include "Examiner:" at all]  
  Claim / WC #: [If applicable - CRITICAL: If claim/WC number is not available in the transcription or provided context, OMIT this entire line - do not include "Claim / WC #:" at all]  
  Employer / Carrier: [If applicable - CRITICAL: If NOT available in intake form, extract occupation from the transcription (e.g., “works for FedEx”, “warehouse worker”, “delivery driver”).If employer/carrier is not available in the transcription or provided context, OMIT this entire line - do not include "Employer / Carrier:" at all]  
 Visit Type: [Consultation / Follow-up / Procedure / Post-Op - Use this to determine Workers' Comp code: Consultation = WC002, Follow-up = WC003 - CRITICAL: If visit type cannot be determined from the transcription, OMIT this entire line - do not include "Visit Type:" at all]  
-
----
-
 **SUBJECTIVE**  
 
 **Chief Complaint:**  
@@ -289,9 +286,6 @@ Visit Type: [Consultation / Follow-up / Procedure / Post-Op - Use this to determ
 
 **Social / Occupational History:**  
 [CRITICAL: If intake form data is provided below with "Social/Occupational History (from intake form)", you MUST use that exact data .Do NOT use "As per chart" if intake form data is provided. Format the information from the intake form data. If not in Intake form then extract Occupation from the transcription. Only use "As per chart" if NO intake form data is provided or NO data in transcription for this section.]   
-
----
-
 **OBJECTIVE/Physical Exam**  
 
 **General Exam:**  
@@ -314,8 +308,6 @@ Visit Type: [Consultation / Follow-up / Procedure / Post-Op - Use this to determ
 **Imaging / Studies Review:**  
 [CRITICAL: This section should contain the ACTUAL imaging findings in the format: "[Study Type]: [Findings]". When reports (MRI, X-ray, CT, EMG, etc.) have been reviewed by the doctor and findings are mentioned, include the complete findings here. Examples: "MRI: Complete tear of ACL and medial meniscus with crandial tear" or "X-ray: No fractures noted" or "MRI: Complete tear of ACL, medial meniscus, bucket handle tear is noted". Format should be "[Study Type]: [Actual findings from the imaging report]". Do NOT use generic summaries like "MRI of knee reviewed" - always include the actual findings. If multiple studies are reviewed, list each on a separate line or in the same format.]  
 [CRITICAL: If no imaging or studies are mentioned in the transcription, OMIT this entire line - do not include "Imaging / Studies Review:" at all]  
----
-
 **ASSESSMENT**
 
 **Primary Diagnosis:** [Generate actual ICD-10 code based on the documented diagnosis] — [Description - CRITICAL: Use the exact diagnosis documented in the record. The ICD-10 code must be correct and the description MUST include the maximum severity mentioned in the dictation (e.g., "complete tear", "partial tear", "rupture", "avulsion"). Do NOT invent severity or structural diagnoses not present in the documentation.]
@@ -373,8 +365,6 @@ Visit Type: [Consultation / Follow-up / Procedure / Post-Op - Use this to determ
  
 **Planned Procedures / RFAs:** [List only procedures or authorizations that are explicitly ordered today (e.g., "MRI right knee ordered", "RFA for ACL reconstruction and medial meniscus repair requested"). If none ordered, write "None required today."]
 Diagnosis policy: Always derive Primary Diagnosis from explicit documentation. Do NOT invent a Secondary or Associated structural diagnosis. Only add a Secondary structural diagnosis if explicitly documented. If the workflow requires an extra code and no second structural diagnosis exists, use a conservative symptom code (e.g., pain code) only if the symptom is clearly documented. Otherwise omit the field.
----
-
 **PLAN**
 
 **Immediate Treatment / Plan:**  
@@ -398,8 +388,6 @@ Diagnosis policy: Always derive Primary Diagnosis from explicit documentation. D
 
 **Patient Education:**  
 All questions were answered. The patient verbalized understanding.
-
----
 
 **CPT / BILLING CODES**
 
@@ -457,8 +445,6 @@ HARD BILLING SAFETY RULES (ENFORCED)
 •	Surgical CPTs → ONLY if surgery occurred today (rare)
 •	Never infer procedures
 •	Never duplicate CPTs between Billing and RFA
-
----
 
 **REQUEST FOR AUTHORIZATION (RFA)**
 
@@ -567,8 +553,6 @@ Supportive CPTs must be listed as bullet points, one per line:
 
 **Intent:**
 "Submitted to DWC Utilization Review for medically necessary orthopedic care."
----
-
 **WORK STATUS**
 
 [Select ONE and ONLY ONE work status from the list below.
@@ -636,8 +620,6 @@ Hard Enforcement Rules for Work Status:
 • DO NOT infer TTD from occupation alone.
 • DO NOT infer TTD from injury severity alone.
 • TTD requires explicit provider work-status language.
----
-
 **SIGNATURE / PROVIDER INFORMATION**
 
 **Provider Name:**

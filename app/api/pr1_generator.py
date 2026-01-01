@@ -92,6 +92,67 @@ def str_or_nd(val: Optional[str]) -> str:
     return val if (val is not None and str(val).strip() != "") else ""
 
 
+def format_clinical_data(val: Any) -> str:
+    """
+    Recursively format clinical data (strings, lists, dicts) into clean text.
+    Prevents literal 'arr' or 'object' markers (like ['...'] or {'...'}) from appearing 
+    in the final generated PR-1 form text.
+    """
+    from typing import List, Dict
+    
+    if val is None:
+        return ""
+    if isinstance(val, str):
+        return val.strip()
+    if isinstance(val, (int, float, bool)):
+        return str(val)
+        
+    if isinstance(val, list):
+        # Recursively format each item in the list
+        parts = [format_clinical_data(item) for item in val if item]
+        if not parts:
+            return ""
+        # Join short items with commas, long items with newlines
+        if all(len(p) < 40 for p in parts):
+            return ", ".join(parts)
+        return "\n".join(parts)
+        
+    if isinstance(val, dict):
+        # Extract the most meaningful text field if it exists
+        text_keys = ["text", "content", "value", "summary", "description", "note"]
+        for key in text_keys:
+            if key in val and val[key]:
+                return format_clinical_data(val[key])
+        
+        # Special handling for medication-like objects (medication, dose, frequency)
+        med = val.get("medication") or val.get("name") or val.get("drug") or val.get("medicine")
+        dose = val.get("dose") or val.get("dosage") or val.get("strength")
+        freq = val.get("frequency") or val.get("freq") or val.get("sig")
+        
+        if med:
+            med_parts = [format_clinical_data(med)]
+            if dose: med_parts.append(format_clinical_data(dose))
+            if freq: med_parts.append(format_clinical_data(freq))
+            return " ".join(med_parts)
+            
+        # General dictionary formatting: combine keys and values
+        dict_parts = []
+        for k, v in val.items():
+            if v:
+                formatted_v = format_clinical_data(v)
+                if formatted_v:
+                    # Skip internal/generic keys
+                    if k.lower() in ("id", "_id", "type", "metadata"):
+                        continue
+                    if len(str(k)) < 25:
+                        dict_parts.append(f"{k}: {formatted_v}")
+                    else:
+                        dict_parts.append(formatted_v)
+        return " | ".join(dict_parts)
+        
+    return str(val).strip()
+
+
 def extract_diagnosis_codes_from_soap_assessment(soap_doc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Extract diagnosis codes from SOAP note's A - ASSESSMENT section.
@@ -658,6 +719,12 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
     
     # Build requests array in the exact format required
     requests = []
+    medical_treatment_requests = []
+    drug_requests = []
+    
+    # Get primary diagnosis code for fallback
+    assessment_codes = extract_diagnosis_codes_from_soap_assessment(soap_doc)
+    primary_code = assessment_codes.get("primary_diagnosis_code")
     
     for it in rfa_items:
         # Handle both dict and Pydantic model
@@ -690,6 +757,7 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                 it.get("diagnosis_codes") or
                 it.get("icd10") or
                 it.get("icd10_code") or
+                primary_code or
                 ""
             )
             dose_form = (
@@ -705,14 +773,18 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
             )
             
             if drug_name:  # Only add if drug name exists
-                requests.append({
+                drug_item = {
                     "type": "drug",
                     "diagnosis": diagnosis,
                     "diagnosisCode": diagnosis_code,
+                    "diagnosis_code": diagnosis_code, # FE alias
                     "drug": drug_name,
                     "doseForm": dose_form,
+                    "dose_form": dose_form,
                     "quantity": quantity
-                })
+                }
+                requests.append(drug_item)
+                drug_requests.append(drug_item)
         else:
             # Treatment request format - use exact field names
             service_requested = (
@@ -737,6 +809,7 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                 it.get("diagnosis_codes") or
                 it.get("icd10") or
                 it.get("icd10_code") or
+                primary_code or
                 ""
             )
             cpt = (
@@ -777,9 +850,12 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                     "type": "treatment",
                     "diagnosis": diagnosis,
                     "diagnosisCode": diagnosis_code,
+                    "diagnosis_code": diagnosis_code, # FE alias
                     "serviceRequested": service_requested,
+                    "service_requested": service_requested, # FE alias
                     "cpt": cpt,
-                    "frequencyDuration": frequency_duration
+                    "frequencyDuration": frequency_duration,
+                    "frequency_duration": frequency_duration # FE alias
                 }
                 
                 # CRITICAL: Extract CPT codes mentioned in the SOAP dictation text
@@ -847,11 +923,15 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                     "type": "treatment",
                     "diagnosis": diagnosis,
                     "diagnosisCode": diagnosis_code,
+                    "diagnosis_code": diagnosis_code, # FE alias
                     "serviceRequested": service_requested,
+                    "service_requested": service_requested, # FE alias
                     "cpt": cpt,
-                    "frequencyDuration": frequency_duration
+                    "frequencyDuration": frequency_duration,
+                    "frequency_duration": frequency_duration # FE alias
                 }
                 requests.append(primary_request)
+                medical_treatment_requests.append(primary_request)
                 logger.info(f"RFA primary item '{service_requested}': Primary CPT {cpt}")
                 
                 # Now create separate request items for each supportive CPT code
@@ -927,7 +1007,7 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                         "A4570": "Splint",
                         "A4572": "Splint, Custom",
                         "A4590": "Elastic Bandage",
-                        "A4636": "Surgical Dressing",
+                        "A456": "Surgical Dressing",
                         "A4637": "Surgical Dressing, Advanced",
                         "A4638": "Surgical Dressing, Specialty",
                         # Post-op care supplies
@@ -955,11 +1035,15 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                                 "type": "treatment",
                                 "diagnosis": diagnosis,
                                 "diagnosisCode": diagnosis_code,
+                                "diagnosis_code": diagnosis_code, # FE alias
                                 "serviceRequested": service_name,
+                                "service_requested": service_name, # FE alias
                                 "cpt": cpt_code,
-                                "frequencyDuration": frequency_duration if frequency_duration else "As needed"
+                                "frequencyDuration": frequency_duration if frequency_duration else "As needed",
+                                "frequency_duration": frequency_duration if frequency_duration else "As needed" # FE alias
                             }
                             requests.append(supportive_request)
+                            medical_treatment_requests.append(supportive_request)
                             logger.info(f"RFA supportive item: {service_name} (CPT: {cpt_code})")
                     
                     logger.info(f"RFA item '{service_requested}': Created {len(supportive_cpts)} separate supportive CPT request items (total {len(requests)} requests)")
@@ -972,8 +1056,12 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
     return {
         "patientName": patient_name,
         "generalRequestText": general_request_text,
-        "requests": requests
+        "general_request_text": general_request_text,
+        "requests": requests,
+        "medical_treatment_requests": medical_treatment_requests,
+        "drug_requests": drug_requests
     }
+
 
 
 def extract_hpi_from_intake(intake_doc: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -1292,10 +1380,9 @@ def build_section_b(
                 return None
             if obj is None:
                 return None
-        # Preserve boolean values, convert other non-strings to strings
         if isinstance(obj, bool):
             return obj
-        return obj if isinstance(obj, str) else str(obj) if obj else None
+        return format_clinical_data(obj) if obj is not None else None
     
     # Helper function to extract nested boolean values (for checkboxes)
     def extract_nested_bool(obj, *keys):
@@ -1339,9 +1426,9 @@ def build_section_b(
             logger.info("Including Subjective Findings from SOAP dictation (subjective field)")
         elif isinstance(soap_subjective, dict):
             # If subjective is a dict, extract text content
-            subjective_text = soap_subjective.get("text") or soap_subjective.get("content") or str(soap_subjective)
-            if subjective_text and str(subjective_text).strip():
-                chief_complaint_parts.append(str(subjective_text).strip())
+            subjective_text = format_clinical_data(soap_subjective)
+            if subjective_text:
+                chief_complaint_parts.append(subjective_text)
                 logger.info("Including Subjective Findings from SOAP dictation (subjective dict)")
     
     # Priority 1b: Extract from nested clinical_information structure (GPT-extracted format)
@@ -1362,12 +1449,13 @@ def build_section_b(
                         chief_complaint_parts.append(subjective_text)
                         logger.info("Including Subjective Findings from SOAP dictation (clinical_information.subjective.chief_complaint)")
                 
-                if brief_history_nested and str(brief_history_nested).strip():
-                    subjective_text = str(brief_history_nested).strip()
-                    is_duplicate = any(subjective_text == existing.strip() for existing in chief_complaint_parts)
-                    if not is_duplicate:
-                        chief_complaint_parts.append(subjective_text)
-                        logger.info("Including Subjective Findings from SOAP dictation (clinical_information.subjective.brief_history)")
+                if brief_history_nested:
+                    subjective_text = format_clinical_data(brief_history_nested)
+                    if subjective_text:
+                        is_duplicate = any(subjective_text == existing.strip() for existing in chief_complaint_parts)
+                        if not is_duplicate:
+                            chief_complaint_parts.append(subjective_text)
+                            logger.info("Including Subjective Findings from SOAP dictation (clinical_information.subjective.brief_history)")
             elif isinstance(subjective_obj, str) and subjective_obj.strip():
                 # If subjective is a string directly
                 is_duplicate = any(subjective_obj.strip() == existing.strip() for existing in chief_complaint_parts)
@@ -1383,12 +1471,13 @@ def build_section_b(
                 clinical_info.get("HPI") or
                 clinical_info.get("history_of_present_illness")
             )
-            if subjective_flat and str(subjective_flat).strip():
-                subjective_text = str(subjective_flat).strip()
-                is_duplicate = any(subjective_text == existing.strip() for existing in chief_complaint_parts)
-                if not is_duplicate:
-                    chief_complaint_parts.append(subjective_text)
-                    logger.info("Including Subjective Findings from SOAP dictation (clinical_information flat fields)")
+            if subjective_flat:
+                subjective_text = format_clinical_data(subjective_flat)
+                if subjective_text:
+                    is_duplicate = any(subjective_text == existing.strip() for existing in chief_complaint_parts)
+                    if not is_duplicate:
+                        chief_complaint_parts.append(subjective_text)
+                        logger.info("Including Subjective Findings from SOAP dictation (clinical_information flat fields)")
         elif isinstance(clinical_info, str) and clinical_info.strip():
             # If clinical_information is a string, use it as subjective
             is_duplicate = any(clinical_info.strip() == existing.strip() for existing in chief_complaint_parts)
@@ -1398,22 +1487,24 @@ def build_section_b(
     
     # Priority 2: Get HPI from PR-1 specific fields (if available)
     soap_chief_complaint = doc.get("chief_complaint") or doc.get("brief_history")
-    if soap_chief_complaint and str(soap_chief_complaint).strip():
-        subjective_text = str(soap_chief_complaint).strip()
-        # Only add if not duplicate
-        is_duplicate = any(subjective_text == existing.strip() for existing in chief_complaint_parts)
-        if not is_duplicate:
-            chief_complaint_parts.append(subjective_text)
-            logger.info("Including Subjective Findings from SOAP dictation (chief_complaint/brief_history)")
+    if soap_chief_complaint:
+        subjective_text = format_clinical_data(soap_chief_complaint)
+        if subjective_text:
+            # Only add if not duplicate
+            is_duplicate = any(subjective_text == existing.strip() for existing in chief_complaint_parts)
+            if not is_duplicate:
+                chief_complaint_parts.append(subjective_text)
+                logger.info("Including Subjective Findings from SOAP dictation (chief_complaint/brief_history)")
     
     # Priority 3: Check reason_for_visit field (might contain chief complaint info)
     reason_for_visit = doc.get("reason_for_visit")
-    if reason_for_visit and str(reason_for_visit).strip():
-        reason_text = str(reason_for_visit).strip()
-        is_duplicate = any(reason_text == existing.strip() for existing in chief_complaint_parts)
-        if not is_duplicate:
-            chief_complaint_parts.append(reason_text)
-            logger.info("Including Subjective Findings from SOAP dictation (reason_for_visit)")
+    if reason_for_visit:
+        reason_text = format_clinical_data(reason_for_visit)
+        if reason_text:
+            is_duplicate = any(reason_text == existing.strip() for existing in chief_complaint_parts)
+            if not is_duplicate:
+                chief_complaint_parts.append(reason_text)
+                logger.info("Including Subjective Findings from SOAP dictation (reason_for_visit)")
     
     # Priority 4: Get HPI from intake form (Sections G + H) - supplementary information
     if intake_doc:
@@ -1452,43 +1543,35 @@ def build_section_b(
     # Always include objective field from SOAP notes stored in MongoDB
     soap_objective = doc.get("objective")
     soap_physical_exam = doc.get("physical_exam")
-    
-    # Include physical_exam if it exists (PR-1 specific field)
-    if soap_physical_exam and str(soap_physical_exam).strip():
-        physical_exam_parts.append(str(soap_physical_exam).strip())
-        logger.info("Including Objective Findings from SOAP dictation (physical_exam field)")
+    if soap_physical_exam:
+        formatted_text = format_clinical_data(soap_physical_exam)
+        if formatted_text:
+            physical_exam_parts.append(formatted_text)
+            logger.info("Including Objective Findings from SOAP dictation (physical_exam field)")
     
     # ALWAYS include objective field from SOAP (standard SOAP note field stored in MongoDB)
-    if soap_objective and str(soap_objective).strip():
-        objective_text = str(soap_objective).strip()
-        # Only add if not already added (to avoid duplicates if physical_exam and objective are the same)
-        is_duplicate = any(objective_text == existing.strip() for existing in physical_exam_parts)
-        if not is_duplicate:
-            physical_exam_parts.append(objective_text)
-            logger.info("Including Objective Findings from SOAP dictation (objective field)")
-        else:
-            logger.info("Objective field from SOAP is duplicate of physical_exam, skipping")
+    if soap_objective:
+        objective_text = format_clinical_data(soap_objective)
+        if objective_text:
+            # Only add if not already added (to avoid duplicates if physical_exam and objective are the same)
+            is_duplicate = any(objective_text == existing.strip() for existing in physical_exam_parts)
+            if not is_duplicate:
+                physical_exam_parts.append(objective_text)
+                logger.info("Including Objective Findings from SOAP dictation (objective field)")
+            else:
+                logger.info("Objective field from SOAP is duplicate of physical_exam, skipping")
     
     # Extract from nested clinical_information structure (GPT-extracted format)
     if clinical_info and isinstance(clinical_info, dict):
         # Check for objective field (can be string or nested)
         objective_from_clinical = clinical_info.get("objective")
         if objective_from_clinical:
-            if isinstance(objective_from_clinical, str) and objective_from_clinical.strip():
-                objective_text = objective_from_clinical.strip()
+            objective_text = format_clinical_data(objective_from_clinical)
+            if objective_text:
                 is_duplicate = any(objective_text == existing.strip() for existing in physical_exam_parts)
                 if not is_duplicate:
                     physical_exam_parts.append(objective_text)
                     logger.info("Including Objective Findings from SOAP dictation (clinical_information.objective)")
-            elif isinstance(objective_from_clinical, dict):
-                # If objective is a dict, extract text content
-                objective_text = objective_from_clinical.get("text") or objective_from_clinical.get("content") or str(objective_from_clinical)
-                if objective_text and str(objective_text).strip():
-                    objective_text_str = str(objective_text).strip()
-                    is_duplicate = any(objective_text_str == existing.strip() for existing in physical_exam_parts)
-                    if not is_duplicate:
-                        physical_exam_parts.append(objective_text_str)
-                        logger.info("Including Objective Findings from SOAP dictation (clinical_information.objective dict)")
         
         # Also check for physical_exam field
         physical_exam_from_clinical = (
@@ -1497,12 +1580,13 @@ def build_section_b(
             clinical_info.get("exam") or
             clinical_info.get("examination")
         )
-        if physical_exam_from_clinical and str(physical_exam_from_clinical).strip():
-            objective_text = str(physical_exam_from_clinical).strip()
-            is_duplicate = any(objective_text == existing.strip() for existing in physical_exam_parts)
-            if not is_duplicate:
-                physical_exam_parts.append(objective_text)
-                logger.info("Including Objective Findings from SOAP dictation (clinical_information.physical_exam)")
+        if physical_exam_from_clinical:
+            objective_text = format_clinical_data(physical_exam_from_clinical)
+            if objective_text:
+                is_duplicate = any(objective_text == existing.strip() for existing in physical_exam_parts)
+                if not is_duplicate:
+                    physical_exam_parts.append(objective_text)
+                    logger.info("Including Objective Findings from SOAP dictation (clinical_information.physical_exam)")
     
     # Extract from formatted_soap_note Objective section or transcription if not found in structured fields
     if not physical_exam_parts:
@@ -1587,16 +1671,26 @@ def build_section_b(
             imaging = treatment_plan_info.get("imaging")
             dme = treatment_plan_info.get("DME") or treatment_plan_info.get("dme") or treatment_plan_info.get("durable_medical_equipment")
             
-            if surgery and str(surgery).strip():
-                plan_components.append(f"Surgery: {str(surgery).strip()}")
-            if pt and str(pt).strip():
-                plan_components.append(f"PT: {str(pt).strip()}")
-            if injections and str(injections).strip():
-                plan_components.append(f"Injections: {str(injections).strip()}")
-            if imaging and str(imaging).strip():
-                plan_components.append(f"Imaging: {str(imaging).strip()}")
-            if dme and str(dme).strip():
-                plan_components.append(f"DME: {str(dme).strip()}")
+            if surgery:
+                formatted = format_clinical_data(surgery)
+                if formatted:
+                    plan_components.append(f"Surgery: {formatted}")
+            if pt:
+                formatted = format_clinical_data(pt)
+                if formatted:
+                    plan_components.append(f"PT: {formatted}")
+            if injections:
+                formatted = format_clinical_data(injections)
+                if formatted:
+                    plan_components.append(f"Injections: {formatted}")
+            if imaging:
+                formatted = format_clinical_data(imaging)
+                if formatted:
+                    plan_components.append(f"Imaging: {formatted}")
+            if dme:
+                formatted = format_clinical_data(dme)
+                if formatted:
+                    plan_components.append(f"DME: {formatted}")
             
             # Also check for general treatment/plan fields
             plan_text = (
@@ -1609,11 +1703,13 @@ def build_section_b(
             # Combine components
             if plan_components:
                 combined_plan = " | ".join(plan_components)
-                if plan_text and str(plan_text).strip():
-                    combined_plan = f"{str(plan_text).strip()} | {combined_plan}"
+                if plan_text:
+                    formatted_plan = format_clinical_data(plan_text)
+                    if formatted_plan:
+                        combined_plan = f"{formatted_plan} | {combined_plan}"
                 plan_text_str = combined_plan
-            elif plan_text and str(plan_text).strip():
-                plan_text_str = str(plan_text).strip()
+            elif plan_text:
+                plan_text_str = format_clinical_data(plan_text)
             else:
                 plan_text_str = None
             
@@ -1632,48 +1728,22 @@ def build_section_b(
     # ALWAYS include standard SOAP plan section (this is what's stored in MongoDB)
     plan_obj = doc.get("plan")
     if plan_obj:
-        if isinstance(plan_obj, dict):
-            # Extract from plan dict structure
-            plan_text = plan_obj.get("treatment") or plan_obj.get("text") or plan_obj.get("plan")
-            if plan_text and str(plan_text).strip():
-                plan_text_str = str(plan_text).strip()
-                is_duplicate = any(plan_text_str == existing.strip() for existing in treatment_plan_parts)
-                if not is_duplicate:
-                    treatment_plan_parts.append(plan_text_str)
-                    logger.info("Including Treatment Plan from SOAP dictation (plan.treatment/text)")
-        elif isinstance(plan_obj, str) and plan_obj.strip():
-            # Plan is a string
-            plan_text_str = plan_obj.strip()
-            is_duplicate = any(plan_text_str == existing.strip() for existing in treatment_plan_parts)
+        plan_text = format_clinical_data(plan_obj)
+        if plan_text:
+            is_duplicate = any(plan_text == existing.strip() for existing in treatment_plan_parts)
             if not is_duplicate:
-                treatment_plan_parts.append(plan_text_str)
+                treatment_plan_parts.append(plan_text)
                 logger.info("Including Treatment Plan from SOAP dictation (plan section)")
     
     # Extract from nested clinical_information structure
     if clinical_info and isinstance(clinical_info, dict):
-        # Handle deeply nested structure: clinical_information.plan.treatment_plan_text
-        plan_obj_clinical = clinical_info.get("plan")
-        if isinstance(plan_obj_clinical, dict):
-            # Extract from nested plan dict
-            treatment_plan_nested = (
-                plan_obj_clinical.get("treatment_plan_text") or
-                plan_obj_clinical.get("treatment_plan") or
-                plan_obj_clinical.get("treatment") or
-                plan_obj_clinical.get("plan") or
-                plan_obj_clinical.get("text")
-            )
-            if treatment_plan_nested and str(treatment_plan_nested).strip():
-                plan_text_str = str(treatment_plan_nested).strip()
+        if plan_obj_clinical:
+            plan_text_str = format_clinical_data(plan_obj_clinical)
+            if plan_text_str:
                 is_duplicate = any(plan_text_str == existing.strip() for existing in treatment_plan_parts)
                 if not is_duplicate:
                     treatment_plan_parts.append(plan_text_str)
-                    logger.info("Including Treatment Plan from SOAP dictation (clinical_information.plan.treatment_plan_text)")
-        elif isinstance(plan_obj_clinical, str) and plan_obj_clinical.strip():
-            # If plan is a string directly
-            is_duplicate = any(plan_obj_clinical.strip() == existing.strip() for existing in treatment_plan_parts)
-            if not is_duplicate:
-                treatment_plan_parts.append(plan_obj_clinical.strip())
-                logger.info("Including Treatment Plan from SOAP dictation (clinical_information.plan)")
+                    logger.info("Including Treatment Plan from SOAP dictation (clinical_information.plan)")
         
         # Also check for flat fields in clinical_info
         plan_flat = (
@@ -1695,38 +1765,32 @@ def build_section_b(
     
     # Get from PR-1 specific field (if available)
     discussion_assessment_text = doc.get("discussion_assessment")
-    if discussion_assessment_text and str(discussion_assessment_text).strip():
-        assessment_parts.append(str(discussion_assessment_text).strip())
-        logger.info("Including Assessment from SOAP dictation (discussion_assessment)")
+    if discussion_assessment_text:
+        formatted = format_clinical_data(discussion_assessment_text)
+        if formatted:
+            assessment_parts.append(formatted)
+            logger.info("Including Assessment from SOAP dictation (discussion_assessment)")
     
     # ALWAYS include standard SOAP assessment section (this is what's stored in MongoDB)
     soap_assessment = doc.get("assessment")
-    if soap_assessment and str(soap_assessment).strip():
-        assessment_text = str(soap_assessment).strip()
-        is_duplicate = any(assessment_text == existing.strip() for existing in assessment_parts)
-        if not is_duplicate:
-            assessment_parts.append(assessment_text)
-            logger.info("Including Assessment from SOAP dictation (assessment section)")
+    if soap_assessment:
+        assessment_text = format_clinical_data(soap_assessment)
+        if assessment_text:
+            is_duplicate = any(assessment_text == existing.strip() for existing in assessment_parts)
+            if not is_duplicate:
+                assessment_parts.append(assessment_text)
+                logger.info("Including Assessment from SOAP dictation (assessment section)")
     
     # Extract from nested clinical_information structure (GPT-extracted format)
     if clinical_info and isinstance(clinical_info, dict):
         # Handle deeply nested structure: clinical_information.assessment.discussion_assessment
-        assessment_obj = clinical_info.get("assessment")
-        if isinstance(assessment_obj, dict):
-            # Extract from nested assessment dict
-            discussion_assessment_nested = assessment_obj.get("discussion_assessment") or assessment_obj.get("discussion")
-            if discussion_assessment_nested and str(discussion_assessment_nested).strip():
-                assessment_text = str(discussion_assessment_nested).strip()
+        if assessment_obj:
+            assessment_text = format_clinical_data(assessment_obj)
+            if assessment_text:
                 is_duplicate = any(assessment_text == existing.strip() for existing in assessment_parts)
                 if not is_duplicate:
                     assessment_parts.append(assessment_text)
-                    logger.info("Including Assessment from SOAP dictation (clinical_information.assessment.discussion_assessment)")
-        elif isinstance(assessment_obj, str) and assessment_obj.strip():
-            # If assessment is a string directly
-            is_duplicate = any(assessment_obj.strip() == existing.strip() for existing in assessment_parts)
-            if not is_duplicate:
-                assessment_parts.append(assessment_obj.strip())
-                logger.info("Including Assessment from SOAP dictation (clinical_information.assessment)")
+                    logger.info("Including Assessment from SOAP dictation (clinical_information.assessment)")
         
         # Also check for flat fields in clinical_info
         assessment_flat = (
@@ -1734,12 +1798,13 @@ def build_section_b(
             clinical_info.get("discussion_assessment") or
             clinical_info.get("impression")
         )
-        if assessment_flat and str(assessment_flat).strip():
-            assessment_text = str(assessment_flat).strip()
-            is_duplicate = any(assessment_text == existing.strip() for existing in assessment_parts)
-            if not is_duplicate:
-                assessment_parts.append(assessment_text)
-                logger.info("Including Assessment from SOAP dictation (clinical_information flat fields)")
+        if assessment_flat:
+            assessment_text = format_clinical_data(assessment_flat)
+            if assessment_text:
+                is_duplicate = any(assessment_text == existing.strip() for existing in assessment_parts)
+                if not is_duplicate:
+                    assessment_parts.append(assessment_text)
+                    logger.info("Including Assessment from SOAP dictation (clinical_information flat fields)")
     
     # Combine all assessment sources
     discussion_assessment = " | ".join(filter(None, assessment_parts)) if assessment_parts else None
@@ -1750,9 +1815,11 @@ def build_section_b(
     
     # Get from flat field (if available)
     current_treatments_flat = doc.get("current_treatments_and_meds") or doc.get("current_treatments") or doc.get("current_medications")
-    if current_treatments_flat and str(current_treatments_flat).strip():
-        current_treatment_parts.append(str(current_treatments_flat).strip())
-        logger.info("Including Current Treatment Plans from SOAP dictation (current_treatments_and_meds)")
+    if current_treatments_flat:
+        formatted_text = format_clinical_data(current_treatments_flat)
+        if formatted_text:
+            current_treatment_parts.append(formatted_text)
+            logger.info("Including Current Treatment Plans from SOAP dictation (current_treatments_and_meds)")
     
     # Extract from nested clinical_information.plan structure
     if clinical_info and isinstance(clinical_info, dict):
@@ -1765,12 +1832,13 @@ def build_section_b(
                 plan_obj.get("medications") or
                 plan_obj.get("current_treatment_and_meds")
             )
-            if current_treatments_nested and str(current_treatments_nested).strip():
-                treatment_text = str(current_treatments_nested).strip()
-                is_duplicate = any(treatment_text == existing.strip() for existing in current_treatment_parts)
-                if not is_duplicate:
-                    current_treatment_parts.append(treatment_text)
-                    logger.info("Including Current Treatment Plans from SOAP dictation (clinical_information.plan.current_treatments)")
+            if current_treatments_nested:
+                treatment_text = format_clinical_data(current_treatments_nested)
+                if treatment_text:
+                    is_duplicate = any(treatment_text == existing.strip() for existing in current_treatment_parts)
+                    if not is_duplicate:
+                        current_treatment_parts.append(treatment_text)
+                        logger.info("Including Current Treatment Plans from SOAP dictation (clinical_information.plan.current_treatments)")
     
     # Extract from formatted_soap_note Plan section or transcription if not found in structured fields
     if not current_treatment_parts:
@@ -1816,9 +1884,11 @@ def build_section_b(
     
     # Get from flat fields
     outcomes_adl_flat = doc.get("outcomes_adl") or doc.get("outcomes") or doc.get("functional_outcomes")
-    if outcomes_adl_flat and str(outcomes_adl_flat).strip():
-        outcomes_parts.append(str(outcomes_adl_flat).strip())
-        logger.info("Including Outcomes ADL from SOAP dictation (outcomes_adl)")
+    if outcomes_adl_flat:
+        formatted = format_clinical_data(outcomes_adl_flat)
+        if formatted:
+            outcomes_parts.append(formatted)
+            logger.info("Including Outcomes ADL from SOAP dictation (outcomes_adl)")
     
     # Extract from nested clinical_information.plan structure
     if clinical_info and isinstance(clinical_info, dict):
@@ -1830,8 +1900,9 @@ def build_section_b(
                 plan_obj.get("functional_outcomes") or
                 plan_obj.get("adl_outcomes")
             )
-            if outcomes_nested and str(outcomes_nested).strip():
-                outcomes_text = str(outcomes_nested).strip()
+        if outcomes_nested:
+            outcomes_text = format_clinical_data(outcomes_nested)
+            if outcomes_text:
                 is_duplicate = any(outcomes_text == existing.strip() for existing in outcomes_parts)
                 if not is_duplicate:
                     outcomes_parts.append(outcomes_text)
@@ -1881,9 +1952,11 @@ def build_section_b(
     
     # Get from flat fields
     adl_goal_flat = doc.get("adl_goal_next_visit") or doc.get("adl_goal") or doc.get("goal_next_visit")
-    if adl_goal_flat and str(adl_goal_flat).strip():
-        adl_goal_parts.append(str(adl_goal_flat).strip())
-        logger.info("Including ADL Goal from SOAP dictation (adl_goal_next_visit)")
+    if adl_goal_flat:
+        formatted = format_clinical_data(adl_goal_flat)
+        if formatted:
+            adl_goal_parts.append(formatted)
+            logger.info("Including ADL Goal from SOAP dictation (adl_goal_next_visit)")
     
     # Extract from nested clinical_information.plan structure
     if clinical_info and isinstance(clinical_info, dict):
@@ -1896,8 +1969,9 @@ def build_section_b(
                 plan_obj.get("next_visit_goal") or
                 plan_obj.get("treatment_goal")
             )
-            if adl_goal_nested and str(adl_goal_nested).strip():
-                goal_text = str(adl_goal_nested).strip()
+        if adl_goal_nested:
+            goal_text = format_clinical_data(adl_goal_nested)
+            if goal_text:
                 is_duplicate = any(goal_text == existing.strip() for existing in adl_goal_parts)
                 if not is_duplicate:
                     adl_goal_parts.append(goal_text)
@@ -2319,35 +2393,60 @@ def extract_treatment_and_outcomes_from_text(text: str) -> Optional[Dict[str, An
         system_prompt = """You are a medical documentation assistant specializing in extracting treatment plans and outcomes from clinical transcriptions and SOAP notes.
 
 Your task is to analyze the provided medical text and extract:
-1. Current Treatment Plans including Medications - Extract ALL medications mentioned with dose and frequency, treatments, devices provided (e.g., CAM boot, crutches), exercises, therapy, injections, imaging orders, etc. Include everything mentioned in the Plan section or treatment discussions.
-2. Outcomes ADL - Extract functional improvements, changes in Activities of Daily Living, progress notes, positive/negative changes related to treatment, improvements in function, changes in pain levels, mobility improvements, etc.
+1. **Current Treatment Plans including Medication** - This is CRITICAL and MUST be extracted with maximum detail
+2. **Outcomes ADL** - Functional improvements and Activities of Daily Living changes
+
+**CRITICAL INSTRUCTIONS FOR CURRENT TREATMENTS & MEDICATIONS:**
+- Extract ALL medications mentioned with COMPLETE details: drug name, dose, form (tablet/capsule/liquid), and frequency
+- Look for keywords: "prescribed", "medication", "drug", "taking", "continue", "start", "given", "treated with", "on", "uses"
+- Extract ALL treatments mentioned: physical therapy, exercises, injections, imaging, surgery, devices, braces, etc.
+- Extract medical devices: CAM boot, crutches, walker, brace, splint, etc.
+- Extract therapies: physical therapy, occupational therapy, chiropractic, massage, etc.
+- Extract procedures: injections, aspirations, debridement, etc.
+- Format medications as: "Drug Name dose form frequency" (e.g., "Ibuprofen 600mg tablet twice daily")
+- If multiple medications, list each on a new line or separate with " | "
+
+**EXAMPLES OF MEDICATION EXTRACTION:**
+Input: "Patient prescribed Ibuprofen 600mg twice daily and Cyclobenzaprine 10mg at bedtime"
+Output: "Ibuprofen 600mg twice daily | Cyclobenzaprine 10mg at bedtime"
+
+Input: "Continue current medications including Gabapentin 300mg TID"
+Output: "Gabapentin 300mg three times daily"
+
+Input: "Treated with CAM boot and crutches, begin gentle ROM exercises"
+Output: "CAM boot | Crutches | Gentle range-of-motion exercises"
+
+Input: "Patient on Meloxicam 15mg daily, physical therapy 3x/week"
+Output: "Meloxicam 15mg daily | Physical therapy three times per week"
+
+**CRITICAL INSTRUCTIONS FOR OUTCOMES ADL:**
+- Extract ALL functional improvements or declines mentioned
+- Extract changes in pain levels, mobility, daily activities, work capacity
+- Extract progress notes: "improving", "worsening", "no change", "stable"
+- Look for ADL mentions: walking, standing, lifting, climbing stairs, dressing, bathing, etc
 
 Return a JSON object with:
 {
-  "current_treatments_and_meds": "Complete list of all current treatments and medications with doses and frequencies if mentioned. Format as a clear list or paragraph.",
-  "outcomes_adl": "Functional improvements, ADL changes, progress notes, positive/negative changes related to treatment. Include any mention of improvements, worsening, or no changes."
+  "current_treatments_and_meds": "Complete detailed list of ALL medications (with dose, form, frequency) and ALL treatments. Separate multiple items with ' | '. Be exhaustive and thorough.",
+  "outcomes_adl": "Functional improvements, ADL changes, progress notes, positive/negative changes. Include pain levels, mobility changes, activity tolerance."
 }
 
-EXAMPLES:
-- If text mentions "treated with CAM boot and crutches", extract: "CAM boot and crutches provided"
-- If text mentions "begin gentle ankle range-of-motion exercises", extract: "Gentle ankle range-of-motion exercises"
-- If text mentions "weight bearing is allowed as tolerated", extract: "Weight bearing as tolerated"
-- If text mentions "follow-up in three weeks", extract: "Follow-up recommended in three weeks"
-- If text mentions functional improvements or ADL changes, extract those details
-
-Extract information from the Plan section, treatment discussions, medication mentions, and outcomes discussions.
-If information is not present, use null or empty strings.
+**CRITICAL:** If medications or treatments are mentioned ANYWHERE in the text (Plan section, Assessment, anywhere), YOU MUST extract them.
+If no information is present for a field, use empty string "" not null.
 
 Return ONLY valid JSON, no additional text."""
 
         # Limit text length to avoid token limits
         text_to_analyze = str(text)[:5000] if len(str(text)) > 5000 else str(text)
         
-        user_prompt = f"""Extract current treatments/medications and outcomes ADL from the following medical text:
+        user_prompt = f"""Extract current treatments/medications and outcomes ADL from the following medical text.
 
+CRITICAL: Pay special attention to the PLAN section and any mentions of medications, prescriptions, or treatments.
+
+Medical Text:
 {text_to_analyze}
 
-Return a JSON object with current_treatments_and_meds and outcomes_adl fields."""
+Return a JSON object with current_treatments_and_meds and outcomes_adl fields. Be thorough and exhaustive in extraction."""
 
         logger.info("Calling GPT API to extract treatments and outcomes from text...")
         
