@@ -603,7 +603,7 @@ Auto-generation guidance:
 [MUST ALWAYS equal the visit date from the system. Do NOT leave blank.]
 
 **Duration:**
-[If the transcription specifies a duration → use it verbatim.
+[If the transcription specifies a duration → use it verbatim (e.g., "2 weeks", "6 weeks").
 If NO duration is documented → DEFAULT to:
 “4 weeks until re-evaluation.”]
 
@@ -720,7 +720,7 @@ Enforcement: If imaging or operative plan documents a structural lesion (tear, r
 • The Plan must reflect ONLY actions performed today or explicitly ordered today.
 • Follow-up timing must follow WC default rules if not stated.
 **FOLLOW-UP INSTRUCTIONS — HARD RULE (WORKERS’ COMP):**
-• If the transcription explicitly states a follow-up timeframe → use it verbatim.
+• If the transcription explicitly states a follow-up timeframe (e.g., "2 weeks", "1 month") → use it verbatim.
 • If NO follow-up timeframe is documented → DEFAULT to:
   “Follow up in 4 weeks for re-evaluation.”
 • DO NOT generate conditional or event-based follow-up language unless explicitly stated, including:

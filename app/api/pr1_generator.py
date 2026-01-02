@@ -17,6 +17,7 @@ from pypdf import PdfReader
 from openai import OpenAI
 import httpx
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 
 from app.models.pr1_models import (
@@ -717,21 +718,116 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
     doc = soap_doc or {}
     general_request_text = doc.get("general_request_text") or doc.get("generalRequestText") or ""
     
-    # Build requests array in the exact format required
-    requests = []
-    medical_treatment_requests = []
-    drug_requests = []
-    
     # Get primary diagnosis code for fallback
     assessment_codes = extract_diagnosis_codes_from_soap_assessment(soap_doc)
     primary_code = assessment_codes.get("primary_diagnosis_code")
     
-    for it in rfa_items:
+    # CRITICAL: Pre-calculate common data for all RFA items to assume efficiency
+    # Get transcription text for code extraction
+    transcription_text = str(soap_doc.get("transcription") or soap_doc.get("corrected_transcription") or soap_doc.get("formatted_soap_note") or "")
+    
+    # CRITICAL: Extract CPT codes mentioned in the SOAP dictation text ONCE
+    mentioned_cpt_codes = extract_cpt_codes_from_text(transcription_text)
+    
+    # Comprehensive CPT code descriptions for better service names - Define ONCE
+    cpt_descriptions = {
+        # Meniscus procedures
+        "29882": "Meniscus Repair",
+        "29881": "Meniscectomy",
+        "29880": "Meniscectomy (Medial and Lateral)",
+        "29883": "Meniscus Repair (Medial and Lateral)",
+        "29877": "Chondroplasty",
+        "29879": "Microfracture",
+        "29884": "Lysis of Adhesions",
+        "29887": "OCD Drilling with Bone Grafting",
+        "29870": "Arthroscopy, Knee, Diagnostic",
+        "29871": "Arthroscopy, Knee, Surgical",
+        "29873": "Arthroscopy, Knee, Surgical; with lateral release",
+        "29874": "Arthroscopy, Knee, Surgical; for removal of loose body or foreign body",
+        "29875": "Arthroscopy, Knee, Surgical; synovectomy, limited",
+        "29876": "Arthroscopy, Knee, Surgical; synovectomy, major",
+        # Graft/Allograft codes
+        "20924": "Tendon Graft",
+        "20925": "Tendon Graft Allograft",
+        "20926": "Tissue Graft Allograft",
+        "20927": "Tendon Graft, from a distance; composite graft",
+        "20928": "Tendon Graft, from a distance; allograft, composite",
+        "20929": "Tendon Graft, from a distance; autograft, composite",
+        # Implant/Anchor codes
+        "C1713": "Anchor/Screw Implant",
+        "C1714": "Anchor/Screw Implant, Additional",
+        "C1715": "Anchor/Screw Implant, Multiple",
+        # DME - Braces
+        "L1833": "ACL Functional Knee Brace",
+        "L1845": "Hinged Knee Brace",
+        "L1832": "Elastic Knee Brace",
+        "L1830": "Rigid Knee Brace",
+        "L1831": "Knee Orthosis, Single Upright",
+        "L1843": "Knee Orthosis, Double Upright",
+        "L1844": "Knee Orthosis, Four-Point",
+        "L1846": "Knee Orthosis, Multi-Axis",
+        "L1847": "Knee Orthosis, Custom",
+        # DME - Mobility aids
+        "E0114": "Crutches, Forearm",
+        "E0116": "Crutches, Underarm",
+        "E0118": "Crutches, Forearm, Adjustable",
+        "E0130": "Walker, Rigid",
+        "E0135": "Walker, Wheeled",
+        "E0136": "Walker, Rigid, Adjustable",
+        "E0137": "Walker, Wheeled, Adjustable",
+        "E0138": "Walker, Heavy Duty",
+        "E0140": "Walker, Folding",
+        "E0141": "Walker, Folding, Adjustable",
+        "E0143": "Walker, Wheeled, Folding",
+        "E0144": "Walker, Wheeled, Folding, Adjustable",
+        "E0147": "Walker, Heavy Duty, Wheeled",
+        "E0148": "Walker, Heavy Duty, Wheeled, Adjustable",
+        "E0149": "Walker, Bariatric",
+        # DME - Canes
+        "E0100": "Cane, Standard",
+        "E0105": "Cane, Adjustable",
+        "E0110": "Cane, Quad",
+        "E0111": "Cane, Quad, Adjustable",
+        "E0112": "Cane, Offset",
+        "E0113": "Cane, Offset, Adjustable",
+        # Cryotherapy
+        "E0218": "Cryotherapy Device",
+        "E0236": "Cold Therapy Pump",
+        "E0235": "Cold Therapy Unit",
+        "E0239": "Cold Therapy System",
+        # Surgical supplies
+        "A4566": "Sling or Arm Support",
+        "A4570": "Splint",
+        "A4572": "Splint, Custom",
+        "A4590": "Elastic Bandage",
+        "A456": "Surgical Dressing",
+        "A4637": "Surgical Dressing, Advanced",
+        "A4638": "Surgical Dressing, Specialty",
+        # Post-op care supplies
+        "A4217": "Sterile Saline Solution",
+        "A4218": "Sterile Water",
+        "A4219": "Antiseptic Solution",
+        "A4220": "Antibiotic Ointment",
+        "A4221": "Wound Care Supplies",
+        # Additional supplies
+        "A6251": "Gauze Pad",
+        "A6252": "Gauze Pad, Sterile",
+        "A6253": "Gauze Roll",
+        "A6254": "Gauze Roll, Sterile",
+        "A6255": "Tape, Medical",
+        "A6256": "Tape, Surgical"
+    }
+
+    def process_rfa_item(it):
+        """Process a single RFA item - helper for parallel execution"""
+        item_requests = []
+        item_drug_requests = []
+        
         # Handle both dict and Pydantic model
         if hasattr(it, 'model_dump'):
             it = it.model_dump(exclude_none=True)
         elif not isinstance(it, dict):
-            continue
+            return [], []
         
         # Determine type: "treatment" or "drug"
         # Check for type field first, then is_drug
@@ -783,8 +879,8 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                     "dose_form": dose_form,
                     "quantity": quantity
                 }
-                requests.append(drug_item)
-                drug_requests.append(drug_item)
+                item_requests.append(drug_item)
+                item_drug_requests.append(drug_item)
         else:
             # Treatment request format - use exact field names
             service_requested = (
@@ -846,44 +942,23 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
             )
             
             if service_requested:  # Only add if service requested exists
-                request_item = {
-                    "type": "treatment",
-                    "diagnosis": diagnosis,
-                    "diagnosisCode": diagnosis_code,
-                    "diagnosis_code": diagnosis_code, # FE alias
-                    "serviceRequested": service_requested,
-                    "service_requested": service_requested, # FE alias
-                    "cpt": cpt,
-                    "frequencyDuration": frequency_duration,
-                    "frequency_duration": frequency_duration # FE alias
-                }
-                
-                # CRITICAL: Extract CPT codes mentioned in the SOAP dictation text
-                soap_text = str(soap_doc.get("transcription") or soap_doc.get("corrected_transcription") or soap_doc.get("formatted_soap_note") or "")
-                mentioned_cpt_codes = extract_cpt_codes_from_text(soap_text)
-                
                 # Merge mentioned CPT codes into supportive CPTs (avoid duplicating primary CPT)
                 if mentioned_cpt_codes:
                     for code in mentioned_cpt_codes:
                         code_str = str(code).strip()
                         if code_str and code_str != cpt.strip() and code_str not in supportive_cpts:
                             supportive_cpts.append(code_str)
-                            logger.info(f"Added mentioned CPT code {code_str} to supportive CPTs for '{service_requested}'")
+                            # logger.info(f"Added mentioned CPT code {code_str} to supportive CPTs for '{service_requested}'")
                 
                 # CRITICAL: Extract CPT codes ONLY from transcription (not generate based on diagnosis codes)
-                # Get transcription text for code extraction
-                transcription_text = str(soap_doc.get("transcription") or soap_doc.get("corrected_transcription") or soap_doc.get("formatted_soap_note") or "")
-                
-                # Extract diagnosis codes from SOAP Assessment section (Primary, Secondary, Associated, Planned Procedures/RFAs)
-                diagnosis_codes_from_assessment = extract_diagnosis_codes_from_soap_assessment(soap_doc)
-                
-                # Extract CPT codes ONLY from transcription (not generate based on diagnosis codes)
+                # But only if we don't have enough supportive codes or want to be thorough
                 try:
+                    # Create separate client per thread for safety, although httpx client is thread safe, this is cleaner
                     openai_client = create_openai_client()
                     generated_cpts_from_diagnosis = generate_cpt_codes_from_diagnosis_codes(
-                        diagnosis_codes_from_assessment,
-                        transcription_text,  # Pass transcription
-                        soap_doc,  # Pass SOAP document to extract diagnosis descriptions from A - ASSESSMENT
+                        assessment_codes,  # Use pre-calculated assessment codes
+                        transcription_text,  # Pass pre-calculated transcription
+                        soap_doc,  # Pass SOAP document
                         openai_client
                     )
                     
@@ -897,21 +972,19 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                             gen_code_str = str(gen_code).strip()
                             if gen_code_str and gen_code_str != cpt.strip() and gen_code_str not in supportive_cpts:
                                 supportive_cpts.append(gen_code_str)
-                        
-                        filtered_count = len(generated_cpts_from_diagnosis) - len(validated_cpts)
-                        logger.info(f"RFA item '{service_requested}': Generated {len(generated_cpts_from_diagnosis)} codes, validated {len(validated_cpts)} relevant codes (filtered {filtered_count} irrelevant). Total supportive CPTs: {len(supportive_cpts)}")
-                    else:
-                        logger.warning(f"Could not generate CPT codes from diagnosis codes for '{service_requested}'")
                 except Exception as e:
                     logger.warning(f"Could not auto-generate supportive CPTs from diagnosis codes for '{service_requested}': {e}")
                 
                 # Final validation: Validate all supportive CPTs against transcription
                 if supportive_cpts and len(supportive_cpts) > 0:
                     try:
+                        # openai_client already created above or create if not
+                        if 'openai_client' not in locals():
+                            openai_client = create_openai_client()
+                            
                         from app.cpt_mappings import validate_cpt_codes_relevance
                         final_validated_cpts = validate_cpt_codes_relevance(supportive_cpts, transcription_text, openai_client)
                         if len(final_validated_cpts) < len(supportive_cpts):
-                            logger.info(f"RFA item '{service_requested}': Final validation filtered {len(supportive_cpts) - len(final_validated_cpts)} irrelevant codes. Final count: {len(final_validated_cpts)}")
                             supportive_cpts = final_validated_cpts
                     except Exception as e:
                         logger.warning(f"Error in final CPT validation for '{service_requested}': {e}")
@@ -930,101 +1003,10 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                     "frequencyDuration": frequency_duration,
                     "frequency_duration": frequency_duration # FE alias
                 }
-                requests.append(primary_request)
-                medical_treatment_requests.append(primary_request)
-                logger.info(f"RFA primary item '{service_requested}': Primary CPT {cpt}")
+                item_requests.append(primary_request)
                 
                 # Now create separate request items for each supportive CPT code
                 if supportive_cpts and len(supportive_cpts) > 0:
-                    # Comprehensive CPT code descriptions for better service names
-                    cpt_descriptions = {
-                        # Meniscus procedures
-                        "29882": "Meniscus Repair",
-                        "29881": "Meniscectomy",
-                        "29880": "Meniscectomy (Medial and Lateral)",
-                        "29883": "Meniscus Repair (Medial and Lateral)",
-                        "29877": "Chondroplasty",
-                        "29879": "Microfracture",
-                        "29884": "Lysis of Adhesions",
-                        "29887": "OCD Drilling with Bone Grafting",
-                        "29870": "Arthroscopy, Knee, Diagnostic",
-                        "29871": "Arthroscopy, Knee, Surgical",
-                        "29873": "Arthroscopy, Knee, Surgical; with lateral release",
-                        "29874": "Arthroscopy, Knee, Surgical; for removal of loose body or foreign body",
-                        "29875": "Arthroscopy, Knee, Surgical; synovectomy, limited",
-                        "29876": "Arthroscopy, Knee, Surgical; synovectomy, major",
-                        # Graft/Allograft codes
-                        "20924": "Tendon Graft",
-                        "20925": "Tendon Graft Allograft",
-                        "20926": "Tissue Graft Allograft",
-                        "20927": "Tendon Graft, from a distance; composite graft",
-                        "20928": "Tendon Graft, from a distance; allograft, composite",
-                        "20929": "Tendon Graft, from a distance; autograft, composite",
-                        # Implant/Anchor codes
-                        "C1713": "Anchor/Screw Implant",
-                        "C1714": "Anchor/Screw Implant, Additional",
-                        "C1715": "Anchor/Screw Implant, Multiple",
-                        # DME - Braces
-                        "L1833": "ACL Functional Knee Brace",
-                        "L1845": "Hinged Knee Brace",
-                        "L1832": "Elastic Knee Brace",
-                        "L1830": "Rigid Knee Brace",
-                        "L1831": "Knee Orthosis, Single Upright",
-                        "L1843": "Knee Orthosis, Double Upright",
-                        "L1844": "Knee Orthosis, Four-Point",
-                        "L1846": "Knee Orthosis, Multi-Axis",
-                        "L1847": "Knee Orthosis, Custom",
-                        # DME - Mobility aids
-                        "E0114": "Crutches, Forearm",
-                        "E0116": "Crutches, Underarm",
-                        "E0118": "Crutches, Forearm, Adjustable",
-                        "E0130": "Walker, Rigid",
-                        "E0135": "Walker, Wheeled",
-                        "E0136": "Walker, Rigid, Adjustable",
-                        "E0137": "Walker, Wheeled, Adjustable",
-                        "E0138": "Walker, Heavy Duty",
-                        "E0140": "Walker, Folding",
-                        "E0141": "Walker, Folding, Adjustable",
-                        "E0143": "Walker, Wheeled, Folding",
-                        "E0144": "Walker, Wheeled, Folding, Adjustable",
-                        "E0147": "Walker, Heavy Duty, Wheeled",
-                        "E0148": "Walker, Heavy Duty, Wheeled, Adjustable",
-                        "E0149": "Walker, Bariatric",
-                        # DME - Canes
-                        "E0100": "Cane, Standard",
-                        "E0105": "Cane, Adjustable",
-                        "E0110": "Cane, Quad",
-                        "E0111": "Cane, Quad, Adjustable",
-                        "E0112": "Cane, Offset",
-                        "E0113": "Cane, Offset, Adjustable",
-                        # Cryotherapy
-                        "E0218": "Cryotherapy Device",
-                        "E0236": "Cold Therapy Pump",
-                        "E0235": "Cold Therapy Unit",
-                        "E0239": "Cold Therapy System",
-                        # Surgical supplies
-                        "A4566": "Sling or Arm Support",
-                        "A4570": "Splint",
-                        "A4572": "Splint, Custom",
-                        "A4590": "Elastic Bandage",
-                        "A456": "Surgical Dressing",
-                        "A4637": "Surgical Dressing, Advanced",
-                        "A4638": "Surgical Dressing, Specialty",
-                        # Post-op care supplies
-                        "A4217": "Sterile Saline Solution",
-                        "A4218": "Sterile Water",
-                        "A4219": "Antiseptic Solution",
-                        "A4220": "Antibiotic Ointment",
-                        "A4221": "Wound Care Supplies",
-                        # Additional supplies
-                        "A6251": "Gauze Pad",
-                        "A6252": "Gauze Pad, Sterile",
-                        "A6253": "Gauze Roll",
-                        "A6254": "Gauze Roll, Sterile",
-                        "A6255": "Tape, Medical",
-                        "A6256": "Tape, Surgical"
-                    }
-                    
                     for supportive_cpt in supportive_cpts:
                         if supportive_cpt and str(supportive_cpt).strip() and str(supportive_cpt).strip() != cpt.strip():
                             cpt_code = str(supportive_cpt).strip()
@@ -1042,13 +1024,33 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                                 "frequencyDuration": frequency_duration if frequency_duration else "As needed",
                                 "frequency_duration": frequency_duration if frequency_duration else "As needed" # FE alias
                             }
-                            requests.append(supportive_request)
-                            medical_treatment_requests.append(supportive_request)
-                            logger.info(f"RFA supportive item: {service_name} (CPT: {cpt_code})")
-                    
-                    logger.info(f"RFA item '{service_requested}': Created {len(supportive_cpts)} separate supportive CPT request items (total {len(requests)} requests)")
-                else:
-                    logger.debug(f"RFA item '{service_requested}': No supportive CPTs to split into separate items")
+                            item_requests.append(supportive_request)
+                            
+        return item_requests, item_drug_requests
+
+    # Build requests array in the exact format required
+    requests = []
+    medical_treatment_requests = []
+    drug_requests = []
+
+    # Process RFA items in parallel using ThreadPoolExecutor
+    if rfa_items:
+        logger.info(f"🚀 Processing {len(rfa_items)} RFA items in parallel...")
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            # Map the process function to the items
+            results = list(executor.map(process_rfa_item, rfa_items))
+            
+            # Aggregate results
+            for result_requests, result_drug_requests in results:
+                for req in result_requests:
+                    requests.append(req)
+                    # Add to medical_treatment_requests if it's a treatment or derived supportive request
+                    if req["type"] == "treatment":
+                        medical_treatment_requests.append(req)
+                
+                drug_requests.extend(result_drug_requests)
+        logger.info(f"✅ Parallel RFA processing complete. Total requests: {len(requests)}")
+
     
     if requests:
         logger.info(f"RFA Section A: {len(requests)} requests extracted (from SOAP dictation)")
@@ -1604,21 +1606,29 @@ def build_section_b(
                     physical_exam_parts.append(objective_text)
                     logger.info("✓ Found Objective Findings from formatted_soap_note Objective section")
             
-            # If not found in Objective section, try entire formatted_soap_note with GPT extraction
+            # If not found in Objective section, use formatted_soap_note as source
             if not physical_exam_parts:
-                logger.info("Attempting GPT extraction of objective findings from formatted_soap_note...")
-                extracted_objective = extract_objective_findings_from_text(formatted_soap)
-                if extracted_objective:
-                    physical_exam_parts.append(extracted_objective)
-                    logger.info("✓ Found Objective Findings from formatted_soap_note GPT extraction")
+                objective_source = formatted_soap
+                objective_source_type = "formatted_soap_note"
         
-        # Try transcription if still not found
-        if not physical_exam_parts and transcription_text and isinstance(transcription_text, str):
-            logger.info("Attempting GPT extraction of objective findings from transcription...")
-            extracted_objective = extract_objective_findings_from_text(transcription_text)
-            if extracted_objective:
-                physical_exam_parts.append(extracted_objective)
-                logger.info("✓ Found Objective Findings from transcription GPT extraction")
+        else:
+            objective_source = None
+            objective_source_type = None
+
+        # Fallback to transcription if no formatted soap
+        if not physical_exam_parts and not objective_source and transcription_text and isinstance(transcription_text, str):
+            objective_source = transcription_text
+            objective_source_type = "transcription"
+            
+        # Perform GPT extraction if needed - DEFER execution for parallel processing
+        objective_gpt_source = None
+        objective_gpt_source_type = None
+
+        if not physical_exam_parts and objective_source:
+            # Check if we really need to extract
+            objective_gpt_source = objective_source
+            objective_gpt_source_type = objective_source_type
+            logger.info(f"Deferring GPT extraction of objective findings from {objective_source_type} for parallel execution")
     
     # If still no objective findings found, log a warning
     if not physical_exam_parts:
@@ -1737,6 +1747,8 @@ def build_section_b(
     
     # Extract from nested clinical_information structure
     if clinical_info and isinstance(clinical_info, dict):
+        # We need plan_obj_clinical. Check if variable exists or extract it
+        plan_obj_clinical = clinical_info.get("plan")
         if plan_obj_clinical:
             plan_text_str = format_clinical_data(plan_obj_clinical)
             if plan_text_str:
@@ -1783,6 +1795,7 @@ def build_section_b(
     
     # Extract from nested clinical_information structure (GPT-extracted format)
     if clinical_info and isinstance(clinical_info, dict):
+        assessment_obj = clinical_info.get("assessment")
         # Handle deeply nested structure: clinical_information.assessment.discussion_assessment
         if assessment_obj:
             assessment_text = format_clinical_data(assessment_obj)
@@ -1809,11 +1822,16 @@ def build_section_b(
     # Combine all assessment sources
     discussion_assessment = " | ".join(filter(None, assessment_parts)) if assessment_parts else None
     
-    # CURRENT TREATMENT PLANS INCLUDING MEDICATION - Extract from SOAP dictation
-    # Field 3: "Current Treatment Plans including Medication (list all medications, dose, and frequency)"
-    current_treatment_parts = []
+    # CURRENT TREATMENT PLANS INCLUDING MEDICATION & OUTCOMES ADL
+    # These fields often require GPT extraction if structured data is missing.
+    # We will prepare for parallel extraction if needed.
     
-    # Get from flat field (if available)
+    current_treatment_parts = []
+    outcomes_parts = []
+    
+    # 1. Try to get from structured fields first (Fast)
+    
+    # Current Treatments - flat fields
     current_treatments_flat = doc.get("current_treatments_and_meds") or doc.get("current_treatments") or doc.get("current_medications")
     if current_treatments_flat:
         formatted_text = format_clinical_data(current_treatments_flat)
@@ -1821,11 +1839,10 @@ def build_section_b(
             current_treatment_parts.append(formatted_text)
             logger.info("Including Current Treatment Plans from SOAP dictation (current_treatments_and_meds)")
     
-    # Extract from nested clinical_information.plan structure
+    # Current Treatments - nested clinical_information
     if clinical_info and isinstance(clinical_info, dict):
         plan_obj = clinical_info.get("plan")
         if isinstance(plan_obj, dict):
-            # Extract current treatments from nested plan
             current_treatments_nested = (
                 plan_obj.get("current_treatments") or
                 plan_obj.get("current_medications") or
@@ -1839,50 +1856,8 @@ def build_section_b(
                     if not is_duplicate:
                         current_treatment_parts.append(treatment_text)
                         logger.info("Including Current Treatment Plans from SOAP dictation (clinical_information.plan.current_treatments)")
-    
-    # Extract from formatted_soap_note Plan section or transcription if not found in structured fields
-    if not current_treatment_parts:
-        formatted_soap = doc.get("formatted_soap_note")
-        transcription_text = doc.get("transcription") or doc.get("corrected_transcription")
-        
-        # First try to extract Plan section from formatted_soap_note
-        if formatted_soap and isinstance(formatted_soap, str):
-            # Look for Plan section specifically
-            plan_match = re.search(r'## P – PLAN\s*\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
-            if plan_match:
-                plan_group = plan_match.group(1)
-                plan_text = plan_group.strip() if plan_group else ""
-                if plan_text:
-                    logger.info("Attempting GPT extraction of current treatments from Plan section...")
-                    extracted_data = extract_treatment_and_outcomes_from_text(plan_text)
-                if extracted_data and extracted_data.get("current_treatments_and_meds"):
-                    current_treatment_parts.append(extracted_data.get("current_treatments_and_meds"))
-                    logger.info("✓ Found Current Treatments from Plan section GPT extraction")
-            
-            # If not found in Plan section, try entire formatted_soap_note
-            if not current_treatment_parts:
-                logger.info("Attempting GPT extraction of current treatments from formatted_soap_note...")
-                extracted_data = extract_treatment_and_outcomes_from_text(formatted_soap)
-                if extracted_data and extracted_data.get("current_treatments_and_meds"):
-                    current_treatment_parts.append(extracted_data.get("current_treatments_and_meds"))
-                    logger.info("✓ Found Current Treatments from formatted_soap_note GPT extraction")
-        
-        # Try transcription if still not found
-        if not current_treatment_parts and transcription_text and isinstance(transcription_text, str):
-            logger.info("Attempting GPT extraction of current treatments from transcription...")
-            extracted_data = extract_treatment_and_outcomes_from_text(transcription_text)
-            if extracted_data and extracted_data.get("current_treatments_and_meds"):
-                current_treatment_parts.append(extracted_data.get("current_treatments_and_meds"))
-                logger.info("✓ Found Current Treatments from transcription GPT extraction")
-    
-    # Combine all current treatment sources
-    current_treatment_and_meds = " | ".join(filter(None, current_treatment_parts)) if current_treatment_parts else None
-    
-    # OUTCOMES ADL - Extract from SOAP dictation
-    # Field 4: "Outcomes to include Functional Improvements and Activities of Daily Living (ADL)"
-    outcomes_parts = []
-    
-    # Get from flat fields
+
+    # Outcomes ADL - flat fields
     outcomes_adl_flat = doc.get("outcomes_adl") or doc.get("outcomes") or doc.get("functional_outcomes")
     if outcomes_adl_flat:
         formatted = format_clinical_data(outcomes_adl_flat)
@@ -1890,7 +1865,7 @@ def build_section_b(
             outcomes_parts.append(formatted)
             logger.info("Including Outcomes ADL from SOAP dictation (outcomes_adl)")
     
-    # Extract from nested clinical_information.plan structure
+    # Outcomes ADL - nested clinical_information
     if clinical_info and isinstance(clinical_info, dict):
         plan_obj = clinical_info.get("plan")
         if isinstance(plan_obj, dict):
@@ -1900,50 +1875,100 @@ def build_section_b(
                 plan_obj.get("functional_outcomes") or
                 plan_obj.get("adl_outcomes")
             )
-        if outcomes_nested:
-            outcomes_text = format_clinical_data(outcomes_nested)
-            if outcomes_text:
-                is_duplicate = any(outcomes_text == existing.strip() for existing in outcomes_parts)
-                if not is_duplicate:
-                    outcomes_parts.append(outcomes_text)
-                    logger.info("Including Outcomes ADL from SOAP dictation (clinical_information.plan.outcomes)")
+            if outcomes_nested:
+                outcomes_text = format_clinical_data(outcomes_nested)
+                if outcomes_text:
+                    is_duplicate = any(outcomes_text == existing.strip() for existing in outcomes_parts)
+                    if not is_duplicate:
+                        outcomes_parts.append(outcomes_text)
+                        logger.info("Including Outcomes ADL from SOAP dictation (clinical_information.plan.outcomes)")
+
+    # 2. Check if we need GPT extraction
+    # We need extraction if parts are missing AND we have source text
+    needs_treatment_extraction = not current_treatment_parts
+    needs_outcomes_extraction = not outcomes_parts
+    # Note: Objective extraction (physical_exam_parts) might have been done earlier, but checks if empty.
+    # Earlier we already processed 'physical_exam_parts' fully including regex and GPT fallback.
+    # So we don't need to re-do objective extraction here.
     
-    # Extract from formatted_soap_note Plan section or transcription if not found in structured fields
-    if not outcomes_parts:
+    if needs_treatment_extraction or needs_outcomes_extraction:
         formatted_soap = doc.get("formatted_soap_note")
         transcription_text = doc.get("transcription") or doc.get("corrected_transcription")
         
-        # First try to extract Plan section from formatted_soap_note
+        # Determine the best source text to use
+        source_text = None
+        source_type = None
+        
+        # Prefer Plan section from formatted_soap
         if formatted_soap and isinstance(formatted_soap, str):
-            # Look for Plan section specifically
             plan_match = re.search(r'## P – PLAN\s*\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
             if plan_match:
                 plan_group = plan_match.group(1)
                 plan_text = plan_group.strip() if plan_group else ""
                 if plan_text:
-                    logger.info("Attempting GPT extraction of outcomes ADL from Plan section...")
-                    extracted_data = extract_treatment_and_outcomes_from_text(plan_text)
-                if extracted_data and extracted_data.get("outcomes_adl"):
-                    outcomes_parts.append(extracted_data.get("outcomes_adl"))
-                    logger.info("✓ Found Outcomes ADL from Plan section GPT extraction")
+                    source_text = plan_text
+                    source_type = "Plan section"
             
-            # If not found in Plan section, try entire formatted_soap_note
-            if not outcomes_parts:
-                logger.info("Attempting GPT extraction of outcomes ADL from formatted_soap_note...")
-                extracted_data = extract_treatment_and_outcomes_from_text(formatted_soap)
-                if extracted_data and extracted_data.get("outcomes_adl"):
-                    outcomes_parts.append(extracted_data.get("outcomes_adl"))
-                    logger.info("✓ Found Outcomes ADL from formatted_soap_note GPT extraction")
+            if not source_text:
+                source_text = formatted_soap
+                source_type = "formatted_soap_note"
         
-        # Try transcription if still not found
-        if not outcomes_parts and transcription_text and isinstance(transcription_text, str):
-            logger.info("Attempting GPT extraction of outcomes ADL from transcription...")
-            extracted_data = extract_treatment_and_outcomes_from_text(transcription_text)
-            if extracted_data and extracted_data.get("outcomes_adl"):
-                outcomes_parts.append(extracted_data.get("outcomes_adl"))
-                logger.info("✓ Found Outcomes ADL from transcription GPT extraction")
+        if not source_text and transcription_text and isinstance(transcription_text, str):
+            source_text = transcription_text
+            source_type = "transcription"
+            
+            
+        if source_text:
+            # Defer execution for parallel processing
+            treatment_gpt_source = source_text
+            treatment_gpt_source_type = source_type
+            logger.info(f"Deferring GPT extraction of treatments/outcomes from {source_type} for parallel execution")
+
+    # =======================================================
+    # PARALLEL GPT EXTRACTION BLOCK for Section B
+    # =======================================================
+    # Execute deferred GPT extractions in parallel
+    if objective_gpt_source or treatment_gpt_source:
+        logger.info("🚀 Executing parallel GPT extraction for Section B...")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_objective = None
+            future_treatment = None
+            
+            if objective_gpt_source:
+                logger.info(f"  - Submitted Objective extraction ({objective_gpt_source_type})")
+                future_objective = executor.submit(extract_objective_findings_from_text, objective_gpt_source)
+                
+            if treatment_gpt_source:
+                logger.info(f"  - Submitted Treatment/Outcomes extraction ({treatment_gpt_source_type})")
+                future_treatment = executor.submit(extract_treatment_and_outcomes_from_text, treatment_gpt_source)
+            
+            # Collect results
+            if future_objective:
+                try:
+                    extracted_objective = future_objective.result()
+                    if extracted_objective:
+                        physical_exam_parts.append(extracted_objective)
+                        logger.info(f"✓ Found Objective Findings from {objective_gpt_source_type} GPT extraction")
+                except Exception as e:
+                     logger.error(f"Error in parallel objective extraction: {e}")
+            
+            if future_treatment:
+                try:
+                    extracted_data = future_treatment.result()
+                    if extracted_data:
+                        if needs_treatment_extraction and extracted_data.get("current_treatments_and_meds"):
+                            current_treatment_parts.append(extracted_data.get("current_treatments_and_meds"))
+                            logger.info(f"✓ Found Current Treatments from {treatment_gpt_source_type} GPT extraction")
+                            
+                        if needs_outcomes_extraction and extracted_data.get("outcomes_adl"):
+                            outcomes_parts.append(extracted_data.get("outcomes_adl"))
+                            logger.info(f"✓ Found Outcomes ADL from {treatment_gpt_source_type} GPT extraction")
+                except Exception as e:
+                    logger.error(f"Error in parallel treatment extraction: {e}")
+        logger.info("✅ Section B parallel extraction complete")
     
-    # Combine all outcomes sources
+    # Combine extracted parts
+    current_treatment_and_meds = " | ".join(filter(None, current_treatment_parts)) if current_treatment_parts else None
     outcomes_adl = " | ".join(filter(None, outcomes_parts)) if outcomes_parts else None
     
     # ADL GOAL FOR NEXT VISIT/TREATMENT PERIOD - Extract from SOAP dictation
@@ -1969,13 +1994,13 @@ def build_section_b(
                 plan_obj.get("next_visit_goal") or
                 plan_obj.get("treatment_goal")
             )
-        if adl_goal_nested:
-            goal_text = format_clinical_data(adl_goal_nested)
-            if goal_text:
-                is_duplicate = any(goal_text == existing.strip() for existing in adl_goal_parts)
-                if not is_duplicate:
-                    adl_goal_parts.append(goal_text)
-                    logger.info("Including ADL Goal from SOAP dictation (clinical_information.plan.adl_goal)")
+            if adl_goal_nested:
+                goal_text = format_clinical_data(adl_goal_nested)
+                if goal_text:
+                    is_duplicate = any(goal_text == existing.strip() for existing in adl_goal_parts)
+                    if not is_duplicate:
+                        adl_goal_parts.append(goal_text)
+                        logger.info("Including ADL Goal from SOAP dictation (clinical_information.plan.adl_goal)")
     
     # Combine all ADL goal sources
     adl_goal_next_visit = " | ".join(filter(None, adl_goal_parts)) if adl_goal_parts else None
@@ -2233,7 +2258,7 @@ For each RFA item, extract:
   * Any other supportive services, devices, or supplies mentioned
   Supportive CPTs should be an array of codes. If multiple supportive codes are mentioned or typically required, include ALL of them.
 - Strength & Form: For drugs (e.g., "500mg tablet", "10mg/ml injection")
-- Frequency/Duration: For treatments (e.g., "3x/week for 4 weeks", "1 session")
+- Frequency/Duration: For treatments (e.g., "3x/week for 6 weeks", "1 session")
 - Quantity: For drugs (e.g., "30 tablets", "1 vial")
 - Justification: Any medical justification mentioned
 
@@ -2812,34 +2837,40 @@ def build_section_c(
         
         # If not found with regex, use GPT to extract from text
         if not work_status:
-            logger.info("Attempting GPT extraction of work status from formatted_soap_note...")
-            extracted_work_status = extract_work_status_from_text(formatted_soap)
-            if extracted_work_status and extracted_work_status.get("work_status"):
-                work_status = extracted_work_status.get("work_status")
-                work_status_source = "SOAP dictation (formatted_soap_note GPT extraction)"
-                logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
-                
-                # Also extract restrictions if available
-                if not restrictions and extracted_work_status.get("restrictions"):
-                    restrictions = extracted_work_status.get("restrictions")
-                if not detailed_restrictions and extracted_work_status.get("restrictions_details"):
-                    detailed_restrictions = extracted_work_status.get("restrictions_details")
-    
-    # Priority 6b: Extract from transcription text if available
-    transcription_text = doc.get("transcription") or doc.get("corrected_transcription")
-    if not work_status and transcription_text and isinstance(transcription_text, str):
-        logger.info("Attempting GPT extraction of work status from transcription...")
-        extracted_work_status = extract_work_status_from_text(transcription_text)
-        if extracted_work_status and extracted_work_status.get("work_status"):
-            work_status = extracted_work_status.get("work_status")
-            work_status_source = "SOAP dictation (transcription GPT extraction)"
-            logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+            source_text = None
+            source_type = None
+
+            # Determine best source for GPT extraction
+            if formatted_soap and isinstance(formatted_soap, str):
+                work_status_match = re.search(r'(?:WORK STATUS|Work Capacity)[:\s]*(.*?)(?=\n\n|\n[A-Z]|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+                if work_status_match:
+                     # If we found a specific section but regex extraction failed (e.g. complex format), use that section for GPT
+                     section_text = work_status_match.group(1).strip()
+                     if section_text:
+                         source_text = section_text
+                         source_type = "formatted_soap_note (Work Status section)"
             
-            # Also extract restrictions if available
-            if not restrictions and extracted_work_status.get("restrictions"):
-                restrictions = extracted_work_status.get("restrictions")
-            if not detailed_restrictions and extracted_work_status.get("restrictions_details"):
-                detailed_restrictions = extracted_work_status.get("restrictions_details")
+            if not source_text and formatted_soap:
+                source_text = formatted_soap
+                source_type = "formatted_soap_note"
+            
+            if not source_text and transcription_text and isinstance(transcription_text, str):
+                source_text = transcription_text
+                source_type = "transcription"
+            
+            if source_text:
+                logger.info(f"Attempting GPT extraction of work status from {source_type}...")
+                extracted_work_status = extract_work_status_from_text(source_text)
+                if extracted_work_status and extracted_work_status.get("work_status"):
+                    work_status = extracted_work_status.get("work_status")
+                    work_status_source = f"SOAP dictation ({source_type} GPT extraction)"
+                    logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+                    
+                    # Also extract restrictions if available
+                    if not restrictions and extracted_work_status.get("restrictions"):
+                        restrictions = extracted_work_status.get("restrictions")
+                    if not detailed_restrictions and extracted_work_status.get("restrictions_details"):
+                        detailed_restrictions = extracted_work_status.get("restrictions_details")
     
     # Priority 7: Check intake form (fallback)
     if not work_status and intake_doc:
@@ -4225,21 +4256,46 @@ async def generate_pr1_from_soap(
             
             logger.info(f"Extracted formatted_soap_note with {len(formatted_soap_note)} characters")
             
-            # Step 5: Convert formatted SOAP note text to structured SOAP JSON using GPT API
-            try:
-                gpt_extracted_data = convert_pdf_text_to_soap_json(formatted_soap_note)
-                logger.info("✅ Successfully extracted structured data from formatted_soap_note using GPT")
-            except HTTPException:
-                raise
-            except Exception as e:
-                error_msg = f"Failed to convert formatted SOAP note to structured data: {str(e)}"
-                logger.error(error_msg)
-                import traceback
-                logger.error(f"Traceback: {traceback.format_exc()}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=error_msg
-                )
+            # Step 5: Convert formatted SOAP note text to structured SOAP JSON only if needed
+            # OPTIMIZATION: process_pr1_from_soap is calling build_pr1_payload which now runs
+            # section extractors in parallel. We only need this full conversion if we are missing
+            # critical metadata (header info) or if we want to fallback to this single-shot extraction.
+            # To speed up generation (saves ~10-15s), we skip this heavy serial call if we have
+            # basic structured fields or if we can assume the parallel builders will handle it.
+            
+            should_run_full_conversion = False
+            
+            # Check if we have critical metadata in the original doc
+            has_metadata = (
+                soap_doc.get("patient_info") or 
+                soap_doc.get("patient_information") or
+                soap_doc.get("patient_name")
+            )
+            
+            # If we don't have metadata, we might need conversion to extract it
+            if not has_metadata and not use_latest_intake:
+                 should_run_full_conversion = True
+                 logger.info("Metadata missing in SOAP doc, will run full conversion")
+            
+            # If we are missing ALL core sections, we might want to run it (though builders can handle it)
+            # But normally we skip to let builders do it in parallel
+            if should_run_full_conversion:
+                try:
+                    logger.info("Running full GPT conversion of formatted soap note...")
+                    gpt_extracted_data = convert_pdf_text_to_soap_json(formatted_soap_note)
+                    logger.info("✅ Successfully extracted structured data from formatted_soap_note using GPT")
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    error_msg = f"Failed to convert formatted SOAP note to structured data: {str(e)}"
+                    logger.error(error_msg)
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+                    # Don't fail completely, try to verify with what we have
+                    gpt_extracted_data = {}
+            else:
+                logger.info("🚀 OPTIMIZATION: Skipping heavy serial GPT conversion. Relying on parallel section builders.")
+                gpt_extracted_data = {}
         
             # Step 6: Merge existing structured fields with GPT-extracted data
             # Priority: Existing structured fields > GPT-extracted fields
