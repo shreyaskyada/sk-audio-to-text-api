@@ -330,7 +330,7 @@ Transcription:
 - Generate SUPPORTIVE CPT codes ONLY for:
   * Procedures/services that are EXPLICITLY mentioned (e.g., if "ACL reconstruction" is mentioned, include ACL reconstruction codes)
   * DME/supplies that are EXPLICITLY mentioned (e.g., if "crutches" is mentioned, include crutch codes)
-  * Imaging that is EXPLICITLY mentioned (e.g., if "MRI" is mentioned, include MRI codes)
+  * Imaging that is EXPLICITLY ORDERED (e.g., if "MRI ordered" is mentioned, include MRI codes)
   * Grafts/implants ONLY if mentioned or if the procedure requires them (e.g., ACL reconstruction typically needs graft codes)
 - DO NOT generate codes for procedures that are NOT mentioned
 - DO NOT generate codes for "possible future procedures" - only what is mentioned
@@ -2214,10 +2214,10 @@ def extract_rfa_items_from_text(text: str) -> Optional[List[Dict[str, Any]]]:
         
         system_prompt = """You are a medical documentation assistant specializing in extracting Request for Authorization (RFA) items from clinical transcriptions and SOAP notes.
 
-Your task is to analyze the provided medical text and extract ALL treatment requests and drug requests that require authorization. This includes:
-- Medical treatments (physical therapy, injections, imaging, surgery, DME, etc.)
-- Medications/drugs prescribed
-- Services or goods requested
+Your task is to analyze the provided medical text and extract ONLY those treatment and drug requests that are EXPLICITLY ORDERED or REQUESTED today for future action. This includes:
+- Medical treatments EXPLICITLY ORDERED (physical therapy, injections, imaging, surgery, DME, etc.)
+- Medications/drugs EXPLICITLY prescribed
+- Services or goods EXPLICITLY requested
 
 For each RFA item, extract:
 - Type: "treatment" or "drug"
@@ -2287,7 +2287,8 @@ CRITICAL RULES FOR SUPPORTIVE CPTs - EXTRACT ONLY FROM TRANSCRIPTION:
 5. DO NOT add supportive codes unless they are explicitly mentioned in the transcription
 6. For injection procedures, include guidance codes (77003, 76942) ONLY if they are explicitly mentioned in the transcription
 7. For DME/Supplies, include codes ONLY if the device is explicitly mentioned in the transcription
-8. Be accurate - only extract what is actually stated in the transcription
+8. Be accurate - only extract what is actually stated in the transcription as a FUTURE ORDER.
+9. **DO NOT** include imaging studies (MRI, X-ray, CT, etc.) that are mentioned as being "reviewed", "shown", "revealed", or already performed. ONLY include them if they are being ORDERED for the future (e.g., "Order MRI", "Will obtain MRI").
 
 CRITICAL: Use EXACT field names (camelCase):
 - For treatments: type="treatment", diagnosis, diagnosisCode, serviceRequested, cpt, supportiveCpts (array), frequencyDuration

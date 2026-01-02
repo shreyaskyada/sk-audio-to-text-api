@@ -259,7 +259,39 @@ async def get_all_saved_work_status_soap_ids():
         raise HTTPException(status_code=500, detail=f"Failed to retrieve saved Work Status soap_ids: {str(e)}")
 
 
-@router.get("/work-status-form/{form_id}")
+@router.get("/work-status-form/saved/{soap_id}")
+async def get_saved_work_status_form(soap_id: str):
+    """
+    Retrieve a saved Work Status form by its associated SOAP ID.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise HTTPException(status_code=500, detail="Database connection not available")
+        
+        collection = db[WORK_STATUS_FORMS_COLLECTION]
+        
+        form = await collection.find_one({"soap_id": soap_id})
+        
+        if not form:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No saved Work Status form found for SOAP ID: {soap_id}"
+            )
+        
+        # Serialize MongoDB document
+        serialized_form = serialize_mongodb_doc(form)
+        
+        return JSONResponse({
+            "status": "success",
+            "data": serialized_form
+        })
+            
+    except Exception as e:
+        logger.error(f"Error retrieving saved Work Status form: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve saved Work Status form: {str(e)}")
+
+
 async def get_work_status_form_by_id(form_id: str):
     """
     Get a specific work status form by ID
