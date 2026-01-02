@@ -215,8 +215,8 @@ For surgery procedures, include:
 □ ALL implant codes (5-10+ codes)
 □ ALL DME codes (10-20+ codes)
 □ ALL PT codes (12-20+ codes)
-□ ALL imaging codes (5-10+ codes)
-□ ALL guidance codes (5-8+ codes)
+□ ALL imaging codes (ONLY if explicitly ordered/mentioned)
+□ ALL guidance codes (ONLY if explicitly mentioned)
 □ ALL supply codes (10-15+ codes)
 
 Return the JSON object with ALL possible comprehensive codes."""
@@ -367,10 +367,9 @@ For EACH code, verify:
   * Are standard components of the procedure type
   * Could reasonably be part of the authorization
   * Are for related services (DME, PT, imaging, supplies) that could be needed
-- DO NOT filter out codes that could reasonably apply
-- DO NOT filter out standard procedure components
-- Be PERMISSIVE - include codes that could be needed for comprehensive authorization
-- Only filter out codes that are clearly for unrelated body parts or conditions
+- **CRITICAL:** DO NOT include imaging codes (MRI, X-ray, CT, etc.) unless they are explicitly mentioned as being ordered or needed in the transcription. Even if it's for the same body part, if the doctor didn't explicitly mention imaging, do not include it.
+- **CRITICAL:** Mentions of imaging results (e.g., "MRI shows tear") are NOT orders and should NOT result in inclusion of imaging CPT codes.
+- Only filter out codes that are clearly for unrelated body parts or conditions.
 
 Return the JSON object with relevant and irrelevant codes. Be permissive - include most codes that could apply."""
 
