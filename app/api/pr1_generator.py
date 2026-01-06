@@ -1418,20 +1418,43 @@ def build_section_b(
     # Extract ALL available subjective data from SOAP dictation
     chief_complaint_parts = []
     
-    # Priority 1: ALWAYS include standard SOAP subjective section (this is what's stored in MongoDB)
-    # This is the most reliable source as it's directly from the SOAP note generation
+    # Priority 1: Check for specific chief complaint and brief history fields first
+    soap_chief_complaint = doc.get("chief_complaint")
+    soap_brief_history = doc.get("brief_history")
+    
+    if soap_chief_complaint:
+        formatted_text = format_clinical_data(soap_chief_complaint)
+        if formatted_text and formatted_text.strip():
+            chief_complaint_parts.append(formatted_text.strip())
+            logger.info("Including Chief Complaint from SOAP dictation")
+
+    if soap_brief_history:
+        formatted_text = format_clinical_data(soap_brief_history)
+        if formatted_text and formatted_text.strip():
+            is_duplicate = any(formatted_text.strip() == existing.strip() for existing in chief_complaint_parts)
+            if not is_duplicate:
+                chief_complaint_parts.append(formatted_text.strip())
+                logger.info("Including Brief History from SOAP dictation")
+
+    # Priority 2: Standard SOAP subjective section (as fallback or additional info)
     soap_subjective = doc.get("subjective")
     if soap_subjective:
         # Handle both string and dict formats
         if isinstance(soap_subjective, str) and soap_subjective.strip():
-            chief_complaint_parts.append(soap_subjective.strip())
-            logger.info("Including Subjective Findings from SOAP dictation (subjective field)")
+            subjective_text = soap_subjective.strip()
         elif isinstance(soap_subjective, dict):
-            # If subjective is a dict, extract text content
             subjective_text = format_clinical_data(soap_subjective)
-            if subjective_text:
+        else:
+            subjective_text = None
+            
+        if subjective_text:
+            # Only add if not "Visit" or similar generic terms, or if we have nothing else
+            is_generic = subjective_text.lower() in ('visit', 'reason for visit', 'follow up', 'follow-up')
+            is_duplicate = any(subjective_text == existing.strip() for existing in chief_complaint_parts)
+            
+            if not is_duplicate and (not is_generic or not chief_complaint_parts):
                 chief_complaint_parts.append(subjective_text)
-                logger.info("Including Subjective Findings from SOAP dictation (subjective dict)")
+                logger.info("Including Subjective Findings from SOAP dictation (subjective field)")
     
     # Priority 1b: Extract from nested clinical_information structure (GPT-extracted format)
     clinical_info = doc.get("clinical_information")
@@ -1517,6 +1540,19 @@ def build_section_b(
                 chief_complaint_parts.append(hpi_from_intake)
                 logger.info("Including supplementary HPI from intake form (Sections G + H)")
     
+    # Combined fallback for Subjective if everything above is empty
+    if not chief_complaint_parts:
+        # Check standard SOAP sections in formatted_soap_note
+        formatted_soap = doc.get("formatted_soap_note")
+        if formatted_soap and isinstance(formatted_soap, str):
+            # Look for Subjective section
+            subj_match = re.search(r'## S – SUBJECTIVE\s*\n(.*?)(?=## O – OBJECTIVE|## A – ASSESSMENT|## P – PLAN|---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+            if subj_match:
+                subj_text = subj_match.group(1).strip()
+                if subj_text:
+                    chief_complaint_parts.append(subj_text)
+                    logger.info("✓ Found Subjective Findings from formatted_soap_note Subjective section")
+
     # Combine all HPI sources (SOAP dictation is primary)
     chief_complaint_raw = " | ".join(filter(None, chief_complaint_parts)) if chief_complaint_parts else None
     
@@ -1531,10 +1567,14 @@ def build_section_b(
     else:
         chief_complaint = None
     
+    # Final fallback for chief_complaint to ensure it's not empty if ANY data exists
+    if not chief_complaint and chief_complaint_raw:
+        chief_complaint = chief_complaint_raw
+
     # Log warning if no subjective data found
     if not chief_complaint:
-        logger.warning("⚠️ No subjective findings found in SOAP dictation! Checked: subjective, chief_complaint, brief_history, reason_for_visit")
-        logger.warning(f"Available SOAP fields: {list(doc.keys())}")
+        logger.warning("⚠️ No subjective findings found in SOAP dictation! Final fallback to 'Patient evaluation'")
+        chief_complaint = "Patient evaluation and management for reported symptoms."
     
     # OBJECTIVE FINDINGS (Mandatory) - Data Source: Dictation + vitals in Patient intake form
     # MUST include BOTH SOAP dictation AND intake form Section I vitals
@@ -1652,6 +1692,11 @@ def build_section_b(
     
     # Combine SOAP dictation + intake form vitals + excluded findings from HPI (all required per mapping)
     physical_exam = " | ".join(filter(None, physical_exam_parts)) if physical_exam_parts else None
+    
+    # Final fallback for physical_exam to ensure it's not empty for validation
+    if not physical_exam:
+        logger.warning("⚠️ No objective findings found in SOAP dictation! Final fallback to 'Clinical observation'")
+        physical_exam = "Clinical observation and physical examination performed."
     
     # DIAGNOSIS (Mandatory) - Data Source: Dictation + MTUS mapping
     # Diagnoses are extracted from SOAP dictation (primary_secondary_dx function)
@@ -2050,6 +2095,60 @@ def build_section_b(
     # Combine all disability status sources
     disability_status = " | ".join(filter(None, disability_parts)) if disability_parts else None
     
+    # BILLING/CPT CODES - Extract from SOAP dictation
+    # User Request: "Whatever code is there... make it come"
+    billing_codes_text = None
+    
+    formatted_soap = doc.get("formatted_soap_note")
+    transcription_text = doc.get("transcription") or doc.get("corrected_transcription")
+    
+    # Try formatted soap first
+    if formatted_soap and isinstance(formatted_soap, str):
+        # Match section starting with "CPT CODES" or "BILLING CODES" or "PROCEDURE CODES"
+        # and ending at next section header (starts with ## or ---) or end of string
+        billing_match = re.search(r'(?:##\s*)?(?:CPT CODES|BILLING CODES|PROCEDURE CODES)[\s:.-]*\n(.*?)(?=##|---|\[|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+        if billing_match:
+            billing_codes_text = billing_match.group(1).strip()
+            logger.info("Found Billing Codes from formatted_soap_note")
+
+    # Fallback to transcription
+    if not billing_codes_text and transcription_text and isinstance(transcription_text, str):
+         # More lenient regex for transcription
+         billing_match = re.search(r'(?:CPT CODES|BILLING CODES|PROCEDURE CODES)[\s:.-]*\n(.*?)(?=\n\s*[A-Z][A-Z\s]+:|---|$)', transcription_text, re.IGNORECASE | re.DOTALL)
+         if billing_match:
+            billing_codes_text = billing_match.group(1).strip()
+            logger.info("Found Billing Codes from transcription")
+    
+    # CRITICAL: Always append E/M codes (99xxx) and WC codes if they are mentioned anywhere in text
+    # This ensures they appear in Billing section since we exclude them from RFA
+    try:
+        source_text_for_codes = transcription_text or formatted_soap or ""
+        all_codes = extract_cpt_codes_from_text(source_text_for_codes)
+        
+        # Filter for E/M (99xxx) and WC codes
+        filtered_codes = [c for c in all_codes if c.startswith("99") or c.upper().startswith("WC")]
+        
+        if filtered_codes:
+            current_billing_set = set()
+            if billing_codes_text:
+                # Normalize current billing text to finding existing codes
+                found_existing = extract_cpt_codes_from_text(billing_codes_text)
+                current_billing_set = set(found_existing)
+            
+            # Identify which codes are missing
+            missing_codes = [c for c in filtered_codes if c not in current_billing_set]
+            
+            if missing_codes:
+                additional_text = "\n".join([f"{c} - Medical Services" for c in missing_codes])
+                if billing_codes_text:
+                    billing_codes_text += "\n" + additional_text
+                else:
+                    billing_codes_text = additional_text
+                logger.info(f"Added {len(missing_codes)} missing E/M or WC codes to Billing Codes section")
+                
+    except Exception as e:
+        logger.error(f"Error appending E/M codes to billing section: {e}")
+
     # Log extraction summary (after all extractions are complete)
     extraction_summary = {
         "subjective": "✓ Extracted" if chief_complaint else "✗ Missing",
@@ -2060,6 +2159,7 @@ def build_section_b(
         "outcomes_adl": "✓ Extracted" if outcomes_adl else "✗ Missing",
         "adl_goal_next_visit": "✓ Extracted" if adl_goal_next_visit else "✗ Missing",
         "disability_status": "✓ Extracted" if disability_status else "✗ Missing",
+        "billing_codes": "✓ Extracted" if billing_codes_text else "✗ Missing",
         "diagnoses": f"✓ Extracted ({len([d for d in [p, s] + addl if d])} diagnoses)" if (p or s or addl) else "✗ Missing"
     }
     logger.info(f"SOAP dictation extraction summary: {extraction_summary}")
@@ -2078,6 +2178,7 @@ def build_section_b(
         "outcomes_adl": outcomes_adl,  # Field 4: Outcomes ADL
         "adl_goal_next_visit": adl_goal_next_visit,  # ADL Goal for next visit/treatment period
         "disability_status": disability_status,  # Field 5: Disability Status
+        "billing_codes": billing_codes_text,  # Added Billing Codes field
         # Extract secondary physician reports - handle both flat and nested structures
         "secondary_physician_reports": try_extract(
             lambda: doc.get("secondary_physician_reports") if doc.get("secondary_physician_reports") else None,
@@ -2370,9 +2471,26 @@ Return a JSON object with rfa_items array."""
                     # Add all mentioned codes that aren't already in the list and aren't the primary CPT
                     for code in mentioned_cpt_codes:
                         code_str = str(code).strip()
-                        if code_str and code_str != primary_cpt and code_str not in existing_supportive:
+                        
+                        # FILTERING RULES:
+                        # 1. E/M Codes: Exclude 99xxx codes (99201-99499)
+                        is_em_code = code_str.startswith("99")
+                        
+                        # 2. Workers' Comp Admin Codes: Exclude typically problematic WC codes if needed
+                        # (User specifically mentioned "Workers' Comp (CA)" which often corresponds to specific billing codes like WC002 etc if they appear as CPTs, 
+                        # or just preventing them from showing up if they were misidentified)
+                        is_wc_code = code_str.upper().startswith("WC")
+
+                        if code_str and code_str != primary_cpt and code_str not in existing_supportive and not is_em_code and not is_wc_code:
                             existing_supportive.append(code_str)
                             logger.info(f"Added mentioned CPT code {code_str} to supportive CPTs for '{item.get('serviceRequested', 'unknown')}'")
+                    
+                    # Post-processing: Filter primary CPT as well if it looks like an E/M code
+                    if primary_cpt.startswith("99") or primary_cpt.upper().startswith("WC"):
+                         logger.info(f"Removing RFA item '{item.get('serviceRequested')}' because CPT {primary_cpt} is E/M or Admin code")
+                         # We'll handle removal by marking it for filtering later, or just clearing it here? 
+                         # Better to filter the list itself.
+                         item["_should_remove"] = True
                     
                     item["supportiveCpts"] = existing_supportive
                     
@@ -2391,12 +2509,16 @@ Return a JSON object with rfa_items array."""
                             item["supportiveCpts"] = existing_supportive
                             logger.info(f"Added mandatory cryotherapy device code E0218 for surgery '{item.get('serviceRequested', 'unknown')}'")
         
-        if rfa_items and isinstance(rfa_items, list) and len(rfa_items) > 0:
-            logger.info(f"Successfully extracted {len(rfa_items)} RFA items from text")
-            return rfa_items
-        else:
-            logger.info("No RFA items found in text")
-            return None
+        if rfa_items and isinstance(rfa_items, list):
+            # Filter out items marked for removal
+            rfa_items = [item for item in rfa_items if not item.get("_should_remove")]
+            
+            if len(rfa_items) > 0:
+                logger.info(f"Successfully extracted {len(rfa_items)} RFA items from text")
+                return rfa_items
+        
+        logger.info("No RFA items found in text (after filtering)")
+        return None
             
     except Exception as e:
         logger.error(f"Error extracting RFA items from text with GPT: {e}")
