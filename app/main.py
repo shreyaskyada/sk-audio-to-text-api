@@ -41,7 +41,8 @@ from app.schemas import (
 from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
-from app.api import feedback, soap_notes, intake_forms, followup_forms, pr1_generator, work_status_forms, pr2_forms
+from app.api import appointments, feedback, soap_notes, intake_forms, followup_forms, pr1_generator, work_status_forms, pr2_forms, patient_signatures
+from app.api.appointment_storage import seed_mock_appointments, sync_appointments_with_transcriptions, get_all_completed_appointment_ids
 from app.api.soap_storage import (
     save_soap_note_to_db, 
     get_all_soap_notes_by_transcription_id,
@@ -124,6 +125,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Include Patient Signatures Router
+app.include_router(patient_signatures.router, prefix="/api/v1", tags=["Patient Signatures"])
 
 # CORS Configuration
 app.add_middleware(
@@ -1435,6 +1439,11 @@ async def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_for
         raw_soap_note = response.choices[0].message.content.strip()
         formatted_soap_note = raw_soap_note
         
+        # Remove any --- separators if the AI still generates them
+        formatted_soap_note = re.sub(r'^\s*---\s*$', '', formatted_soap_note, flags=re.MULTILINE)
+        # Clean up multiple newlines that might be left behind
+        formatted_soap_note = re.sub(r'\n{3,}', '\n\n', formatted_soap_note)
+        
         # Check if post-processing should be skipped (returns raw output like ChatGPT)
         # NOTE: Use getattr for backwards compatibility if SOAPRequest schema doesn't include this field.
         skip_post_processing = getattr(soap_request, "skip_post_processing", False) or False
@@ -1825,7 +1834,7 @@ async def get_transcription_user_ids():
     This is used to identify which appointments/patients already have a transcription.
     """
     try:
-        user_ids = await get_user_ids_with_transcriptions()
+        user_ids = await get_all_completed_appointment_ids()
         return user_ids
     except Exception as e:
         logger.error(f"Error getting transcription user IDs: {str(e)}")
@@ -2881,6 +2890,9 @@ app.include_router(pr2_forms.router, prefix="/api/v1", tags=["pr2-forms"])
 from app.api import logs
 app.include_router(logs.router, prefix="/api/v1", tags=["logs"])
 
+# Include appointments router
+app.include_router(appointments.router, prefix="/api/v1/appointments", tags=["appointments"])
+
 
 # ============================================
 # STARTUP & SHUTDOWN EVENTS
@@ -2895,6 +2907,10 @@ async def startup_event():
     
     # Connect to MongoDB
     await connect_to_mongo()
+    
+    # Seed mock appointments and sync with transcriptions
+    await seed_mock_appointments()
+    await sync_appointments_with_transcriptions()
     
     # Validate Deepgram API key
     if not DEEPGRAM_API_KEY:

@@ -1,0 +1,259 @@
+"""
+Appointment Storage functions for MongoDB
+"""
+import logging
+from datetime import datetime
+from typing import Dict, Optional, List
+from bson import ObjectId
+
+from app.mongodb import get_database
+
+logger = logging.getLogger(__name__)
+
+# Configuration
+APPOINTMENTS_COLLECTION = 'appointments'
+TRANSCRIPTIONS_COLLECTION = 'transcriptions'
+SOAP_NOTES_COLLECTION = 'soap_notes'
+PR1_FORMS_COLLECTION = 'saved_pr1_forms'
+WORK_STATUS_FORMS_COLLECTION = 'work_status_forms'
+
+async def get_all_appointments() -> List[Dict]:
+    """Retrieve all appointments from MongoDB"""
+    try:
+        db = get_database()
+        if db is None:
+            return []
+        
+        cursor = db[APPOINTMENTS_COLLECTION].find().sort("time", 1)
+        appointments = []
+        async for doc in cursor:
+            doc["_id"] = str(doc["_id"])
+            if "appointment_id" in doc:
+                doc["id"] = int(doc["appointment_id"]) if doc["appointment_id"].isdigit() else doc["appointment_id"]
+            appointments.append(doc)
+        return appointments
+    except Exception as e:
+        logger.error(f"Error getting all appointments: {e}")
+        return []
+
+async def get_appointment_stats():
+    """
+    Get appointment statistics based on transcriptions and appointments.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            return {"total": 0, "completed": 0, "upcoming": 0, "next_appointment": "None"}
+        
+        # Get all completed IDs
+        completed_ids = await get_all_completed_appointment_ids()
+        completed_count = len(completed_ids)
+        
+        # Get total appointments (only those with patient names)
+        total_count = await db[APPOINTMENTS_COLLECTION].count_documents({"patient": {"$exists": True}})
+        
+        # Get total appointments (only those with patient names)
+        total_count = await db[APPOINTMENTS_COLLECTION].count_documents({"patient": {"$exists": True}})
+        
+        # Get count of completed appointments among the "real" appointments
+        # We should only count an appointment as completed if its ID is in our set of completed IDs (which comes strictly from transcriptions)
+        # AND it exists as a "real" appointment.
+        
+        real_completed_cursor = db[APPOINTMENTS_COLLECTION].find({
+            "patient": {"$exists": True},
+            "appointment_id": {"$in": completed_ids}
+        })
+        real_completed_ids = []
+        async for apt in real_completed_cursor:
+            real_completed_ids.append(str(apt.get("appointment_id")))
+        
+        completed_count = len(set(real_completed_ids))
+        upcoming_count = max(0, total_count - completed_count)
+        
+        # Get next appointment time
+        next_apt = "None"
+        upcoming_apt = await db[APPOINTMENTS_COLLECTION].find_one(
+            {"patient": {"$exists": True}, "status": {"$ne": "completed"}},
+            sort=[("time", 1)]
+        )
+        if upcoming_apt:
+            next_apt = upcoming_apt.get("time", "None")
+        
+        return {
+            "total": total_count,
+            "completed": completed_count,
+            "upcoming": upcoming_count,
+            "next_appointment": next_apt
+        }
+    except Exception as e:
+        logger.error(f"Error getting appointment stats: {e}")
+        return {"total": 0, "completed": 0, "upcoming": 0, "next_appointment": "None"}
+
+async def update_appointment_status(appointment_id: str, status: str):
+    """
+    Update appointment status in MongoDB.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            return False
+        
+        # Since appointments might not exist as documents yet, we use upsert or just log and return True
+        # if we are solely relying on transcriptions for "completed" status.
+        # But the frontend calls this, so we should at least store it.
+        
+        result = await db[APPOINTMENTS_COLLECTION].update_one(
+            {"appointment_id": appointment_id},
+            {"$set": {"status": status, "updated_at": datetime.utcnow()}},
+            upsert=True
+        )
+        
+        if result.modified_count > 0 or result.upserted_id:
+            logger.info(f"✅ Appointment status updated: {appointment_id} -> {status}")
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error updating appointment status: {e}")
+        return False
+
+async def get_all_completed_appointment_ids() -> List[str]:
+    """
+    Get all IDs of appointments that are completed.
+    STRICTLY returns IDs from transcriptions. Data in appointments collection status is ignored for source of truth.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            return []
+        
+        # 1. Get user_ids from transcriptions only
+        transcription_user_ids = await db[TRANSCRIPTIONS_COLLECTION].distinct("user_id")
+        
+        # Filter valid IDs
+        valid_ids = list(set([str(uid) for uid in transcription_user_ids if uid]))
+        
+        logger.info(f"Retrieved {len(valid_ids)} completed appointment IDs from transcriptions")
+        return valid_ids
+    except Exception as e:
+        logger.error(f"Error getting all completed appointment IDs: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Error getting all completed appointment IDs: {e}")
+        return []
+
+async def sync_appointments_with_transcriptions():
+    """
+    Sync appointments with transcriptions:
+    Any appointment_id that has a corresponding user_id in transcriptions should be marked as completed.
+    ALL OTHERS should be marked as scheduled.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            return
+        
+        user_ids = await db[TRANSCRIPTIONS_COLLECTION].distinct("user_id")
+        valid_user_ids = [str(uid) for uid in user_ids if uid]
+        
+        # 1. Set 'completed' for those with transcriptions
+        if valid_user_ids:
+            await db[APPOINTMENTS_COLLECTION].update_many(
+                {"appointment_id": {"$in": valid_user_ids}},
+                {"$set": {"status": "completed", "updated_at": datetime.utcnow()}}
+            )
+            
+        # 2. Set 'scheduled' for those WITHOUT transcriptions
+        await db[APPOINTMENTS_COLLECTION].update_many(
+            {"appointment_id": {"$nin": valid_user_ids}, "patient": {"$exists": True}},
+            {"$set": {"status": "scheduled", "updated_at": datetime.utcnow()}}
+        )
+            
+        logger.info(f"✅ Strictly synced appointments with {len(valid_user_ids)} transcriptions")
+    except Exception as e:
+        logger.error(f"Error syncing appointments: {e}")
+
+async def seed_mock_appointments():
+    """
+    Seed mockup appointments if collection is empty.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            return
+        
+        # Cleanup invalid records (those missing patient names, created by previous buggy syncs)
+        deleted_invalid = await db[APPOINTMENTS_COLLECTION].delete_many({"patient": {"$exists": False}})
+        if deleted_invalid.deleted_count > 0:
+            logger.info(f"🗑️ Deleted {deleted_invalid.deleted_count} invalid appointment records")
+        
+        mock_appointments = [
+            {"appointment_id": "1", "patient": "John Martinez", "status": "scheduled", "time": "09:00 AM"},
+            {"appointment_id": "2", "patient": "Sarah Chen", "status": "scheduled", "time": "10:30 AM"},
+            {"appointment_id": "3", "patient": "Michael Johnson", "status": "scheduled", "time": "02:00 PM"},
+            {"appointment_id": "4", "patient": "Emily Davis", "status": "scheduled", "time": "03:30 PM"},
+            {"appointment_id": "5", "patient": "David Lee", "status": "scheduled", "time": "08:30 AM"},
+            {"appointment_id": "6", "patient": "Lisa Wilson", "status": "scheduled", "time": "11:15 AM"},
+            {"appointment_id": "7", "patient": "Robert Brown", "status": "scheduled", "time": "01:00 PM"},
+            {"appointment_id": "8", "patient": "Jennifer Taylor", "status": "scheduled", "time": "04:00 PM"},
+            {"appointment_id": "9", "patient": "Mark Anderson", "status": "scheduled", "time": "08:00 AM"},
+            {"appointment_id": "10", "patient": "Amanda Garcia", "status": "scheduled", "time": "12:30 PM"},
+        ]
+        
+        seeded_count = 0
+        for apt in mock_appointments:
+            # Only seed if ID doesn't exist
+            existing = await db[APPOINTMENTS_COLLECTION].find_one({"appointment_id": apt["appointment_id"]})
+            if not existing:
+                await db[APPOINTMENTS_COLLECTION].insert_one(apt)
+                seeded_count += 1
+        
+        if seeded_count > 0:
+            logger.info(f"✅ Seeded {seeded_count} new mock appointments")
+        
+        final_count = await db[APPOINTMENTS_COLLECTION].count_documents({"patient": {"$exists": True}})
+        logger.info(f"Database currently contains {final_count} valid appointments")
+    except Exception as e:
+        logger.error(f"Error seeding mock appointments: {e}")
+
+async def reset_appointment_reports(appointment_id: str) -> bool:
+    """
+    Reset reports for a given appointment/patient.
+    Deletes SOAP note, PR1 form, and Work Status form associated with this appointment ID (user_id).
+    This allows the workflow to restart from "Pending Reports" in Patient Cases.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            return False
+            
+        logger.info(f"🔄 Resetting reports for appointment_id (userId): {appointment_id}")
+        
+        # 1. Find the SOAP note(s) for this user to get their IDs
+        # We need SOAP IDs because PR1 and Work Status are linked by soap_id
+        soap_cursor = db[SOAP_NOTES_COLLECTION].find({"userId": appointment_id})
+        soap_ids = []
+        async for doc in soap_cursor:
+            soap_ids.append(str(doc["_id"]))
+            
+        if not soap_ids:
+            logger.info(f"ℹ️ No SOAP notes found for userId {appointment_id}, nothing to reset.")
+            return True
+            
+        logger.info(f"Found {len(soap_ids)} SOAP notes to delete: {soap_ids}")
+        
+        # 2. Delete PR1 forms linked to these SOAP IDs
+        pr1_result = await db[PR1_FORMS_COLLECTION].delete_many({"soap_id": {"$in": soap_ids}})
+        logger.info(f"🗑️ Deleted {pr1_result.deleted_count} PR1 forms")
+        
+        # 3. Delete Work Status forms linked to these SOAP IDs
+        ws_result = await db[WORK_STATUS_FORMS_COLLECTION].delete_many({"soap_id": {"$in": soap_ids}})
+        logger.info(f"🗑️ Deleted {ws_result.deleted_count} Work Status forms")
+        
+        # 4. Delete the SOAP notes themselves
+        soap_result = await db[SOAP_NOTES_COLLECTION].delete_many({"userId": appointment_id})
+        logger.info(f"🗑️ Deleted {soap_result.deleted_count} SOAP notes")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error resetting appointment reports: {e}")
+        return False
