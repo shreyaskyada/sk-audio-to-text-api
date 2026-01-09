@@ -85,8 +85,9 @@ logger = logging.getLogger(__name__)
 DEEPGRAM_API_KEY = os.getenv('DEEPGRAM_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 SECRET_KEY = os.getenv('SECRET_KEY', 'change-this-secret-key')
-AUTH_USERNAME = os.getenv('AUTH_USERNAME', 'admin')
-AUTH_PASSWORD = os.getenv('AUTH_PASSWORD', 'admin')
+# Static login credentials (can be overridden via environment variables)
+AUTH_USERNAME = os.getenv('AUTH_USERNAME', 'Goldy@gmail.com')
+AUTH_PASSWORD = os.getenv('AUTH_PASSWORD', '123456')
 MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', 100))
 
 # Audio file storage configuration

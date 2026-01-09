@@ -20,6 +20,12 @@ async def get_stats():
     """Get appointment statistics"""
     return await get_appointment_stats()
 
+@router.get("/completed-ids")
+async def get_completed_ids():
+    """Get all completed appointment IDs from DB"""
+    from app.api.appointment_storage import get_all_completed_appointment_ids
+    return await get_all_completed_appointment_ids()
+
 @router.put("/{appointment_id}")
 async def update_status(appointment_id: str, payload: dict = Body(...)):
     """Update appointment status"""
