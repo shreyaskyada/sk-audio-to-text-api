@@ -2781,6 +2781,7 @@ Extract the following fields from the restrictions text:
 - pushingPullingLeft: Boolean - true ONLY if left hand pushing/pulling is explicitly mentioned as allowed, false if restricted, false if not mentioned.
 - pushingPullingBilateral: Boolean - true ONLY if bilateral pushing/pulling is explicitly mentioned as allowed, false if restricted, false if not mentioned.
 - pushingPullingHours: Extract ONLY if pushing/pulling hours are explicitly mentioned. If NOT mentioned, use "".
+- otherRestrictions: Capture any other restrictions mentioned that do not fit into the above categories. Include the full text description.
 
 EXAMPLES:
 - Text: "restricted from prolonged standing and should limit walking to short distances only"
