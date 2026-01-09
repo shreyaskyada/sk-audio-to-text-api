@@ -1444,6 +1444,27 @@ async def generate_comprehensive_soap_note(soap_request: SOAPRequest, intake_for
         # Clean up multiple newlines that might be left behind
         formatted_soap_note = re.sub(r'\n{3,}', '\n\n', formatted_soap_note)
         
+        # --- FIX: "Employer / Carrier: Not on File" Hallucination ---
+        # If AI generated "Not on File", try to fix it from transcription or remove it
+        if "Employer / Carrier: Not on File" in formatted_soap_note or "Employer / Carrier: [Not on File]" in formatted_soap_note:
+             # Try to find it in transcription (User said it is there)
+             # Looking for patterns like "Employer / Carrier: [Value]" or "Employer: [Value]" in transcription
+             emp_match = re.search(r'(Employer\s*/\s*Carrier|Employer|Carrier|Insurance)\s*:\s*(.+?)(?=\n|$)', corrected_transcription, re.IGNORECASE)
+             
+             if emp_match:
+                 found_value = emp_match.group(2).strip()
+                 if found_value and found_value.lower() not in ["not on file", "none", "n/a"]:
+                     formatted_soap_note = re.sub(r'Employer / Carrier:.*?(?=\n)', f'Employer / Carrier: {found_value}', formatted_soap_note)
+                     logger.info(f"✅ Fixed 'Not on File' with transcription value: {found_value}")
+                 else:
+                     # Remove the line entirely if value is useless
+                     formatted_soap_note = re.sub(r'Employer / Carrier:.*?\n', '', formatted_soap_note)
+                     logger.info("Removed 'Employer / Carrier: Not on File' line (no valid value found)")
+             else:
+                 # Remove the line entirely
+                 formatted_soap_note = re.sub(r'Employer / Carrier:.*?\n', '', formatted_soap_note)
+                 logger.info("Removed 'Employer / Carrier: Not on File' line (not found in transcription)")
+        
         # Check if post-processing should be skipped (returns raw output like ChatGPT)
         # NOTE: Use getattr for backwards compatibility if SOAPRequest schema doesn't include this field.
         skip_post_processing = getattr(soap_request, "skip_post_processing", False) or False

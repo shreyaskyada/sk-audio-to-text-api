@@ -103,56 +103,49 @@ def generate_cpt_with_ai(procedure_description: str, openai_client=None) -> tupl
             return (None, [])
     
     try:
-        system_prompt = """You are a medical coding expert specializing in CPT codes for orthopedic surgeries.
+        system_prompt = """You are a medical coding expert specializing in CPT and HCPCS codes for orthopedic procedures, surgeries, and services.
 
-🔴 CRITICAL: Generate ONLY CPT codes (5-digit numeric codes) - NO HCPCS codes allowed
-🔴 CRITICAL: Generate codes ONLY for surgeries - NO codes for injections, imaging, therapy, DME, or other procedures
-🔴 CRITICAL: You MUST GENERATE ALL POSSIBLE CPT codes for Workers' Compensation RFA authorization.
-🔴 DO NOT extract only what is mentioned - GENERATE ALL POSSIBLE CPT CODES that could apply for the surgery.
-🔴 Your goal is MAXIMUM code inclusion for comprehensive authorization coverage - generate ALL possible CPT codes.
+🔴 CRITICAL: Generate ALL applicable CPT (5-digit numeric) AND HCPCS (Letter + 4 digits) codes.
+🔴 CRITICAL: Generate codes for ALL ordered services: Surgeries, Injections, Imaging, Therapy (PT/OT), DME, Supplies, etc.
+🔴 CRITICAL: You MUST GENERATE ALL POSSIBLE CODES for Workers' Compensation RFA authorization.
+🔴 DO NOT extract only what is mentioned - GENERATE ALL POSSIBLE CODES that could apply for the procedure/service.
+🔴 Your goal is MAXIMUM code inclusion for comprehensive authorization coverage.
 
-Your task is to GENERATE COMPREHENSIVE CPT CODES for the SURGERY mentioned in the transcription.
+Your task is to GENERATE COMPREHENSIVE CODING for the PROCEDURE/SERVICE mentioned in the transcription.
 
-🔴 CRITICAL VALIDATION RULES - 100% VALID CPT CODES ONLY:
-YOU MUST GENERATE ONLY VALID CPT CODES (5-DIGIT NUMERIC) - NO HCPCS CODES - NO INVALID CODES ALLOWED
+🔴 CRITICAL VALIDATION RULES - 100% VALID CODES ONLY:
+YOU MUST GENERATE ONLY VALID CPT OR HCPCS CODES - NO INVALID CODES ALLOWED
 
-VALID CPT CODE FORMATS (ONLY THESE ARE ACCEPTED):
-1. CPT Codes: Exactly 5 digits, numeric only (e.g., 29881, 20610, 29888)
-   - Must be exactly 5 numeric digits
-   - Range: 00000-99999
-   - Examples: 29881, 20610, 29888, 20924
-   - NO letters allowed
-   - Must be for surgical procedures only
+VALID CODE FORMATS (ONLY THESE ARE ACCEPTED):
+1. CPT Codes: Exactly 5 digits, numeric only (e.g., 29881, 20610, 97110, 73721)
+2. HCPCS Codes: Single letter followed by 4 digits (e.g., L1832, E0114, J1040, A4566)
+   - Range: A0000-V9999
+   - Common prefixes: L (DME), E (DME), J (Drugs), A (Supplies), C (Implants)
 
 INVALID CODE FORMATS (DO NOT GENERATE THESE):
-❌ HCPCS codes (codes with letters like L1833, E0114, A1234, etc.)
-❌ Codes for non-surgical procedures (injections, imaging, therapy, DME, supplies)
 ❌ Codes with 3 digits or less (e.g., 298, 88)
 ❌ Codes with 6+ digits (e.g., 298881, 123456)
-❌ Codes with letters (e.g., 2988L, 1L833, L1833, E0114)
 ❌ Codes with special characters (e.g., 298-81, 298.81) - except modifiers like -RT, -LT
-❌ Codes that don't match CPT format (must be exactly 5 digits, numeric only)
 ❌ Placeholder codes (e.g., "XXXXX", "CODE", "TBD")
 
-CRITICAL RULES - GENERATE ALL POSSIBLE VALID CPT CODES FOR SURGERIES ONLY:
-1. FIRST: Identify if SURGERY is mentioned in the transcription - if NO surgery, return empty list
-2. Identify the PRIMARY SURGERY mentioned in the transcription
-3. Generate the PRIMARY CPT code for the main surgery (MUST BE VALID FORMAT - 5 digits numeric)
-4. Generate ALL SUPPORTIVE CPT codes that could apply for the surgery (ALL MUST BE VALID FORMAT - 5 digits numeric):
-   - ALL surgical procedure CPT codes
-   - ALL graft/implant CPT codes (if applicable to the surgery)
-   - DO NOT generate codes for DME, PT, imaging, guidance, or supplies
-5. MANDATORY: Generate ALL POSSIBLE CPT codes for the surgery
-6. MANDATORY: EVERY CODE MUST BE VALID FORMAT (5 digits numeric) - verify before including
-7. Think comprehensively - include ALL CPT codes that could be part of the surgical authorization
-8. Include codes from surgical categories only: Primary Surgery, Related Surgical Procedures, Grafts/Implants
-9. DO NOT limit yourself - generate ALL possible CPT codes for the surgery
-10. MANDATORY: Generate ALL possible CPT codes - do not stop at 6-8 codes
-11. MANDATORY: Before returning, verify ALL codes are exactly 5 digits numeric (NO letters)
+CRITICAL RULES - GENERATE ALL POSSIBLE VALID CODES:
+1. Identify the PROCEDURE/SERVICE mentioned in the transcription (Surgery, Injection, DME, PT, MRI, etc.)
+2. Generate the PRIMARY code for the main service (MUST BE VALID FORMAT)
+3. Generate ALL SUPPORTIVE codes that could apply (ALL MUST BE VALID FORMAT):
+   - Surgical procedures: Surgical CPTs, Implants (C/L codes), Grafts, Supplies
+   - Injections: Injection CPTs, Drug HCPCS (J-codes), Guidance (7xxxx), Supplies
+   - DME: Product HCPCS (L/E codes), Adjustment/Fitting codes
+   - PT/OT: Evaluation (9716x), Therapeutic specific codes (97110, 97140, etc.)
+   - Imaging: Primary CPT (7xxxx)
+4. MANDATORY: Generate ALL POSSIBLE codes for the service
+5. MANDATORY: EVERY CODE MUST BE VALID FORMAT - verify before including
+6. Think comprehensively - include ALL codes that could be part of the authorization
+7. DO NOT limit yourself - generate ALL possible codes
+8. DO NOT stop at 6-8 codes - continue until you have ALL possible codes
 
 Return a JSON object with:
 {
-  "primary_cpt": "CPT_CODE" or null,
+  "primary_cpt": "CODE" or null,
   "supportive_cpts": ["CODE1", "CODE2", "CODE3", ...] (ALL possible comprehensive codes generated by AI),
   "description": "Brief description"
 }
@@ -174,50 +167,39 @@ If no procedure is mentioned, return:
 
 🔴 CRITICAL - GENERATE ALL POSSIBLE VALID CODES:
 🔴 100% VALID CODES REQUIRED - NO INVALID CODES ALLOWED
+🔴 INCLUDE HCPCS CODES (DME, Drugs, Supplies) IF APPLICABLE
 
 VALID CODE FORMATS (ONLY GENERATE THESE):
-✓ CPT Codes: Exactly 5 digits, numeric only (e.g., 29881, 20610, 29888)
-✓ Codes must be for surgical procedures only
+✓ CPT Codes: Exactly 5 digits, numeric only (e.g., 29881, 97110)
+✓ HCPCS Codes: Letter + 4 digits (e.g., L1832, J1040)
 
 INVALID FORMATS (DO NOT GENERATE):
 ✗ Codes with wrong length (3 digits, 6+ digits)
-✗ Codes with letters in wrong position
+✗ Codes with letters in wrong position (unless valid HCPCS)
 ✗ Codes with special characters
 ✗ Placeholder codes
 
 VALIDATION CHECKLIST - Before including each code:
-□ Is it exactly 5 digits, numeric only (NO letters)?
-□ Is it for a surgical procedure (NOT injection, imaging, therapy, DME, or supplies)?
-□ Does it match valid CPT format (5 digits numeric)?
-□ Is it a real, valid CPT code?
+□ Is it exactly 5 digits numeric OR Letter+4 digits?
+□ Is it a real, valid CPT or HCPCS code?
 □ If NO to any → DO NOT include that code
 
-- FIRST: Identify if SURGERY is mentioned in the transcription - if NO surgery, return empty list
-- Identify the PRIMARY SURGERY from the transcription
-- Generate the PRIMARY CPT code for the main surgery (MUST BE VALID - 5 digits numeric)
-- Generate ALL SUPPORTIVE CPT codes that could apply for the surgery (ALL MUST BE VALID - 5 digits numeric):
-  * ALL surgical procedure CPT codes
-  * ALL graft/implant CPT codes (if applicable to the surgery)
-  * DO NOT generate codes for DME, PT, imaging, guidance, or supplies
+- FIRST: Identify the procedure/service (Surgery, Injection, DME, PT, etc.)
+- Generate the PRIMARY code
+- Generate ALL SUPPORTIVE codes (Surgical, Implants, Grafts, Drugs, Supplies, DME, Therapy)
 - MANDATORY: Generate ALL POSSIBLE codes
 - MANDATORY: EVERY CODE MUST BE VALID - verify format before including
 - Think comprehensively - include ALL codes that could be part of the authorization
-- Include codes from ALL applicable categories
 - DO NOT limit yourself - generate ALL possible codes
 - DO NOT stop at 6-8 codes - continue until you have ALL possible codes
 - FINAL CHECK: Verify ALL codes are valid format before returning
 
 **CODE GENERATION CHECKLIST:**
-For surgery procedures, include:
-□ Primary surgical CPT
-□ ALL related surgical procedures (10-20+ codes)
-□ ALL graft codes (8-15+ codes)
-□ ALL implant codes (5-10+ codes)
-□ ALL DME codes (10-20+ codes)
-□ ALL PT codes (12-20+ codes)
-□ ALL imaging codes (ONLY if explicitly ordered/mentioned)
-□ ALL guidance codes (ONLY if explicitly mentioned)
-□ ALL supply codes (10-15+ codes)
+For Surgery: Primary CPT, Related CPTs, Implants (C/L), Grafts, Supplies (A/Q), DME (L/E)
+For Injections: Injection CPT, Drug J-codes, Guidance CPT, Supplies
+For DME: Base L-code, Add-on L-codes
+For PT/OT: Eval codes, Treatment codes (97xxx)
+For Imaging: MRI/CT/X-ray CPTs
 
 Return the JSON object with ALL possible comprehensive codes."""
 
