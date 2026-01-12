@@ -243,6 +243,47 @@ def extract_diagnosis_codes_from_soap_assessment(soap_doc: Optional[Dict[str, An
     return result
 
 
+def extract_weight_from_text(text: str) -> Optional[str]:
+    """Helper to extract weight (lbs) from text using various patterns"""
+    if not text:
+        return None
+        
+    flags = re.IGNORECASE | re.DOTALL
+    
+    # Pattern 1: Explicit "limited to" or symbols <= / < / ≤
+    # Matches: "lifting ... limited to <= 10 lbs", "lifting < 10 lbs"
+    match = re.search(r'(?:lift|push|pull).*?(?:limit.*?to|<=|<|≤|max|maximum)\s*(?:<=|<|≤)?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    if match:
+        return match.group(1)
+        
+    # Pattern 2: "no lifting over 10 lbs" or "no lifting > 10 lbs"
+    match = re.search(r'no (?:lift|push|pull).*?(?:over|>)\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    if match:
+        return match.group(1)
+
+    # Pattern 3: "lifting restriction 10 lbs"
+    match = re.search(r'(?:lift|push|pull).*?restriction.*?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    if match:
+        return match.group(1)
+        
+    # Pattern 4: Broad fallback - "lifting ... 10 lbs" within reasonable distance
+    match = re.search(r'(?:lift|push|pull).{0,50}?\s(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    if match:
+        return match.group(1)
+        
+    return None
+
+
+def extract_work_status_section(text: str) -> str:
+    """Isolate work status section to avoid false positives (e.g. from history)"""
+    if not text: return ""
+    # Look for headers
+    match = re.search(r'(?:work status|restrictions|functional limitations|plan)(.*)', text, re.IGNORECASE | re.DOTALL)
+    if match:
+        return match.group(1)
+    return text  # Fallback to all text
+
+
 def generate_cpt_codes_from_diagnosis_codes(diagnosis_codes: Dict[str, Any], transcription: str = "", soap_doc: Optional[Dict[str, Any]] = None, openai_client=None) -> List[str]:
     """
     Extract CPT codes ONLY from transcription text using diagnosis values from A - ASSESSMENT section.
@@ -2855,6 +2896,17 @@ def build_section_c(
     meds_effect_description = None
     work_status_source = None  # Track where work_status was found
     
+    # Initialize Work Status flags and dates
+    return_to_full_duty = False
+    unable_to_return_to_work = False
+    return_to_work_with_restrictions = False
+    
+    return_full_duty_date = None
+    return_modified_duty_date = None
+    unable_to_return_start_date = None
+    unable_to_return_end_date = None
+    unable_to_return_reason = ""
+    
     # Extract detailed restrictions if available
     detailed_restrictions = None
     
@@ -2957,6 +3009,32 @@ def build_section_c(
                     work_status_source = "SOAP dictation (formatted_soap_note text extraction)"
                     logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
                     break
+        
+        # Check Plan section for work status keywords if specific Work Status header was not found
+        # (User request: Support "Modified Duty" inside Plan section without specific header)
+        if not work_status:
+            plan_match = re.search(r'## P – PLAN\s*\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+            if plan_match:
+                plan_text = plan_match.group(1).strip()
+                # Keywords to search for in Plan text
+                status_keywords = [
+                    (r'Modified Duty ', "Modified Duty"),
+                    (r'Full Duty', "Full Duty"),
+                    (r'Return to full duty', "Full Duty"),
+                    (r'Return to work without restrictions', "Full Duty"),
+                    (r'Return to work with restrictions', "Modified Duty"),
+                    (r'Unable to work', "TTD"),
+                    (r'Off work', "TTD"),
+                    (r'Temporary Total Disability', "TTD"),
+                    (r'TTD', "TTD")
+                ]
+                
+                for pattern, status in status_keywords:
+                    if re.search(pattern, plan_text, re.IGNORECASE):
+                        work_status = status
+                        work_status_source = "SOAP dictation (Plan section keywords)"
+                        logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
+                        break
         
         # If not found with regex, use GPT to extract from text
         if not work_status:
@@ -3070,57 +3148,43 @@ def build_section_c(
             work_status_source = "Follow-up form (section_b.work_status_perception)"
             logger.info(f"✓ Found Work Status from {work_status_source}: {work_status}")
     
-    # Final check: if still no work_status found, log warning and set default
     if not work_status:
         work_status = ""
         logger.warning(f"⚠ Work Status not found in any source (mandatory per mapping). Checked: SOAP dictation, page7, plan, clinical_information, formatted_soap_note, intake form, follow-up form")
     else:
         logger.info(f"✅ Work Status successfully extracted from: {work_status_source}")
     
-    # Normalize work_status to determine boolean flags
-    work_status_lower = str(work_status).lower() if work_status else ""
-    return_to_full_duty = "full duty" in work_status_lower or "full" in work_status_lower
-    unable_to_return_to_work = "ttd" in work_status_lower or "temporary total" in work_status_lower or "unable" in work_status_lower
-    
-    # Check if restrictions exist - either as text or detailed restrictions object
-    has_restrictions_text = restrictions and str(restrictions).strip()
-    has_detailed_restrictions = False
-    if isinstance(detailed_restrictions, dict):
-        # Check if any restriction field has a non-empty value
-        has_detailed_restrictions = any(
-            (isinstance(v, str) and v.strip()) or (isinstance(v, bool) and v) or (v and v != "")
-            for v in detailed_restrictions.values()
-        )
-    
-    return_to_work_with_restrictions = (
-        "modified" in work_status_lower or 
-        "restriction" in work_status_lower or 
-        "restricted" in work_status_lower or
-        has_restrictions_text or 
-        has_detailed_restrictions
-    )
-    
+    # --- DATE AND PATIENT STATUS EXTRACTION ---
     # Extract patientStatus object if available
     patient_status = doc.get("patientStatus")
     if isinstance(patient_status, dict):
         # Use patientStatus dates if available, otherwise fall back to flat fields
         return_full_duty_date = to_mmddyyyy(patient_status.get("returnToFullDutyDate") or doc.get("return_full_duty_date"))
+        return_modified_duty_date = to_mmddyyyy(patient_status.get("returnToModifiedDutyDate") or doc.get("return_modified_duty_date"))
         unable_to_return_start_date = to_mmddyyyy(patient_status.get("unableToReturnStartDate") or doc.get("unable_to_return_start_date"))
         unable_to_return_end_date = to_mmddyyyy(patient_status.get("unableToReturnEndDate") or doc.get("unable_to_return_end_date"))
         unable_to_return_reason = patient_status.get("unableToReturnReason") or doc.get("unable_to_return_reason") or ""
         logger.info("Using patientStatus object for date extraction")
     else:
         # Fall back to flat fields
-        return_full_duty_date = to_mmddyyyy(doc.get("return_full_duty_date") or doc.get("returnToFullDutyDate"))
-        unable_to_return_start_date = to_mmddyyyy(doc.get("unable_to_return_start_date") or doc.get("unableToReturnStartDate"))
-        unable_to_return_end_date = to_mmddyyyy(doc.get("unable_to_return_end_date") or doc.get("unableToReturnEndDate"))
-        unable_to_return_reason = doc.get("unable_to_return_reason") or doc.get("unableToReturnReason") or ""
+        if not return_full_duty_date:
+            return_full_duty_date = to_mmddyyyy(doc.get("return_full_duty_date") or doc.get("returnToFullDutyDate"))
+        if not return_modified_duty_date:
+            return_modified_duty_date = to_mmddyyyy(doc.get("return_modified_duty_date") or doc.get("returnToModifiedDutyDate"))
+        if not unable_to_return_start_date:
+            unable_to_return_start_date = to_mmddyyyy(doc.get("unable_to_return_start_date") or doc.get("unableToReturnStartDate"))
+        if not unable_to_return_end_date:
+            unable_to_return_end_date = to_mmddyyyy(doc.get("unable_to_return_end_date") or doc.get("unableToReturnEndDate"))
+        if not unable_to_return_reason:
+            unable_to_return_reason = doc.get("unable_to_return_reason") or doc.get("unableToReturnReason") or ""
+
     
     # Check page7 for dates and flags if not found
-    page7 = doc.get("page7")
     if isinstance(page7, dict):
         if not return_full_duty_date:
             return_full_duty_date = to_mmddyyyy(page7.get("returnToFullDutyDate"))
+        if not return_modified_duty_date:
+            return_modified_duty_date = to_mmddyyyy(page7.get("returnToModifiedDutyDate"))
         if not unable_to_return_start_date:
             unable_to_return_start_date = to_mmddyyyy(page7.get("unableToReturnStartDate"))
         if not unable_to_return_end_date:
@@ -3129,13 +3193,87 @@ def build_section_c(
             unable_to_return_reason = page7.get("unableToReturnReason") or ""
         if not isinstance(detailed_restrictions, dict):
             detailed_restrictions = page7.get("restrictions")
-        # Use page7 boolean flags if explicitly set, otherwise keep derived values
-        if "returnToFullDuty" in page7:
-            return_to_full_duty = bool(page7.get("returnToFullDuty", False))
-        if "unableToReturnToWork" in page7:
-            unable_to_return_to_work = bool(page7.get("unableToReturnToWork", False))
-        if "returnToWorkWithRestrictions" in page7:
-            return_to_work_with_restrictions = bool(page7.get("returnToWorkWithRestrictions", False))
+        
+        # Priority mapping from page7 boolean flags
+        if "returnToFullDuty" in page7 and page7.get("returnToFullDuty"):
+            return_to_full_duty = True
+        if "unableToReturnToWork" in page7 and page7.get("unableToReturnToWork"):
+            unable_to_return_to_work = True
+        if "returnToWorkWithRestrictions" in page7 and page7.get("returnToWorkWithRestrictions"):
+            return_to_work_with_restrictions = True
+
+    # Normalize work_status to determine boolean flags
+    work_status_lower = str(work_status).lower() if work_status else ""
+    
+    # --- AGGRESSIVE KEYWORD DETECTION (from work_status_forms.py logic) ---
+    # User Request: "Modified Duty aa ave to ... auto check kari ne aapo"
+    # Scans transcription/plan for keywords if formal headers are missing.
+    
+    soap_raw_texts = []
+    if doc.get("formatted_soap_note"):
+        soap_raw_texts.append(str(doc.get("formatted_soap_note")))
+    if doc.get("plan"):
+        soap_raw_texts.append(str(doc.get("plan")))
+    if doc.get("transcription"):
+        soap_raw_texts.append(str(doc.get("transcription")))
+    full_soap_text = "\n".join(soap_raw_texts)
+    
+    # Isolate relevant section if possible
+    search_text = extract_work_status_section(full_soap_text)
+    search_text_lower = search_text.lower()
+    
+    # Use keywords from work_status_forms.py
+    is_modified_kw = any(k in search_text_lower for k in ["modified duty", "light duty", "restricted duty", "restrictions apply", "return to work with restrictions"])
+    is_off_work_kw = any(k in search_text_lower for k in ["off work", "no work", "unable to work", "temporarily totally disabled", "ttd"])
+    is_full_duty_kw = any(k in search_text_lower for k in ["full duty", "regular duty", "no restrictions", "return to work without restrictions", "return to full duty"])
+
+    # Initial derivation from work_status field and Keywords
+    if not return_to_full_duty:
+        return_to_full_duty = "full duty" in work_status_lower or "full" in work_status_lower or is_full_duty_kw
+    if not unable_to_return_to_work:
+        unable_to_return_to_work = "ttd" in work_status_lower or "temporary total" in work_status_lower or "unable" in work_status_lower or is_off_work_kw
+    
+    # Check if restrictions exist - either as text or detailed restrictions object
+    has_restrictions_text = restrictions and str(restrictions).strip()
+    has_detailed_restrictions = False
+    if isinstance(detailed_restrictions, dict):
+        has_detailed_restrictions = any(
+            (isinstance(v, str) and v.strip()) or (isinstance(v, bool) and v) or (v and v != "")
+            for v in detailed_restrictions.values()
+        )
+    
+    if not return_to_work_with_restrictions:
+        return_to_work_with_restrictions = (
+            "modified" in work_status_lower or 
+            "restriction" in work_status_lower or 
+            "restricted" in work_status_lower or
+            has_restrictions_text or 
+            has_detailed_restrictions or
+            is_modified_kw
+        )
+
+    # Priority: Off Work > Modified Duty > Full Duty if multiple found
+    if unable_to_return_to_work:
+        return_to_full_duty = False
+        return_to_work_with_restrictions = False
+        if not unable_to_return_start_date:
+            unable_to_return_start_date = datetime.now().strftime("%m/%d/%Y")
+    elif return_to_work_with_restrictions:
+        return_to_full_duty = False
+        if not return_modified_duty_date:
+            return_modified_duty_date = datetime.now().strftime("%m/%d/%Y")
+    
+    if return_to_full_duty and not return_full_duty_date:
+        return_full_duty_date = datetime.now().strftime("%m/%d/%Y")
+
+    # AUTO-CHECK LIFTING: If keywords exist, try to populate liftCarryPounds
+    if return_to_work_with_restrictions:
+        weight_val = extract_weight_from_text(search_text)
+        if weight_val and not (detailed_restrictions and isinstance(detailed_restrictions, dict) and detailed_restrictions.get("liftCarryPounds")):
+            if not isinstance(detailed_restrictions, dict):
+                detailed_restrictions = {}
+            detailed_restrictions["liftCarryPounds"] = weight_val
+            logger.info(f"PR1 logic: Auto-filled weight limit {weight_val} lbs")
     
     # Build restrictions object with defaults
     # Merge restrictions from all sources - prioritize non-empty values
@@ -3198,6 +3336,7 @@ def build_section_c(
         "patientName": patient_name,
         "returnToFullDuty": return_to_full_duty,
         "returnToFullDutyDate": return_full_duty_date or "",
+        "returnToModifiedDutyDate": return_modified_duty_date or "",
         "unableToReturnToWork": unable_to_return_to_work,
         "unableToReturnStartDate": unable_to_return_start_date or "",
         "unableToReturnEndDate": unable_to_return_end_date or "",
