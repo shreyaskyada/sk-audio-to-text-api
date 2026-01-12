@@ -1,15 +1,16 @@
-"""
-Work Status Forms API endpoints
-"""
-import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Form
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from bson import ObjectId
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+import json
+import logging
+import re
 
 from app.models.work_status_form import WorkStatusForm
 from app.mongodb import get_database
+# Import extraction logic from pr1_generator to use as engine
+from app.api.pr1_generator import extract_work_status_from_pr1, PR1GenerateRequest
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,195 @@ def serialize_mongodb_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
 # ============================================
 # WORK STATUS FORMS API ENDPOINTS
 # ============================================
+
+@router.post("/work-status-form/extract-from-soap")
+async def extract_work_status_from_soap(
+    soap_id: str = Form(..., description="SOAP note MongoDB ID"),
+    use_latest_intake: bool = Form(False, description="Use latest intake form"),
+    use_latest_followup: bool = Form(False, description="Use latest follow-up form"),
+    flags: Optional[str] = Form(None, description="JSON string with PR-1 flags")
+):
+    """
+    Extract work status data from SOAP note directly for the Work Status Form.
+    Uses PHI data engine but applies specific Work Status Form post-processing.
+    """
+    try:
+        # Parse flags
+        flags_dict = {}
+        if flags:
+            try:
+                flags_dict = json.loads(flags)
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid JSON in flags parameter: {flags}")
+        
+        # Use existing extraction engine
+        payload = PR1GenerateRequest(
+            soap_id=soap_id,
+            use_latest_intake=use_latest_intake,
+            use_latest_followup=use_latest_followup,
+            flags=flags_dict
+        )
+        
+        # Get base extraction result
+        result = await extract_work_status_from_pr1(payload)
+        
+        # --- POST-PROCESSING FIX for Work Status Form ---
+        if result and "work_status_data" in result:
+            ws_data = result["work_status_data"]
+            restrictions = ws_data.get("functionalRestrictions", {})
+            lifting = restrictions.get("liftingPushingPulling", {})
+            other_text = restrictions.get("otherRestrictions", "") or ""
+            
+            # 1. Fetch RAW SOAP note for aggressive validation
+            full_raw_text = ""
+            try:
+                db = get_database()
+                if db is not None:
+                    soap_doc = await db['soap_notes'].find_one({"_id": ObjectId(soap_id)})
+                    if soap_doc:
+                        raw_texts = []
+                        if soap_doc.get("formatted_soap_note"):
+                            raw_texts.append(str(soap_doc.get("formatted_soap_note")))
+                        if soap_doc.get("plan"):
+                            raw_texts.append(str(soap_doc.get("plan")))
+                        if soap_doc.get("transcription"):
+                            raw_texts.append(str(soap_doc.get("transcription")))
+                        full_raw_text = "\n".join(raw_texts)
+            except Exception as db_e:
+                logger.error(f"Failed to fetch raw SOAP: {db_e}")
+
+            # 2. Focus on Work Status / Restrictions Section
+            # Prefer 'other_text' from AI, or extract from raw text
+            target_text = other_text
+            if full_raw_text:
+                work_status_section = extract_work_status_section(full_raw_text)
+                target_text = target_text + "\n" + work_status_section
+            
+            target_text_lower = target_text.lower()
+
+            # 3. AGGRESSIVE AUTO-CHECK: If keywords exist, check the box!
+            # User requirement: "lifting pushing pushing aa 3 mathi 1 pan work hoy ne to te chechk box auto chechk thay"
+            keywords_present = any(k in target_text_lower for k in ["lift", "push", "pull"])
+            
+            # Exclude explicit "no restrictions" context if possible, but favor checking
+            is_negative = "no lifting restrictions" in target_text_lower or "no work restrictions" in target_text_lower
+            
+            if keywords_present and not is_negative:
+                lifting["noLiftingOver"] = True
+                logger.info("WorkStatusForm Fix: Auto-checked 'noLiftingOver' due to keywords")
+                
+                # 4. Extract weight if possible
+                weight_found = extract_weight_from_text(target_text)
+                if weight_found:
+                    logger.info(f"WorkStatusForm Fix: Extracted weight {weight_found}")
+                    if weight_found in ["5", "10", "15", "25"]:
+                        lifting["weightLimit"] = weight_found
+                    else:
+                        lifting["weightLimit"] = "custom"
+                        lifting["customWeight"] = weight_found
+            
+            # If AI already extracted it, ensure we keep it valid
+            elif lifting.get("noLiftingOver") and not lifting.get("weightLimit"):
+                 weight_found = extract_weight_from_text(target_text)
+                 if weight_found:
+                     if weight_found in ["5", "10", "15", "25"]:
+                        lifting["weightLimit"] = weight_found
+                     else:
+                        lifting["weightLimit"] = "custom"
+                        lifting["customWeight"] = weight_found
+
+            # --- BODY PARTS Fix ---
+            emp_info = ws_data.get("employeeInfo", {})
+            
+            # 1. First, explicitly CLEAN the existing value of junk like "**"
+            raw_bp = str(emp_info.get("bodyPartsInjured", ""))
+            cleaned_bp = raw_bp.replace("*", "").replace("-", "").strip()
+            
+            # Update with cleaned value (so at worst we have empty string, not "**")
+            emp_info["bodyPartsInjured"] = cleaned_bp
+            
+            # 2. If valid part found after cleaning, keep it. If not, fallback.
+            if not cleaned_bp and full_raw_text:
+                 parts_found = extract_body_parts_fallback(full_raw_text)
+                 if parts_found:
+                      emp_info["bodyPartsInjured"] = parts_found
+                      logger.info(f"WorkStatusForm Fix: Extracted body parts: {parts_found}")
+
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in work-status-form extraction: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to extract date: {str(e)}")
+
+
+def extract_work_status_section(text: str) -> str:
+    """Isolate work status section to avoid false positives from history"""
+    if not text: return ""
+    # Look for headers
+    match = re.search(r'(?:work status|restrictions|functional limitations|plan)(.*)', text, re.IGNORECASE | re.DOTALL)
+    if match:
+        return match.group(1)
+    return text # Fallback to all text
+
+
+def extract_body_parts_fallback(text: str) -> Optional[str]:
+    """Fallback extraction for body parts from raw text"""
+    if not text: return None
+    
+    flags = re.IGNORECASE | re.DOTALL
+    
+    # 1. Look for explicit Labels (Diagnosis/Injury)
+    # Matches: "Diagnosis: Left Knee" or "Diagnosis:\nLeft Knee"
+    # Capture up to newline or full stop
+    match = re.search(r'(?:Diagnosis|Assessment|Body\s*Part|Injury\s*Location).*?:\s*([^\n\.]+)', text, flags)
+    if match:
+        val = match.group(1).replace("*", "").strip()
+        if val and len(val) < 100: 
+            return val
+    
+    # 2. Look for Chief Complaint
+    match = re.search(r'(?:CC|Chief\s*Complaint).*?:\s*([^\n\.]+)', text, flags)
+    if match:
+        val = match.group(1).replace("*", "").strip()
+        if val and len(val) < 100: 
+            return val
+
+    return None
+
+
+def extract_weight_from_text(text: str) -> Optional[str]:
+    """Helper to extract weight (lbs) from text using various patterns"""
+    if not text:
+        return None
+        
+    flags = re.IGNORECASE | re.DOTALL
+    
+    # Pattern 1: Explicit "limited to" or symbols <= / < / ≤
+    # Matches: "lifting ... limited to <= 10 lbs", "lifting < 10 lbs"
+    match = re.search(r'(?:lift|push|pull).*?(?:limit.*?to|<=|<|≤|max|maximum)\s*(?:<=|<|≤)?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    if match:
+        return match.group(1)
+        
+    # Pattern 2: "no lifting over 10 lbs" or "no lifting > 10 lbs"
+    match = re.search(r'no (?:lift|push|pull).*?(?:over|>)\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    if match:
+        return match.group(1)
+
+    # Pattern 3: "lifting restriction 10 lbs"
+    match = re.search(r'(?:lift|push|pull).*?restriction.*?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    if match:
+        return match.group(1)
+        
+    # Pattern 4: Broad fallback - "lifting ... 10 lbs" within reasonable distance
+    match = re.search(r'(?:lift|push|pull).{0,50}?\s(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    if match:
+        return match.group(1)
+        
+    return None
+
+
 
 @router.post("/work-status-form")
 async def create_work_status_form(data: WorkStatusForm):
