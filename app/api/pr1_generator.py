@@ -3516,7 +3516,7 @@ def map_pr1_restrictions_to_new_format(
     
     # Map upper extremity - pushing/pulling
     if restrictions.get("pushingPullingRight") == False or restrictions.get("pushingPullingLeft") == False:
-        functional_restrictions["upperExtremity"]["useLimited"] = True
+        functional_restrictions["upperExtremity"]["useLimited"] =  False
         if restrictions.get("pushingPullingRight") == False:
             functional_restrictions["upperExtremity"]["useLimitedSide"] = "right"
         elif restrictions.get("pushingPullingLeft") == False:
@@ -3527,12 +3527,14 @@ def map_pr1_restrictions_to_new_format(
             functional_restrictions["upperExtremity"]["useLimitedHours"] = str(push_pull_hours)
     
     # Map upper extremity - grasping
-    if restrictions.get("graspingRight") == False or restrictions.get("graspingLeft") == False:
-        functional_restrictions["upperExtremity"]["noRepetitiveGripping"] = True
-        if restrictions.get("graspingRight") == False:
-            functional_restrictions["upperExtremity"]["noRepetitiveGrippingRight"] = True
-        if restrictions.get("graspingLeft") == False:
-            functional_restrictions["upperExtremity"]["noRepetitiveGrippingLeft"] = True
+    # COMMENTED OUT PER USER REQUEST (Step 278) - preventing auto-check of "Right" and "Left" gripping
+    # unless explicitly requested or refined later.
+    # if restrictions.get("graspingRight") == False or restrictions.get("graspingLeft") == False:
+    #     functional_restrictions["upperExtremity"]["noRepetitiveGripping"] = True
+    #     if restrictions.get("graspingRight") == False:
+    #         functional_restrictions["upperExtremity"]["noRepetitiveGrippingRight"] = True
+    #     if restrictions.get("graspingLeft") == False:
+    #         functional_restrictions["upperExtremity"]["noRepetitiveGrippingLeft"] = True
     
     # Map lower extremity - kneeling
     if restrictions.get("kneeling", ""):
