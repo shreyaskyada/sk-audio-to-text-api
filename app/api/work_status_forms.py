@@ -150,11 +150,16 @@ async def extract_work_status_from_soap(
 
             # --- BODY PARTS Fix ---
             emp_info = ws_data.get("employeeInfo", {})
-            current_bp = str(emp_info.get("bodyPartsInjured", "")).strip()
-            # Treat as missing if empty OR just artifacts like "**" or "-"
-            is_valid_bp = current_bp and (current_bp.replace("*", "").replace("-", "").strip() != "")
             
-            if not is_valid_bp and full_raw_text:
+            # 1. First, explicitly CLEAN the existing value of junk like "**"
+            raw_bp = str(emp_info.get("bodyPartsInjured", ""))
+            cleaned_bp = raw_bp.replace("*", "").replace("-", "").strip()
+            
+            # Update with cleaned value (so at worst we have empty string, not "**")
+            emp_info["bodyPartsInjured"] = cleaned_bp
+            
+            # 2. If valid part found after cleaning, keep it. If not, fallback.
+            if not cleaned_bp and full_raw_text:
                  parts_found = extract_body_parts_fallback(full_raw_text)
                  if parts_found:
                       emp_info["bodyPartsInjured"] = parts_found
@@ -183,23 +188,24 @@ def extract_body_parts_fallback(text: str) -> Optional[str]:
     """Fallback extraction for body parts from raw text"""
     if not text: return None
     
-    # 1. Look for explicit Labels
-    match = re.search(r'(?:Body\s*Part|Injury\s*Location|Injured\s*Part).*?:\s*([^\n\.]+)', text, re.IGNORECASE)
+    flags = re.IGNORECASE | re.DOTALL
+    
+    # 1. Look for explicit Labels (Diagnosis/Injury)
+    # Matches: "Diagnosis: Left Knee" or "Diagnosis:\nLeft Knee"
+    # Capture up to newline or full stop
+    match = re.search(r'(?:Diagnosis|Assessment|Body\s*Part|Injury\s*Location).*?:\s*([^\n\.]+)', text, flags)
     if match:
-        return match.group(1).strip()
+        val = match.group(1).replace("*", "").strip()
+        if val and len(val) < 100: 
+            return val
     
     # 2. Look for Chief Complaint
-    match = re.search(r'(?:CC|Chief\s*Complaint).*?:\s*([^\n\.]+)', text, re.IGNORECASE)
+    match = re.search(r'(?:CC|Chief\s*Complaint).*?:\s*([^\n\.]+)', text, flags)
     if match:
-        val = match.group(1).strip()
-        if len(val) < 100: return val
+        val = match.group(1).replace("*", "").strip()
+        if val and len(val) < 100: 
+            return val
 
-    # 3. Look for Diagnosis (Fallback)
-    match = re.search(r'(?:Diagnosis|Assessment).*?:\s*(?:1\.)?\s*([^\n\.,]+)', text, re.IGNORECASE)
-    if match:
-        val = match.group(1).strip()
-        if len(val) < 100: return val
-            
     return None
 
 
