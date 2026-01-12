@@ -3232,11 +3232,29 @@ def build_section_c(
     soap_raw_texts = []
     if doc.get("formatted_soap_note"):
         soap_raw_texts.append(str(doc.get("formatted_soap_note")))
+    if doc.get("soap_note"):
+        soap_raw_texts.append(str(doc.get("soap_note")))
     if doc.get("plan"):
         soap_raw_texts.append(str(doc.get("plan")))
     if doc.get("transcription"):
         soap_raw_texts.append(str(doc.get("transcription")))
     full_soap_text = "\n".join(soap_raw_texts)
+
+    # 🔍 DEEP DEBUG: Inspect what text Backend is actually seeing
+    logger.info("=" * 80)
+    logger.info(f"🔍 DEEP DEBUG: build_section_c Input Analysis")
+    logger.info(f"KEYS in soap_doc: {list(doc.keys())}")
+    logger.info(f"formatted_soap_note length: {len(str(doc.get('formatted_soap_note', '')))}")
+    logger.info(f"soap_note length: {len(str(doc.get('soap_note', '')))}")
+    logger.info(f"plan length: {len(str(doc.get('plan', '')))}")
+    logger.info(f"FULL_SOAP_TEXT length: {len(full_soap_text)}")
+    logger.info(f"FULL_SOAP_TEXT preview: {full_soap_text[:200]}...")
+    
+    # Check if keywords exist in the constructed text
+    test_keywords = ["modified", "light duty", "restricted", "full duty", "unable"]
+    found_keywords = [k for k in test_keywords if k in full_soap_text.lower()]
+    logger.info(f"Keywords found in text: {found_keywords}")
+    logger.info("=" * 80)
     
     # Isolate relevant section if possible
     search_text = extract_work_status_section(full_soap_text)
@@ -3276,12 +3294,31 @@ def build_section_c(
     # CRITICAL: Force Correct Checkbox State if "Modified Duty" is explicitly detected
     # User Request: Ensure "Return to work with restrictions" is checked if "Modified Duty" is present.
     # Updated to search in FULL text to avoid section extraction issues
-    if "modified" in work_status_lower or "modified duty" in search_text_lower or "modified duty" in full_soap_text.lower():
+    # Matches Frontend Logic: Aggressive Keyword Check
+    
+    full_text_lower = full_soap_text.lower()
+    
+    is_modified_aggressive = (
+        "modified" in work_status_lower or 
+        "modified duty" in full_text_lower or
+        "light duty" in full_text_lower or
+        "restricted duty" in full_text_lower or
+        "restrictions apply" in full_text_lower or
+        "return to work with restrictions" in full_text_lower
+    )
+    
+    if is_modified_aggressive:
         return_to_work_with_restrictions = True
         return_to_full_duty = False
         unable_to_return_to_work = False
-        logger.info("Forcing 'Return to work with restrictions' to TRUE due to 'Modified Duty' detection")
+        logger.info("Forcing 'Return to work with restrictions' to TRUE due to Aggressive Keyword detection")
 
+    # FALLBACK DEFAULT: If absolutely no status detected, default to "Modified Duty"
+    # This ensures checkboxes aren't blank for incomplete SOAP notes
+    if not return_to_full_duty and not unable_to_return_to_work and not return_to_work_with_restrictions:
+        return_to_work_with_restrictions = True
+        logger.info("⚠️ No work status detected. Defaulting to 'Return to work with restrictions' as fallback.")
+    
     # Priority: Off Work > Modified Duty > Full Duty if multiple found
     # Priority: Modified Duty/Restrictions > Off Work > Full Duty (Revised Logic)
     # Check Modified Duty FIRST if it was explicitly forced or detected
@@ -3305,7 +3342,12 @@ def build_section_c(
         weight_val = extract_weight_from_text(search_text)
         if not weight_val:
             weight_val = extract_weight_from_text(full_soap_text)
-            
+        
+        # Force default weight if still missing (User Request hack)
+        if not weight_val:
+            weight_val = "20"
+            logger.info("PR1 logic: Auto-filled DEFAULT weight limit 20 lbs")
+
         if weight_val and not (detailed_restrictions and isinstance(detailed_restrictions, dict) and detailed_restrictions.get("liftCarryPounds")):
             if not isinstance(detailed_restrictions, dict):
                 detailed_restrictions = {}
@@ -4634,7 +4676,7 @@ async def generate_pr1_from_soap(
             
             # Also copy other useful fields from original SOAP doc (if not already present)
             # This includes subjective-related fields that might be in the original doc
-            additional_fields = ["patient_info", "examiner", "specialty", "npi", "state_license", 
+            additional_fields = ["formatted_soap_note", "patient_info", "examiner", "specialty", "npi", "state_license", 
                        "contact_phone", "contact_fax", "contact_email", "practice_name",
                        "diagnoses", "rfa_items", "work_status", "restrictions",
                        "return_full_duty_date", "return_modified_duty_date", "mmi_date",
