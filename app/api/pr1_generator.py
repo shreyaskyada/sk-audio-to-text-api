@@ -250,24 +250,29 @@ def extract_weight_from_text(text: str) -> Optional[str]:
         
     flags = re.IGNORECASE | re.DOTALL
     
-    # Pattern 1: Explicit "limited to" or symbols <= / < / ≤
+    # Pattern 1: Explicit "limited to" or symbols <= / < / ≤ / upto
     # Matches: "lifting ... limited to <= 10 lbs", "lifting < 10 lbs"
-    match = re.search(r'(?:lift|push|pull).*?(?:limit.*?to|<=|<|≤|max|maximum)\s*(?:<=|<|≤)?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    match = re.search(r'(?:lift|carry|push|pull).*?(?:limit.*?to|<=|<|≤|max|maximum|upto|up to)\s*(?:=|:)?\s*(?:<=|<|≤)?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
     if match:
         return match.group(1)
         
-    # Pattern 2: "no lifting over 10 lbs" or "no lifting > 10 lbs"
-    match = re.search(r'no (?:lift|push|pull).*?(?:over|>)\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    # Pattern 2: "no lifting over 10 lbs" or "no lifting > 10 lbs" or "lifting more than"
+    match = re.search(r'(?:no )?(?:lift|carry|push|pull).*?(?:over|>|more than|greater than)\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
     if match:
         return match.group(1)
 
     # Pattern 3: "lifting restriction 10 lbs"
-    match = re.search(r'(?:lift|push|pull).*?restriction.*?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    match = re.search(r'(?:lift|carry|push|pull).*?restriction.*?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
     if match:
         return match.group(1)
         
-    # Pattern 4: Broad fallback - "lifting ... 10 lbs" within reasonable distance
-    match = re.search(r'(?:lift|push|pull).{0,50}?\s(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    # Pattern 4: Broad fallback - "lifting 10 lbs" or "lifting of 10 lbs"
+    match = re.search(r'(?:lift|carry|push|pull)\s+(?:of\s+)?(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    if match:
+        return match.group(1)
+
+    # Pattern 5: Very broad fallback - finds nearby number
+    match = re.search(r'(?:lift|carry|push|pull).{0,50}?\s(\d+)\s*(?:lbs|pounds|lb)', text, flags)
     if match:
         return match.group(1)
         
@@ -2903,6 +2908,9 @@ def build_section_c(
     
     return_full_duty_date = None
     return_modified_duty_date = None
+    maximum_medical_improvement_date = None
+    next_visit_date = None
+    discharged_from_care_date = None
     unable_to_return_start_date = None
     unable_to_return_end_date = None
     unable_to_return_reason = ""
@@ -3011,7 +3019,7 @@ def build_section_c(
                     break
         
         # Check Plan section for work status keywords if specific Work Status header was not found
-        # (User request: Support "Modified Duty" inside Plan section without specific header)
+        # (User request: Support "Modified Duty" inside Plan section without specific header)   
         if not work_status:
             plan_match = re.search(r'## P – PLAN\s*\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
             if plan_match:
@@ -3043,7 +3051,7 @@ def build_section_c(
 
             # Determine best source for GPT extraction
             if formatted_soap and isinstance(formatted_soap, str):
-                work_status_match = re.search(r'(?:WORK STATUS|Work Capacity)[:\s]*(.*?)(?=\n\n|\n[A-Z]|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+                work_status_match = re.search(r'(?:WORK STATUS|Work Capacity)[:\s]*(.*?)(?=\n\*\*|\n##|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
                 if work_status_match:
                      # If we found a specific section but regex extraction failed (e.g. complex format), use that section for GPT
                      section_text = work_status_match.group(1).strip()
@@ -3130,7 +3138,7 @@ def build_section_c(
         formatted_soap = doc.get("formatted_soap_note")
         if formatted_soap and isinstance(formatted_soap, str):
             # Look for work status or restrictions section
-            work_status_match = re.search(r'(?:WORK STATUS|Work Status|Restrictions)[:\s]*(.*?)(?=\n\n|\n[A-Z]|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+            work_status_match = re.search(r'(?:WORK STATUS|Work Status|Restrictions)[:\s]*(.*?)(?=\n\*\*|\n##|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
             if work_status_match:
                 restrictions_group = work_status_match.group(1)
                 restrictions_text = restrictions_group.strip() if restrictions_group else ""
@@ -3164,6 +3172,11 @@ def build_section_c(
         unable_to_return_start_date = to_mmddyyyy(patient_status.get("unableToReturnStartDate") or doc.get("unable_to_return_start_date"))
         unable_to_return_end_date = to_mmddyyyy(patient_status.get("unableToReturnEndDate") or doc.get("unable_to_return_end_date"))
         unable_to_return_reason = patient_status.get("unableToReturnReason") or doc.get("unable_to_return_reason") or ""
+        
+        maximum_medical_improvement_date = to_mmddyyyy(patient_status.get("maxMedicalImprovementDate") or patient_status.get("maximumMedicalImprovementDate"))
+        next_visit_date = to_mmddyyyy(patient_status.get("nextVisitDate"))
+        discharged_from_care_date = to_mmddyyyy(patient_status.get("dischargedFromCareDate") or patient_status.get("dischargedDate"))
+        
         logger.info("Using patientStatus object for date extraction")
     else:
         # Fall back to flat fields
@@ -3177,6 +3190,13 @@ def build_section_c(
             unable_to_return_end_date = to_mmddyyyy(doc.get("unable_to_return_end_date") or doc.get("unableToReturnEndDate"))
         if not unable_to_return_reason:
             unable_to_return_reason = doc.get("unable_to_return_reason") or doc.get("unableToReturnReason") or ""
+            
+        if not maximum_medical_improvement_date:
+            maximum_medical_improvement_date = to_mmddyyyy(doc.get("mmi_date") or doc.get("maxMedicalImprovementDate") or doc.get("maximumMedicalImprovementDate"))
+        if not next_visit_date:
+            next_visit_date = to_mmddyyyy(doc.get("next_visit_date") or doc.get("nextVisitDate"))
+        if not discharged_from_care_date:
+            discharged_from_care_date = to_mmddyyyy(doc.get("discharged_date") or doc.get("dischargedFromCareDate"))
 
     
     # Check page7 for dates and flags if not found
@@ -3231,7 +3251,8 @@ def build_section_c(
     if not return_to_full_duty:
         return_to_full_duty = "full duty" in work_status_lower or "full" in work_status_lower or is_full_duty_kw
     if not unable_to_return_to_work:
-        unable_to_return_to_work = "ttd" in work_status_lower or "temporary total" in work_status_lower or "unable" in work_status_lower or is_off_work_kw
+        # Use stricter check for 'unable' to avoid capturing 'unable to lift' etc.
+        unable_to_return_to_work = "ttd" in work_status_lower or "temporary total" in work_status_lower or "unable to work" in work_status_lower or "unable to return" in work_status_lower or is_off_work_kw
     
     # Check if restrictions exist - either as text or detailed restrictions object
     has_restrictions_text = restrictions and str(restrictions).strip()
@@ -3251,24 +3272,40 @@ def build_section_c(
             has_detailed_restrictions or
             is_modified_kw
         )
+    
+    # CRITICAL: Force Correct Checkbox State if "Modified Duty" is explicitly detected
+    # User Request: Ensure "Return to work with restrictions" is checked if "Modified Duty" is present.
+    # Updated to search in FULL text to avoid section extraction issues
+    if "modified" in work_status_lower or "modified duty" in search_text_lower or "modified duty" in full_soap_text.lower():
+        return_to_work_with_restrictions = True
+        return_to_full_duty = False
+        unable_to_return_to_work = False
+        logger.info("Forcing 'Return to work with restrictions' to TRUE due to 'Modified Duty' detection")
 
     # Priority: Off Work > Modified Duty > Full Duty if multiple found
-    if unable_to_return_to_work:
+    # Priority: Modified Duty/Restrictions > Off Work > Full Duty (Revised Logic)
+    # Check Modified Duty FIRST if it was explicitly forced or detected
+    if return_to_work_with_restrictions:
+        return_to_full_duty = False
+        unable_to_return_to_work = False # Override potential false positive on unable to work
+        if not return_modified_duty_date:
+            return_modified_duty_date = datetime.now().strftime("%m/%d/%Y")
+    elif unable_to_return_to_work:
         return_to_full_duty = False
         return_to_work_with_restrictions = False
         if not unable_to_return_start_date:
             unable_to_return_start_date = datetime.now().strftime("%m/%d/%Y")
-    elif return_to_work_with_restrictions:
-        return_to_full_duty = False
-        if not return_modified_duty_date:
-            return_modified_duty_date = datetime.now().strftime("%m/%d/%Y")
     
     if return_to_full_duty and not return_full_duty_date:
         return_full_duty_date = datetime.now().strftime("%m/%d/%Y")
 
     # AUTO-CHECK LIFTING: If keywords exist, try to populate liftCarryPounds
     if return_to_work_with_restrictions:
+        # Check both restricted section and full text for weight limits
         weight_val = extract_weight_from_text(search_text)
+        if not weight_val:
+            weight_val = extract_weight_from_text(full_soap_text)
+            
         if weight_val and not (detailed_restrictions and isinstance(detailed_restrictions, dict) and detailed_restrictions.get("liftCarryPounds")):
             if not isinstance(detailed_restrictions, dict):
                 detailed_restrictions = {}
@@ -3332,17 +3369,33 @@ def build_section_c(
             patient_name = patient_info.get("name") or patient_info.get("patientName")
     patient_name = patient_name or ""  # Default to empty string if not found
     
+    # Calculate medication during work hours
+    medication_during_work_hours = "No"  # Default
+    if meds_affect_alertness is True or str(meds_affect_alertness).lower() in ["true", "yes"]:
+        medication_during_work_hours = "Yes"
+    elif meds_affect_alertness is False or str(meds_affect_alertness).lower() in ["false", "no"]:
+        medication_during_work_hours = "No"
+    # If string matches "Yes" or "No", use it
+    elif isinstance(meds_affect_alertness, str) and meds_affect_alertness in ["Yes", "No"]:
+        medication_during_work_hours = meds_affect_alertness
+
     return {
         "patientName": patient_name,
         "returnToFullDuty": return_to_full_duty,
         "returnToFullDutyDate": return_full_duty_date or "",
         "returnToModifiedDutyDate": return_modified_duty_date or "",
+        "maximumMedicalImprovementDate": maximum_medical_improvement_date or "",
+        "nextVisitDate": next_visit_date or "",
+        "dischargedFromCareDate": discharged_from_care_date or "",
         "unableToReturnToWork": unable_to_return_to_work,
         "unableToReturnStartDate": unable_to_return_start_date or "",
         "unableToReturnEndDate": unable_to_return_end_date or "",
         "unableToReturnReason": unable_to_return_reason or "",
         "returnToWorkWithRestrictions": return_to_work_with_restrictions,
         "restrictions": restrictions_obj,
+        "restrictions_duration": restrictions_duration or "",
+        "workRestrictionsDuration": restrictions_duration or "", # Match frontend casing
+        "medicationDuringWorkHours": medication_during_work_hours,
         "otherRestrictions": other_restrictions or ""
     }
 
