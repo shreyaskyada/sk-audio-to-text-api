@@ -117,6 +117,29 @@ async def extract_work_status_from_soap(
             
             target_text_lower = target_text.lower()
 
+            # --- WORK STATUS SELECTION Fix ---
+            # Ensure the top-level status (Full/Modified/Off) is correctly set based on the text
+            ws_selection = ws_data.get("workStatus", {})
+            
+            # Check for explicit status keywords in the target text
+            if any(k in target_text_lower for k in ["modified duty", "light duty", "restricted duty", "restrictions apply"]):
+                ws_selection["status"] = "modifiedDuty"
+                logger.info("WorkStatusForm Fix: Set status to 'modifiedDuty' based on text")
+                if not ws_selection.get("modifiedDutyFrom"):
+                    ws_selection["modifiedDutyFrom"] = datetime.utcnow().strftime("%Y-%m-%d")
+                    
+            elif any(k in target_text_lower for k in ["off work", "no work", "unable to work", "temporarily totally disabled", "ttd"]):
+                ws_selection["status"] = "offWork"
+                logger.info("WorkStatusForm Fix: Set status to 'offWork' based on text")
+                if not ws_selection.get("offWorkFrom"):
+                    ws_selection["offWorkFrom"] = datetime.utcnow().strftime("%Y-%m-%d")
+            
+            elif any(k in target_text_lower for k in ["full duty", "regular duty", "no restrictions", "return to work without restrictions"]):
+                ws_selection["status"] = "fullDuty"
+                logger.info("WorkStatusForm Fix: Set status to 'fullDuty' based on text")
+                if not ws_selection.get("fullDutyEffectiveDate"):
+                    ws_selection["fullDutyEffectiveDate"] = datetime.utcnow().strftime("%Y-%m-%d")
+
             # 3. AGGRESSIVE AUTO-CHECK: If keywords exist, check the box!
             # User requirement: "lifting pushing pushing aa 3 mathi 1 pan work hoy ne to te chechk box auto chechk thay"
             keywords_present = any(k in target_text_lower for k in ["lift", "push", "pull"])
