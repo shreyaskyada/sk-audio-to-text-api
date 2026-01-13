@@ -282,7 +282,13 @@ def extract_weight_from_text(text: str) -> Optional[str]:
 def extract_work_status_section(text: str) -> str:
     """Isolate work status section to avoid false positives (e.g. from history)"""
     if not text: return ""
-    # Look for headers
+    
+    # 1. Look for the specific structured header from the image
+    match = re.search(r'Restrictions \(ONLY if Modified Duty\):\s*(.*?)(?:\n\n|\nEffective Date:|\nDuration:|\nSIGNATURE|$)', text, re.IGNORECASE | re.DOTALL)
+    if match:
+        return match.group(1).strip()
+        
+    # 2. Look for standard headers
     match = re.search(r'(?:work status|restrictions|functional limitations|plan)(.*)', text, re.IGNORECASE | re.DOTALL)
     if match:
         return match.group(1)
@@ -3261,7 +3267,7 @@ def build_section_c(
     search_text_lower = search_text.lower()
     
     # Use keywords from work_status_forms.py
-    is_modified_kw = any(k in search_text_lower for k in ["modified duty", "light duty", "restricted duty", "restrictions apply", "return to work with restrictions"])
+    is_modified_kw = any(k in search_text_lower for k in ["modified duty", "light duty", "restricted duty", "restrictions apply", "return to work with restrictions", "restrictions (only if modified duty)"])
     is_off_work_kw = any(k in search_text_lower for k in ["off work", "no work", "unable to work", "temporarily totally disabled", "ttd"])
     is_full_duty_kw = any(k in search_text_lower for k in ["full duty", "regular duty", "no restrictions", "return to work without restrictions", "return to full duty"])
 
@@ -3320,18 +3326,17 @@ def build_section_c(
         logger.info("⚠️ No work status detected. Defaulting to 'Return to work with restrictions' as fallback.")
     
     # Priority: Off Work > Modified Duty > Full Duty if multiple found
-    # Priority: Modified Duty/Restrictions > Off Work > Full Duty (Revised Logic)
-    # Check Modified Duty FIRST if it was explicitly forced or detected
-    if return_to_work_with_restrictions:
-        return_to_full_duty = False
-        unable_to_return_to_work = False # Override potential false positive on unable to work
-        if not return_modified_duty_date:
-            return_modified_duty_date = datetime.now().strftime("%m/%d/%Y")
-    elif unable_to_return_to_work:
+    # UPDATED: Off Work (TTD) takes priority over Modified Duty
+    if unable_to_return_to_work:
         return_to_full_duty = False
         return_to_work_with_restrictions = False
         if not unable_to_return_start_date:
             unable_to_return_start_date = datetime.now().strftime("%m/%d/%Y")
+    elif return_to_work_with_restrictions:
+        return_to_full_duty = False
+        unable_to_return_to_work = False
+        if not return_modified_duty_date:
+            return_modified_duty_date = datetime.now().strftime("%m/%d/%Y")
     
     if return_to_full_duty and not return_full_duty_date:
         return_full_duty_date = datetime.now().strftime("%m/%d/%Y")
@@ -3407,20 +3412,44 @@ def build_section_c(
         # Helper to apply regex if field is empty
         def fill_if_empty(field_key, pattern_str, display_name):
             if not restrictions_obj.get(field_key):
-                # 1. Prefix Negation: "No X", "Avoid X"
-                # Pattern matches: (Start: no/avoid..) (Adjective?) (Target Word)
+                # 1. Prefix Negation: "No X", "Avoid X", "No prolonged X"
+                # Pattern matches: (Negation) (Adjective?) (Target Word)
+                # handle "No X or Y" by allowing words between Negation and Pattern
                 
-                # regex to capture groups: 1=Negation, 2=Adjective(opt), 3=Keyword
-                prefix_pattern = r'((?:no|avoid|limit|restrict|unable to|stop))\s+((?:[a-zA-Z]+\s+)?)(' + pattern_str + r'\w*)'
+                # regex to capture groups: 1=Negation, 2=Adjective or context (opt), 3=Keyword
+                # Improved to allow up to 6 words (handles "standing or walking") and more characters
+                prefix_pattern = r'((?:no|avoid|limit|restrict|unable to|stop|must be allowed to))\s+((?:[\w,]+\s+){0,6})(' + pattern_str + r'\w*)'
                 
                 match = re.search(prefix_pattern, source_text_for_regex, re.IGNORECASE)
                 if match:
                     # Construct standardized string:
                     negation = match.group(1).title() # "No"
-                    adjective = match.group(2).lower() # "prolonged "
-                    final_text = f"{negation} {adjective}{display_name}".strip()
-                    final_text = re.sub(r'\s+', ' ', final_text)
-
+                    context = match.group(2).lower() # "prolonged " or "standing or "
+                    
+                    # Fix for shared negations: "No prolonged standing or walking"
+                    # Clean context by removing OTHER target keywords and conjunctions
+                    context_cleaned = context
+                    for keyword in ["standing", "walking", "sitting", "climbing", "kneeling", "stooping", "bending", "squatting"]:
+                        context_cleaned = re.sub(r'\b' + keyword + r'\w*\b', '', context_cleaned, flags=re.IGNORECASE)
+                    context_cleaned = re.sub(r'\s+(?:or|and)\s+', ' ', context_cleaned)
+                    context_cleaned = re.sub(r'\s+', ' ', context_cleaned).strip()
+                    
+                    if context_cleaned:
+                        final_text = f"{negation} {context_cleaned} {display_name}"
+                    else:
+                        final_text = f"{negation} {display_name}"
+                    
+                    # Check for post-modifiers like "more than occasionally"
+                    # Capture modifiers even if separated by some words
+                    post_match = re.search(pattern_str + r'\w*(?:\s+[\w,]+){0,3}\s+((?:more than|than)?\s*(?:occasionally|frequently|constantly|seldom|as needed))', source_text_for_regex, re.IGNORECASE)
+                    if post_match:
+                        modifier = post_match.group(1).strip()
+                        # Avoid duplication: "Sit as needed as needed"
+                        if modifier.lower() not in final_text.lower():
+                            final_text += f" {modifier}"
+                    
+                    # Final cleanup
+                    final_text = re.sub(r'\s+', ' ', final_text).strip()
                     restrictions_obj[field_key] = final_text
                     logger.info(f"PR1 Logic: Auto-filled {field_key} via regex (prefix): '{final_text}'")
                     return # Done
@@ -3434,32 +3463,33 @@ def build_section_c(
                     logger.info(f"PR1 Logic: Auto-filled {field_key} via regex (suffix): '{final_text}'")
 
         # Apply rules - Pass standardized Display Names
-        fill_if_empty("standing", r"standing", "Standing")
-        fill_if_empty("walking", r"walking", "Walking")
-        fill_if_empty("sitting", r"sitting", "Sitting")
-        fill_if_empty("climbing", r"(?:climb|ladder|stairs)", "Climbing")
-        fill_if_empty("forwardBending", r"(?:bend|stoop)", "Forward Bending")
-        fill_if_empty("kneeling", r"(?:kneel|squat)", "Kneeling")
-        fill_if_empty("crawling", r"crawl", "Crawling")
-        fill_if_empty("twisting", r"twist", "Twisting")
-        fill_if_empty("keyboarding", r"(?:type|typing|keyboard)", "Keyboarding")
+        # ONLY apply these if the fields are still empty after structured parsing? 
+        # Actually, let's move the structured parsing UP or make it the primary source.
         
         # Check specifically for "No running, jumping, pivoting" -> usually maps to Other or specific activity?
         # If "pivoting" is mentioned, maybe Twisting?
         # fill_if_empty("twisting", r"pivot") # DISABLED: Pivoting should go to Other, not Twisting
         
-        # SANITIZATION: Check if Twisting got populated with "pivoting" or "running" incorrectly (by GPT or loose regex)
-        # If it has "pivot" but NOT "twist", clear it so it stays in Other
+        # SANITIZATION: Check if Twisting got populated with "pivoting" or "running" incorrectly
+        # We want to keep Twisting ONLY if the word 'twist' is actually there.
         twisting_val = restrictions_obj.get("twisting", "")
         if twisting_val and isinstance(twisting_val, str):
-            if "pivot" in twisting_val.lower() or "run" in twisting_val.lower():
-                if "twist" not in twisting_val.lower():
+            tw_lower = twisting_val.lower()
+            if "twist" not in tw_lower:
+                # If it's just about pivoting/running/etc, clear it from Twisting field
+                if any(k in tw_lower for k in ["pivot", "run", "jump", "sport"]):
                     restrictions_obj["twisting"] = ""
-                    logger.info("PR1 Logic: Cleared 'Twisting' field because it contained 'pivot/run' without 'twist'")
+                    logger.info("PR1 Logic: Cleared 'Twisting' field (pivoting/running should be in Other)")
         
         # Lower Extremity general check (squatting -> kneeling)
         if not restrictions_obj.get("kneeling") and re.search(r'squat', source_text_for_regex, re.IGNORECASE):
-             fill_if_empty("kneeling", r"squat")
+             fill_if_empty("kneeling", r"squat", "Kneeling")
+             
+        # Specific check for sitting: "sit as needed"
+        if not restrictions_obj.get("sitting"):
+            if re.search(r'sit\s+as\s+needed', source_text_for_regex, re.IGNORECASE):
+                restrictions_obj["sitting"] = "Sit as needed"
+                logger.info("PR1 Logic: Auto-filled sitting: 'Sit as needed'")
              
         # ---------------------------------------------------------
         # Upper Extremity Specifics (Grasping / Pushing & Pulling)
@@ -3494,104 +3524,215 @@ def build_section_c(
         # Pushing/Pulling
         if not any(restrictions_obj.get(k) for k in ["pushingPullingRight", "pushingPullingLeft", "pushingPullingBilateral"]):
              extract_upper_extremity(r'(?:pushing|pulling|push|pull)', "pushingPulling")
-
     # Get otherRestrictions from page7 or restrictions text
     other_restrictions = ""
     other_parts = []
     
-    if isinstance(page7, dict):
+    # Identify the primary source of restriction text
+    source_text_for_other = search_text or ""
+    if not source_text_for_other and full_soap_text:
+        # USER IMAGES FIX: Use a regex that captures ACROSS newlines until "Effective Date" or significant gap.
+        # This prevents the third line (driving) from being cut off.
+        res_match = re.search(r'Restrictions \(ONLY if Modified Duty\):\s*(.*?)(?=Effective Date:|\n\n|\r\n\r\n|$)', full_soap_text, re.IGNORECASE | re.DOTALL)
+        if res_match:
+            source_text_for_other = res_match.group(1).strip()
+
+    # CRITICAL: Only use page7 (old data) if the current SOAP note is EMPTY.
+    # This prevents carry-over of old, truncated, or incorrect words like "officia".
+    if not source_text_for_other and isinstance(page7, dict):
         val = page7.get("otherRestrictions")
         if val:
             other_parts.append(val)
-    
-    # Logic to capture miscellaneous restrictions into "Other (explain)"
-    # We now ACCUMULATE items instead of overwriting
-    
-    # Check source text (search_text or full_soap_text used above)
-    source_text_for_other = search_text or full_soap_text or ""
-    
-    # 1. Specific capture for dynamic activities: "no running, jumping, or pivoting"
-    # Capture the full sequence like "no running, jumping, or pivoting" or "avoid sports, running"
-    # We look for "no/avoid" followed by at least one activity, potentially followed by more
-    
-    activity_keywords = r"running|jumping|pivoting|sports|activities|squatting|climbing|bending|twisting|kneeling|impact|contact"
-    
-    # Regex explanation:
-    # 1. Start with No/Avoid
-    # 2. Match an activity with optional modifier (e.g. "high-impact", "repetitive")
-    # 3. Aggressively match subsequent ", activity" or " or activity" patterns
-    
-    # Revised regex allows an optional modifier word before the keyword (e.g. "high-impact activities")
-    dynamic_img_regex = r'(?:no|avoid|no\s+repetitive|avoid\s+repetitive)\s+(?:[a-zA-Z-]+\s+)?(?:' + activity_keywords + r')(?:(?:[,\s]|or|and)+(?:[a-zA-Z-]+\s+)?(?:' + activity_keywords + r'))*'
-    
-    dynamic_activities_matches = re.finditer(dynamic_img_regex, source_text_for_other, re.IGNORECASE)
-    
-    # Keywords that trigger checkboxes, so we shouldn't duplicate them in 'Other' unless mixed with others
-    checkbox_covered_keywords = ["climb", "squat", "kneel", "bend", "twist"]
-    # Keywords that definitely belong in 'Other'        
-    other_only_keywords = ["run", "jump", "pivot", "sport", "activit", "impact", "contact"]
-    
-    for match in dynamic_activities_matches:
-        match_text = match.group(0).strip()
-        # Clean up trailing conjunctions if any
-        match_text = re.sub(r'\s+(?:or|and)$', '', match_text).strip()
-        
-        # Aggressively remove checkbox-covered keywords from this string
-        # We don't want "no squatting" to appear in Other, even if it was "no running or squatting"
-        # Start by removing the specific words
-        clean_text = match_text
-        for blocked in checkbox_covered_keywords:
-             # Remove word with optional trailing comma/or/and
-             # Regex: word + (optional punctuation/conjunctions)
-             clean_text = re.sub(r'\b' + blocked + r'\w*\b', '', clean_text, flags=re.IGNORECASE)
-        
-        # Cleanup the mess left behind (double commas, stranded "or", "no ,")
-        clean_text = re.sub(r'\s+(?:or|and)\s+', ', ', clean_text) # replace or/and with comma
-        clean_text = re.sub(r',\s*,', ',', clean_text) # double commas
-        clean_text = re.sub(r'\s+', ' ', clean_text).strip() # double spaces
-        clean_text = re.sub(r',\s*$', '', clean_text) # trailing comma
-        
-        # If the string became just "no " or "avoid ", drop it
-        if re.match(r'^(?:no|avoid|no repetitive|avoid repetitive)\W*$', clean_text, re.IGNORECASE):
-             continue
-             
-        # Check if it has any meaningful content left
-        has_other_content = any(k in clean_text.lower() for k in other_only_keywords)
-        
-        if has_other_content and len(clean_text) > 5:
-             # formatting fix: ensure it looks like natural text "no running, jumping"
-             clean_text = re.sub(r'\s,', ',', clean_text)
-             # Only add if not effectively duplicate of what we just extracted
-             # Check if clean_text is already contained in an existing entry or vice-versa
-             is_duplicate = False
-             for existing in other_parts:
-                 if clean_text in existing or existing in clean_text:
-                     is_duplicate = True
-                     break
-             
-             if not is_duplicate:
-                  other_parts.append(clean_text)
 
-    # 2. Explicitly check for "must be allowed to use crutches" or similar
+    if source_text_for_other:
+        # Split by ; or . to handle each instruction separately
+        # Also split by "," if "no" or "avoid" follows the comma
+        segments = re.split(r'[;.]+', source_text_for_other)
+        
+        field_keywords = {
+            "standing": ["stand"],
+            "walking": ["walk"],
+            "sitting": ["sit"],
+            "climbing": ["climb", "ladder", "stair"],
+            "kneeling": ["kneel", "squat"],
+            "forwardBending": ["bend", "stoop"],
+            "twisting": ["twist"],
+            "crawling": ["crawl"],
+            "keyboarding": ["keyboard", "type", "typing"],
+            "liftCarryPounds": ["lift", "carry", "limit to", "lbs"],
+            "grasping": ["grasp", "grip"],
+            "pushingPulling": ["push", "pull"]
+        }
+        
+        for segment in segments:
+            segment = segment.strip()
+            if not segment or len(segment) < 3: continue
+            
+            # Handle "No X, no Y" by sub-splitting commas if they are followed by another "no" or "avoid"
+            sub_segments = re.split(r',\s*(?=no|avoid|limit|must)', segment, flags=re.IGNORECASE)
+            
+            for sub_seg in sub_segments:
+                sub_seg = sub_seg.strip()
+                if not sub_seg: continue
+                
+                seg_lower = sub_seg.lower()
+                matched_fields = []
+                for field, keywords in field_keywords.items():
+                    if any(kw in seg_lower for kw in keywords):
+                        matched_fields.append(field)
+                
+                # User Request: Process based on restriction triggers
+                restriction_triggers = ["no", "avoid", "stop", "unable", "limit", "must"]
+                is_valid_restriction = any(seg_lower.startswith(trigger) for trigger in restriction_triggers)
+                
+                if not is_valid_restriction:
+                    # Skip general text that isn't a "No/Avoid" instruction
+                    continue
+
+                if matched_fields:
+                    is_moved_to_field = False
+                    for field_key in matched_fields:
+                        if field_key == "liftCarryPounds":
+                            weight = extract_weight_from_text(sub_seg)
+                            if weight: 
+                                restrictions_obj[field_key] = weight
+                                is_moved_to_field = True
+                        elif "grasping" not in field_key and "pushingPulling" not in field_key:
+                            # Put the full "No/Avoid" phrase into the corresponding field
+                            if not (restrictions_obj.get(field_key) and len(str(restrictions_obj.get(field_key))) > 2):
+                                restrictions_obj[field_key] = sub_seg[0].upper() + sub_seg[1:]
+                                is_moved_to_field = True
+                    
+                    # USER REQUEST: "Match -> Field, No Match -> Other"
+                    # We ONLY add to Other if it has unique body-part context or wasn't a standard text field
+                    other_must_haves = ["run", "jump", "pivot", "crutch", "ice", "heat", "elevat", "break", "impact", "sport", "wrist", "hand", "thumb", "elbow", "knee"]
+                    has_unique_context = any(mh in seg_lower for mh in other_must_haves)
+                    
+                    # If it's a numeric field (Lifting) or has unique context, keep it in Other.
+                    # Otherwise, if it's already in a field, don't repeat it in Other.
+                    if has_unique_context or "liftCarryPounds" in matched_fields or not is_moved_to_field:
+                         val = sub_seg[0].upper() + sub_seg[1:]
+                         if val not in other_parts:
+                             other_parts.append(val)
+                else:
+                    # No field matched -> purely "Other"
+                    val = sub_seg[0].upper() + sub_seg[1:]
+                    if val not in other_parts:
+                        other_parts.append(val)
+
+    # Apply general regex fallback ONLY for fields that are still empty
+    fill_if_empty("standing", r"standing", "Standing")
+    fill_if_empty("walking", r"walking", "Walking")
+    fill_if_empty("sitting", r"sitting", "Sitting")
+    fill_if_empty("climbing", r"(?:climb|ladder|stairs)", "Climbing")
+    fill_if_empty("forwardBending", r"(?:bend|stoop)", "Forward Bending")
+    fill_if_empty("kneeling", r"(?:kneel|squat)", "Kneeling")
+    fill_if_empty("crawling", r"crawl", "Crawling")
+    fill_if_empty("twisting", r"twist", "Twisting")
+    fill_if_empty("keyboarding", r"(?:type|typing|keyboard)", "Keyboarding")
+
+    # --- SECONDARY SCAN: Global search for "No/Avoid" in full text ---
+    # Improved to EXCLUDE diagnostic findings and catch long machine instructions.
+    finding_keywords = ["fracture", "distress", "swelling", "redness", "edema", "fever", "nausea", "tenderness", "findings", "mass", "exam"]
+    instruction_keywords = [
+        "driving", "work", "duty", "sports", "activities", "lifting", "carrying", "bending", 
+        "standing", "walking", "sitting", "tasks", "movement", "exercise", "impact", 
+        "operating", "locomotives", "forklifts", "machinery", "vehicles"
+    ]
+
+    # Use a 250 characters limit to avoid "driving officia" truncation.
+    global_scan_matches = re.finditer(r'(?:no|avoid|stop|unable to|limit)\s+([^.;\n]{3,250})', full_soap_text, re.IGNORECASE)
+    for match in global_scan_matches:
+        full_match = match.group(0).strip()
+        phrase = match.group(1).lower().strip()
+        
+        # 1. EXCLUDE if it contains diagnostic finding keywords
+        if any(f_kw in phrase for f_kw in finding_keywords):
+            continue
+            
+        # 2. ONLY INCLUDE if it has a high-value instruction keyword
+        is_valuable = any(i_kw in phrase for i_kw in instruction_keywords) or "must" in full_match.lower()
+        
+        if not is_valuable:
+             # Check for general physical activities
+             if not any(k in phrase for k in ["lifting", "pulling", "pushing", "weights", "exertion", "climbing", "bending"]):
+                 continue
+
+        # Check if this phrase is already covered by a field or already in other_parts
+        is_covered = False
+        for field_key, val in restrictions_obj.items():
+            if val and isinstance(val, str) and phrase in val.lower():
+                is_covered = True
+                break
+        
+        if not is_covered:
+            # Check if it matches a field keyword but wasn't filled
+            field_match = False
+            for f_key, keywords in field_keywords.items():
+                if any(kw in phrase for kw in keywords):
+                    if not (restrictions_obj.get(f_key) and len(str(restrictions_obj.get(f_key))) > 2):
+                        if f_key == "liftCarryPounds":
+                            weight = extract_weight_from_text(full_match)
+                            if weight: 
+                                restrictions_obj[f_key] = weight
+                        else:
+                            restrictions_obj[f_key] = full_match[0].upper() + full_match[1:]
+                    field_match = True
+                    break
+            
+            if not field_match:
+                # Add to Other if not duplicate
+                formatted = full_match[0].upper() + full_match[1:]
+                # Final check: Don't let leaking headers or very short junk in
+                if len(formatted) < 6: continue
+                if any(k in formatted.lower() for k in ["restrictions", "modified duty"]): continue
+                
+                if not any(formatted.lower() in p.lower() or p.lower() in formatted.lower() for p in other_parts):
+                    other_parts.append(formatted)
+
+    # 4. Extract Duration: "How long will the work restrictions apply?"
+
+    # 2. Explicitly check for "must be allowed to use crutches" or "sit as needed"
     if return_to_work_with_restrictions:
-         crutch_match = re.search(r'(?:use|wear)\s+(?:crutches|splint|brace|boot|cast|sling)', source_text_for_other, re.IGNORECASE)
+         # Need crutches/devices
+         crutch_match = re.search(r'(?:must\s+be\s+allowed\s+to\s+)?(?:use|wear)\s+(?:crutches|splint|brace|boot|cast|sling)', source_text_for_other, re.IGNORECASE)
          if crutch_match:
-             # phrase it naturally
-             other_parts.append("Patient must be allowed to " + crutch_match.group(0))
+             text = crutch_match.group(0)
+             if not text.lower().startswith("must"):
+                 text = "Patient must be allowed to " + text
+             other_parts.append(text)
+             
+         # Sit as needed (if not already in sitting field)
+         if re.search(r'sit\s+as\s+needed', source_text_for_other, re.IGNORECASE):
+             if restrictions_obj.get("sitting") != "Sit as needed":
+                 # Check if not already in other_parts
+                 if not any("sit as needed" in p.lower() for p in other_parts):
+                     other_parts.append("Sit as needed")
 
     # 3. Fallback: If we have raw restriction text but it wasn't fully parsed into detailed fields (and we have misc keywords)
-    misc_keywords = ["breaks", "rest", "seated", "sedentary", "elevation", "ice"]
-    if isinstance(restrictions, str) and restrictions.strip():
-         if any(k in restrictions.lower() for k in misc_keywords):
-             # Only add if not effectively duplicate of what we just extracted
-             if restrictions not in other_parts: 
-                 other_parts.append(restrictions)
-         elif isinstance(detailed_restrictions, dict) and not any(detailed_restrictions.values()) and not other_parts:
-             # If we failed to extract ANY detailed fields and haven't found anything else, dump the whole text
-             other_parts.append(restrictions)
+    misc_keywords = ["breaks", "rest", "seated", "sedentary", "elevation", "ice", "heat", "brace", "splint", "sling", "boot"]
+    for misc in misc_keywords:
+        if misc in source_text_for_other.lower():
+             # Extract surrounding context if it's a specific instruction (e.g. "apply ice as needed")
+             misc_match = re.search(r'([^.]*?' + misc + r'[^.]*\.)', source_text_for_other, re.IGNORECASE)
+             if misc_match:
+                 text = misc_match.group(1).strip()
+                 if text not in other_parts:
+                      other_parts.append(text)
+             elif misc.capitalize() not in other_parts:
+                 other_parts.append(misc.capitalize())
+                 
+    # 4. Extract Duration: "How long will the work restrictions apply?"
+    restrictions_duration = ""
+    # Look for duration patterns in source text
+    duration_match = re.search(r'(?:restrictions|limited|limitations).*?(?:apply|for|until|duration)\s+(?:for\s+)?(.*?)(?:\.|$)', source_text_for_other, re.IGNORECASE)
+    if duration_match:
+        restrictions_duration = duration_match.group(1).strip()
+        # Clean up some common junk
+        restrictions_duration = re.sub(r'of\s+', '', restrictions_duration)
     
-    # Join all parts
-    other_restrictions = "; ".join(list(dict.fromkeys(other_parts))) # remove exact duplicates while preserving order
+    # Final accumulation
+    other_restrictions = "; ".join(list(dict.fromkeys(other_parts))) # remove duplicates preservation order
 
 
     # Extract patient name for page7 structure
@@ -3692,18 +3833,30 @@ def extract_body_parts_from_diagnoses(
                 if keyword in assessment_lower and part not in body_parts:
                     body_parts.append(part)
     
-    # Try to extract from section B diagnoses
     if section_b:
         primary_dx = section_b.get("primary_diagnosis") or ""
         secondary_dx = section_b.get("secondary_diagnosis") or ""
         additional_dx_list = section_b.get("additional_diagnoses") or []
         
+        # Helper to clean up diagnosis string (remove codes)
+        def clean_dx(dx):
+            if not dx: return ""
+            # Remove M54.50 etc if present at start
+            return re.sub(r'^[A-Z]\d+\.?\d*\s*-\s*', '', str(dx)).strip()
+
         if primary_dx:
-            body_parts.append(primary_dx)
+            cleaned = clean_dx(primary_dx)
+            if cleaned not in body_parts:
+                body_parts.append(cleaned)
         if secondary_dx:
-            body_parts.append(secondary_dx)
+            cleaned = clean_dx(secondary_dx)
+            if cleaned not in body_parts:
+                body_parts.append(cleaned)
         if isinstance(additional_dx_list, list):
-            body_parts.extend([dx for dx in additional_dx_list if dx])
+            for adx in additional_dx_list:
+                cleaned = clean_dx(adx)
+                if cleaned and cleaned not in body_parts:
+                    body_parts.append(cleaned)
     
     # Remove duplicates and format
     body_parts = list(dict.fromkeys(body_parts))  # Preserves order while removing duplicates
@@ -3767,6 +3920,7 @@ def extract_work_status_format(
     unable_to_return = section_c.get("unableToReturnToWork", False)
     unable_to_return_start = section_c.get("unableToReturnStartDate") or ""
     unable_to_return_end = section_c.get("unableToReturnEndDate") or ""
+    unable_to_return_reason = section_c.get("unableToReturnReason") or ""
     return_with_restrictions = section_c.get("returnToWorkWithRestrictions", False)
     
     # Determine work status value
@@ -3945,27 +4099,40 @@ def map_pr1_restrictions_to_new_format(
             functional_restrictions["liftingPushingPulling"]["weightLimit"] = "custom"
             functional_restrictions["liftingPushingPulling"]["customWeight"] = lift_pounds_str
     
-    # Map upper extremity - pushing/pulling
-    if restrictions.get("pushingPullingRight") == False or restrictions.get("pushingPullingLeft") == False:
-        functional_restrictions["upperExtremity"]["useLimited"] =  False
-        if restrictions.get("pushingPullingRight") == False:
+    # Map upper extremity - pushing/pulling (mapped to "Use of: ... limited to:")
+    push_right = restrictions.get("pushingPullingRight")
+    push_left = restrictions.get("pushingPullingLeft")
+    push_bilateral = restrictions.get("pushingPullingBilateral")
+    
+    if push_right or push_left or push_bilateral:
+        functional_restrictions["upperExtremity"]["useLimited"] = True
+        if push_bilateral:
+            # If bilateral, we might just pick one for the radio button or leave blank
+            functional_restrictions["upperExtremity"]["useLimitedSide"] = "right" # Default to right if both
+        elif push_right:
             functional_restrictions["upperExtremity"]["useLimitedSide"] = "right"
-        elif restrictions.get("pushingPullingLeft") == False:
+        elif push_left:
             functional_restrictions["upperExtremity"]["useLimitedSide"] = "left"
         
         push_pull_hours = restrictions.get("pushingPullingHours", "")
         if push_pull_hours:
-            functional_restrictions["upperExtremity"]["useLimitedHours"] = str(push_pull_hours)
+            functional_restrictions["upperExtremity"]["useLimitedHours"] = str(push_pull_hours).strip()
     
-    # Map upper extremity - grasping
-    # COMMENTED OUT PER USER REQUEST (Step 278) - preventing auto-check of "Right" and "Left" gripping
-    # unless explicitly requested or refined later.
-    # if restrictions.get("graspingRight") == False or restrictions.get("graspingLeft") == False:
-    #     functional_restrictions["upperExtremity"]["noRepetitiveGripping"] = True
-    #     if restrictions.get("graspingRight") == False:
-    #         functional_restrictions["upperExtremity"]["noRepetitiveGrippingRight"] = True
-    #     if restrictions.get("graspingLeft") == False:
-    #         functional_restrictions["upperExtremity"]["noRepetitiveGrippingLeft"] = True
+    # Map upper extremity - grasping (mapped to "No repetitive gripping/grasping")
+    grasp_right = restrictions.get("graspingRight")
+    grasp_left = restrictions.get("graspingLeft")
+    grasp_bilateral = restrictions.get("graspingBilateral")
+    
+    if grasp_right or grasp_left or grasp_bilateral:
+        functional_restrictions["upperExtremity"]["noRepetitiveGripping"] = True
+        if grasp_bilateral:
+            functional_restrictions["upperExtremity"]["noRepetitiveGrippingRight"] = True
+            functional_restrictions["upperExtremity"]["noRepetitiveGrippingLeft"] = True
+        else:
+            if grasp_right:
+                functional_restrictions["upperExtremity"]["noRepetitiveGrippingRight"] = True
+            if grasp_left:
+                functional_restrictions["upperExtremity"]["noRepetitiveGrippingLeft"] = True
     
     # Map lower extremity - kneeling
     if restrictions.get("kneeling", ""):
@@ -3976,11 +4143,12 @@ def map_pr1_restrictions_to_new_format(
     if walking:
         functional_restrictions["lowerExtremity"]["walkingLimited"] = True
         walking_lower = str(walking).lower()
-        if "2" in walking_lower or "two" in walking_lower:
+        if "2" in walking_lower and "hour" in walking_lower:
             functional_restrictions["lowerExtremity"]["walkingLimit"] = "2hrs"
-        elif "4" in walking_lower or "four" in walking_lower:
+        elif "4" in walking_lower and "hour" in walking_lower:
             functional_restrictions["lowerExtremity"]["walkingLimit"] = "4hrs"
         else:
+            # If it's a phrase like "No prolonged walking", put it in "Other"
             functional_restrictions["lowerExtremity"]["walkingLimit"] = "other"
             functional_restrictions["lowerExtremity"]["walkingOther"] = walking
     
@@ -4009,11 +4177,12 @@ def map_pr1_restrictions_to_new_format(
     if standing:
         functional_restrictions["positionTolerance"]["standingLimited"] = True
         standing_lower = str(standing).lower()
-        if "2" in standing_lower:
+        if "2" in standing_lower and "hour" in standing_lower:
             functional_restrictions["positionTolerance"]["standingLimit"] = "2hrs"
-        elif "4" in standing_lower:
+        elif "4" in standing_lower and "hour" in standing_lower:
             functional_restrictions["positionTolerance"]["standingLimit"] = "4hrs"
         else:
+            # Use custom field for text like "No prolonged standing"
             functional_restrictions["positionTolerance"]["standingLimit"] = "custom"
             functional_restrictions["positionTolerance"]["standingCustomMin"] = standing
     
@@ -4022,9 +4191,9 @@ def map_pr1_restrictions_to_new_format(
     if sitting:
         functional_restrictions["positionTolerance"]["sittingLimited"] = True
         sitting_lower = str(sitting).lower()
-        if "2" in sitting_lower:
+        if "2" in sitting_lower and "hour" in sitting_lower:
             functional_restrictions["positionTolerance"]["sittingLimit"] = "2hrs"
-        elif "4" in sitting_lower:
+        elif "4" in sitting_lower and "hour" in sitting_lower:
             functional_restrictions["positionTolerance"]["sittingLimit"] = "4hrs"
         else:
             functional_restrictions["positionTolerance"]["sittingLimit"] = "custom"
@@ -4046,12 +4215,12 @@ def map_pr1_restrictions_to_new_format(
         functional_restrictions["handFineMotor"]["productiveUseRight"] = True
         functional_restrictions["handFineMotor"]["productiveUseLeft"] = True
     
-    # Map workplace conditions from other restrictions text
+    # Map workplace conditions (Safety Sensitive / Hazards)
     if other_restrictions_text:
         other_lower = str(other_restrictions_text).lower()
-        if "height" in other_lower or "ladder" in other_lower or "scaffold" in other_lower:
+        if any(k in other_lower for k in ["height", "ladder", "scaffold"]):
             functional_restrictions["workplaceConditions"]["noWorkingAtHeights"] = True
-        if "heavy equipment" in other_lower or "machinery" in other_lower or "safety-sensitive" in other_lower:
+        if any(k in other_lower for k in ["safety", "machinery", "equipment", "drive", "driving", "vehicle"]):
             functional_restrictions["workplaceConditions"]["noSafetySensitiveDuties"] = True
     
     # Set other restrictions text

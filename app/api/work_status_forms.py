@@ -102,6 +102,10 @@ async def extract_work_status_from_soap(
                             raw_texts.append(str(soap_doc.get("formatted_soap_note")))
                         if soap_doc.get("plan"):
                             raw_texts.append(str(soap_doc.get("plan")))
+                        if soap_doc.get("work_status"): # Field user edits manually in UI
+                            raw_texts.append(str(soap_doc.get("work_status")))
+                        if soap_doc.get("workStatus"):
+                            raw_texts.append(str(soap_doc.get("workStatus")))
                         if soap_doc.get("transcription"):
                             raw_texts.append(str(soap_doc.get("transcription")))
                         full_raw_text = "\n".join(raw_texts)
@@ -122,26 +126,27 @@ async def extract_work_status_from_soap(
             ws_selection = ws_data.get("workStatus", {})
             
             # Check for explicit status keywords in the target text
-            # 3. Work Status Selection (Improved)
-            # Check for explicit status keywords in the target text
-            if any(k in target_text_lower for k in ["modified duty", "light duty", "restricted duty", "restrictions apply", "work restrictions"]):
+            # 3. Work Status Selection (Priority: Off Work > Modified Duty > Full Duty)
+            # User Request: "TTD ad karu chu te SOAP not ma thay che pan Work status from ma auto file nathi thati"
+            # Fix: Check for TTD/Off Work keywords FIRST so they take precedence over restrictions.
+            if any(k in target_text_lower for k in ["off work", "no work", "unable to work", "temporarily totally disabled", "ttd"]):
+                ws_selection["status"] = "offWork"
+                logger.info("WorkStatusForm Fix: Set status to 'offWork' based on restrictive keywords (Priority 1)")
+                
+                date_found = extract_date_from_text(target_text)
+                if date_found:
+                     ws_selection["offWorkFrom"] = date_found
+                     
+            elif any(k in target_text_lower for k in ["modified duty", "light duty", "restricted duty", "restrictions apply", "work restrictions", "limitations"]):
                 ws_selection["status"] = "modifiedDuty"
-                logger.info("WorkStatusForm Fix: Set status to 'modifiedDuty' based on text")
+                logger.info("WorkStatusForm Fix: Set status to 'modifiedDuty' based on text (Priority 2)")
                 
                 # Auto-fill start date if found in text ("Effective Date: ...")
                 date_found = extract_date_from_text(target_text)
                 if date_found:
                      ws_selection["modifiedDutyFrom"] = date_found
-                    
-            elif any(k in target_text_lower for k in ["off work", "no work", "unable to work", "temporarily totally disabled", "ttd"]):
-                ws_selection["status"] = "offWork"
-                logger.info("WorkStatusForm Fix: Set status to 'offWork' based on text")
-                
-                date_found = extract_date_from_text(target_text)
-                if date_found:
-                     ws_selection["offWorkFrom"] = date_found
             
-            elif any(k in target_text_lower for k in ["full duty", "regular duty", "no restrictions", "return to work without restrictions"]):
+            elif any(k in target_text_lower for k in ["full duty", "regular duty", "no restrictions", "return to work without restrictions", "return to full duty"]):
                 ws_selection["status"] = "fullDuty"
                 logger.info("WorkStatusForm Fix: Set status to 'fullDuty' based on text")
                 
@@ -215,9 +220,9 @@ async def extract_work_status_from_soap(
             upper_ext = restrictions.get("upperExtremity", {})
             if any(k in target_text_lower for k in ["grip", "grasp", "wrist", "hand", "thumb"]) and \
                any(k in target_text_lower for k in ["avoid", "no", "limit", "repetitive"]):
-                   upper_ext["noRepetitiveGripping"] = True
-                   if "right" in target_text_lower: upper_ext["noRepetitiveGrippingRight"] = True
-                   if "left" in target_text_lower: upper_ext["noRepetitiveGrippingLeft"] = True
+                   upper_ext["noRepetitiveGripping"] = False
+                   if "right" in target_text_lower: upper_ext["noRepetitiveGrippingRight"] = False
+                   if "left" in target_text_lower: upper_ext["noRepetitiveGrippingLeft"] = False
 
 
         return result
