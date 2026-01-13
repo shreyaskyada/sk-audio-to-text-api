@@ -300,22 +300,31 @@ def extract_weight_from_text(text: str) -> Optional[str]:
 def extract_date_from_text(text: str) -> Optional[str]:
     """
     Extract a date (MM/DD/YYYY or YYYY-MM-DD) from text, looking for keywords like 'Effective Date'
+    Handles cases where date is on the next line (re.DOTALL).
     """
     if not text: return None
     
     # Look for "Effective Date: MM/DD/YYYY" or similar
-    # \b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b matches 01/12/2026
-    match = re.search(r'(?:effective|start|date).*?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', text, re.IGNORECASE)
+    # Using re.DOTALL to handle newlines between label and date
+    # Also matches phrases like "Restrictions apply from: ..."
+    match = re.search(r'(?:effective|start|date|apply from|from).*?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', text, re.IGNORECASE | re.DOTALL)
     if match:
         date_str = match.group(1)
-        # Try to normalize to YYYY-MM-DD logic could go here, but browser date input expects YYYY-MM-DD.
-        # Simple parser:
         try:
             parts = re.split(r'[/-]', date_str)
             if len(parts) == 3:
-                # Assume MM/DD/YYYY if year is last and 4 digits
-                if len(parts[2]) == 4:
-                     return f"{parts[2]}-{parts[0].zfill(2)}-{parts[1].zfill(2)}"
+                p0 = int(parts[0])
+                p1 = int(parts[1])
+                year = parts[2]
+                
+                # Assume MM/DD/YYYY unless p0 > 12 (which forces DD/MM/YYYY)
+                if len(year) == 4:
+                    if p0 > 12:
+                         # Definite DD/MM/YYYY (e.g. 13/01/2026) -> 2026-01-13
+                         return f"{year}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+                    else:
+                         # Assume MM/DD/YYYY (Standard US) -> 2026-MM-DD
+                         return f"{year}-{parts[0].zfill(2)}-{parts[1].zfill(2)}"
         except:
             pass
             
