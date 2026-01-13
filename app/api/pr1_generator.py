@@ -1092,15 +1092,45 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
             # Map the process function to the items
             results = list(executor.map(process_rfa_item, rfa_items))
             
-            # Aggregate results
+            # Aggregate results with global deduplication
+            seen_treatment_cpts = set()
+            seen_drug_names = set()
+            
             for result_requests, result_drug_requests in results:
                 for req in result_requests:
-                    requests.append(req)
-                    # Add to medical_treatment_requests if it's a treatment or derived supportive request
                     if req["type"] == "treatment":
+                        cpt_code = str(req.get("cpt") or "").strip().upper()
+                        # If treatment has a CPT, deduplicate by CPT. 
+                        # If not (rare), deduplicate by service name.
+                        dedup_key = cpt_code if cpt_code else str(req.get("serviceRequested") or "").lower().strip()
+                        
+                        if dedup_key and dedup_key in seen_treatment_cpts:
+                            continue
+                        if dedup_key:
+                            seen_treatment_cpts.add(dedup_key)
+                        
+                        requests.append(req)
                         medical_treatment_requests.append(req)
-                
-                drug_requests.extend(result_drug_requests)
+                    elif req["type"] == "drug":
+                        drug_name = str(req.get("drug") or "").lower().strip()
+                        if drug_name and drug_name in seen_drug_names:
+                            continue
+                        if drug_name:
+                            seen_drug_names.add(drug_name)
+                        
+                        # Note: drug_requests already mostly handled by result_drug_requests,
+                        # but we check the unified requests list too.
+                        if not any(r["type"] == "drug" and r.get("drug", "").lower().strip() == drug_name for r in requests):
+                            requests.append(req)
+
+                for d_req in result_drug_requests:
+                    d_name = str(d_req.get("drug") or "").lower().strip()
+                    if d_name and d_name not in seen_drug_names:
+                        seen_drug_names.add(d_name)
+                        drug_requests.append(d_req)
+                        # Ensure it's in the unified requests list too if not already there
+                        if not any(r["type"] == "drug" and r.get("drug", "").lower().strip() == d_name for r in requests):
+                            requests.append(d_req)
         logger.info(f"✅ Parallel RFA processing complete. Total requests: {len(requests)}")
 
     
