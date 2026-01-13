@@ -3568,12 +3568,42 @@ def build_section_c(
             segment = segment.strip()
             if not segment or len(segment) < 3: continue
             
-            # Handle "No X, no Y" by sub-splitting commas if they are followed by another "no" or "avoid"
-            sub_segments = re.split(r',\s*(?=no|avoid|limit|must)', segment, flags=re.IGNORECASE)
+        for segment in segments:
+            segment = segment.strip()
+            if not segment or len(segment) < 3: continue
+
+            # Inheritance Logic: "Avoid standing, walking, or sitting" 
+            # -> ["Avoid standing", "Avoid walking", "Avoid sitting"]
+            trigger_pattern = r'^(no|avoid|stop|unable to|unable|limit|must)\b\s*(?:prolonged\s+|heavy\s+|frequent\s+)?'
+            initial_match = re.match(trigger_pattern, segment, re.IGNORECASE)
             
-            for sub_seg in sub_segments:
-                sub_seg = sub_seg.strip()
-                if not sub_seg: continue
+            phrases_to_process = []
+            if initial_match:
+                prefix = segment[:initial_match.end()].strip()
+                remainder = segment[initial_match.end():].strip()
+                # Split remainder by comma, "or", or "and" ONLY if it looks like a list
+                if "," in remainder or " or " in remainder.lower() or " and " in remainder.lower():
+                    # Aggressive split for lists to distribute triggers
+                    items = re.split(r',\s*|(?:\s+and\s+)|(?:\s+or\s+)', remainder, flags=re.IGNORECASE)
+                    for it in items:
+                        it = it.strip()
+                        if not it: continue
+                        # Clean up conjunctions inside the item itself
+                        it = re.sub(r'^(?:and|or|,)\s+', '', it, flags=re.IGNORECASE)
+                        # If item has its own trigger, use it. Otherwise inherit.
+                        if re.match(trigger_pattern, it, re.IGNORECASE):
+                            phrases_to_process.append(it)
+                        else:
+                            phrases_to_process.append(f"{prefix} {it}")
+                else:
+                    phrases_to_process = [segment]
+            else:
+                phrases_to_process = [segment]
+
+            for sub_seg in phrases_to_process:
+                # Clean up leftover conjunctions like "or ", "and ", " , " at the start
+                sub_seg = re.sub(r'^(?:and|or|,)\s+', '', sub_seg.strip(), flags=re.IGNORECASE)
+                if not sub_seg or len(sub_seg) < 3: continue
                 
                 seg_lower = sub_seg.lower()
                 matched_fields = []
@@ -3585,39 +3615,39 @@ def build_section_c(
                 restriction_triggers = ["no", "avoid", "stop", "unable", "limit", "must"]
                 is_valid_restriction = any(seg_lower.startswith(trigger) for trigger in restriction_triggers)
                 
-                if not is_valid_restriction:
-                    # Skip general text that isn't a "No/Avoid" instruction
-                    continue
+                if not is_valid_restriction: continue
 
                 if matched_fields:
                     is_moved_to_field = False
                     for field_key in matched_fields:
+                        # CRITICAL: Even if the field is already filled, mark it as "matched" 
+                        # so it doesn't leak into the Other section.
+                        is_moved_to_field = True 
+                        
                         if field_key == "liftCarryPounds":
                             weight = extract_weight_from_text(sub_seg)
-                            if weight: 
-                                restrictions_obj[field_key] = weight
-                                is_moved_to_field = True
+                            if weight: restrictions_obj[field_key] = weight
                         elif "grasping" not in field_key and "pushingPulling" not in field_key:
-                            # Put the full "No/Avoid" phrase into the corresponding field
                             if not (restrictions_obj.get(field_key) and len(str(restrictions_obj.get(field_key))) > 2):
                                 restrictions_obj[field_key] = sub_seg[0].upper() + sub_seg[1:]
-                                is_moved_to_field = True
                     
                     # USER REQUEST: "Match -> Field, No Match -> Other"
-                    # We ONLY add to Other if it has unique body-part context or wasn't a standard text field
-                    other_must_haves = ["run", "jump", "pivot", "crutch", "ice", "heat", "elevat", "break", "impact", "sport", "wrist", "hand", "thumb", "elbow", "knee"]
-                    has_unique_context = any(mh in seg_lower for mh in other_must_haves)
-                    
-                    # If it's a numeric field (Lifting) or has unique context, keep it in Other.
-                    # Otherwise, if it's already in a field, don't repeat it in Other.
-                    if has_unique_context or "liftCarryPounds" in matched_fields or not is_moved_to_field:
+                    # We ONLY add to Other if it wasn't moved to a standard text field,
+                    # OR if it has high clinical value (wrist, thumb) that isn't in checkbox labels.
+                    non_field_body_parts = ["wrist", "hand", "thumb", "elbow", "ankle", "foot"]
+                    has_unique_body_part = any(bp in seg_lower for bp in non_field_body_parts)
+                    non_field_activities = ["run", "jump", "pivot", "crutch", "ice", "heat", "elevat", "break", "impact", "sport"]
+                    has_unique_activity = any(act in seg_lower for act in non_field_activities)
+                    is_numeric_lift = "liftCarryPounds" in matched_fields
+
+                    if not is_moved_to_field or has_unique_body_part or has_unique_activity or is_numeric_lift:
                          val = sub_seg[0].upper() + sub_seg[1:]
-                         if val not in other_parts:
+                         # Final deduplication check
+                         if not any(val.lower() == p.lower() for p in other_parts):
                              other_parts.append(val)
                 else:
-                    # No field matched -> purely "Other"
                     val = sub_seg[0].upper() + sub_seg[1:]
-                    if val not in other_parts:
+                    if not any(val.lower() == p.lower() for p in other_parts):
                         other_parts.append(val)
 
     # Apply general regex fallback ONLY for fields that are still empty
@@ -3687,8 +3717,15 @@ def build_section_c(
                 if len(formatted) < 6: continue
                 if any(k in formatted.lower() for k in ["restrictions", "modified duty"]): continue
                 
-                if not any(formatted.lower() in p.lower() or p.lower() in formatted.lower() for p in other_parts):
-                    other_parts.append(formatted)
+                if not any(formatted.lower() == p.lower() or formatted.lower() in p.lower() for p in other_parts):
+                    # Final check: Don't add if it's already in standing/walking etc fields
+                    is_in_fields = False
+                    for f_key, f_val in restrictions_obj.items():
+                        if f_val and isinstance(f_val, str) and formatted.lower() in f_val.lower():
+                            is_in_fields = True
+                            break
+                    if not is_in_fields:
+                        other_parts.append(formatted)
 
     # 4. Extract Duration: "How long will the work restrictions apply?"
 
