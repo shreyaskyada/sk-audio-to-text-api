@@ -122,71 +122,103 @@ async def extract_work_status_from_soap(
             ws_selection = ws_data.get("workStatus", {})
             
             # Check for explicit status keywords in the target text
-            if any(k in target_text_lower for k in ["modified duty", "light duty", "restricted duty", "restrictions apply"]):
+            # 3. Work Status Selection (Improved)
+            # Check for explicit status keywords in the target text
+            if any(k in target_text_lower for k in ["modified duty", "light duty", "restricted duty", "restrictions apply", "work restrictions"]):
                 ws_selection["status"] = "modifiedDuty"
                 logger.info("WorkStatusForm Fix: Set status to 'modifiedDuty' based on text")
-                if not ws_selection.get("modifiedDutyFrom"):
-                    ws_selection["modifiedDutyFrom"] = datetime.utcnow().strftime("%Y-%m-%d")
+                
+                # Auto-fill start date if found in text ("Effective Date: ...")
+                date_found = extract_date_from_text(target_text)
+                if date_found:
+                     ws_selection["modifiedDutyFrom"] = date_found
                     
             elif any(k in target_text_lower for k in ["off work", "no work", "unable to work", "temporarily totally disabled", "ttd"]):
                 ws_selection["status"] = "offWork"
                 logger.info("WorkStatusForm Fix: Set status to 'offWork' based on text")
-                if not ws_selection.get("offWorkFrom"):
-                    ws_selection["offWorkFrom"] = datetime.utcnow().strftime("%Y-%m-%d")
+                
+                date_found = extract_date_from_text(target_text)
+                if date_found:
+                     ws_selection["offWorkFrom"] = date_found
             
             elif any(k in target_text_lower for k in ["full duty", "regular duty", "no restrictions", "return to work without restrictions"]):
                 ws_selection["status"] = "fullDuty"
                 logger.info("WorkStatusForm Fix: Set status to 'fullDuty' based on text")
-                if not ws_selection.get("fullDutyEffectiveDate"):
-                    ws_selection["fullDutyEffectiveDate"] = datetime.utcnow().strftime("%Y-%m-%d")
-
-            # 3. AGGRESSIVE AUTO-CHECK: If keywords exist, check the box!
-            # User requirement: "lifting pushing pushing aa 3 mathi 1 pan work hoy ne to te chechk box auto chechk thay"
-            keywords_present = any(k in target_text_lower for k in ["lift", "push", "pull"])
-            
-            # Exclude explicit "no restrictions" context if possible, but favor checking
-            is_negative = "no lifting restrictions" in target_text_lower or "no work restrictions" in target_text_lower
-            
-            if keywords_present and not is_negative:
-                lifting["noLiftingOver"] = True
-                logger.info("WorkStatusForm Fix: Auto-checked 'noLiftingOver' due to keywords")
                 
-                # 4. Extract weight if possible
-                weight_found = extract_weight_from_text(target_text)
-                if weight_found:
-                    logger.info(f"WorkStatusForm Fix: Extracted weight {weight_found}")
-                    if weight_found in ["5", "10", "15", "25"]:
-                        lifting["weightLimit"] = weight_found
-                    else:
-                        lifting["weightLimit"] = "custom"
-                        lifting["customWeight"] = weight_found
-            
-            # If AI already extracted it, ensure we keep it valid
-            elif lifting.get("noLiftingOver") and not lifting.get("weightLimit"):
-                 weight_found = extract_weight_from_text(target_text)
-                 if weight_found:
-                     if weight_found in ["5", "10", "15", "25"]:
-                        lifting["weightLimit"] = weight_found
-                     else:
-                        lifting["weightLimit"] = "custom"
-                        lifting["customWeight"] = weight_found
+                date_found = extract_date_from_text(target_text)
+                if date_found:
+                     ws_selection["fullDutyEffectiveDate"] = date_found
 
-            # --- BODY PARTS Fix ---
-            emp_info = ws_data.get("employeeInfo", {})
+            # 3. Aggressive Auto-Check for Lifting
+            keywords_present = any(k in target_text_lower for k in ["lift", "push", "pull", "carrying"])
             
-            # 1. First, explicitly CLEAN the existing value of junk like "**"
-            raw_bp = str(emp_info.get("bodyPartsInjured", ""))
-            cleaned_bp = raw_bp.replace("*", "").replace("-", "").strip()
+            # Refined negative check to avoid false negatives on "Avoid lifting"
+            is_negative_context = "no work restrictions" in target_text_lower or "full duty" in target_text_lower
             
-            # Update with cleaned value (so at worst we have empty string, not "**")
-            emp_info["bodyPartsInjured"] = cleaned_bp
+            if keywords_present and not is_negative_context:
+                # If we see "lift" and "no", "avoid", "limit", or "restrict", check the box
+                if any(k in target_text_lower for k in ["no", "not", "avoid", "limit", "restrict", "max", "unable"]):
+                    lifting["noLiftingOver"] = True
+                    logger.info("WorkStatusForm Fix: Auto-checked 'noLiftingOver' due to restrictive keywords")
             
-            # 2. If valid part found after cleaning, keep it. If not, fallback.
-            if not cleaned_bp and full_raw_text:
-                 parts_found = extract_body_parts_fallback(full_raw_text)
-                 if parts_found:
-                      emp_info["bodyPartsInjured"] = parts_found
-                      logger.info(f"WorkStatusForm Fix: Extracted body parts: {parts_found}")
+            # Always try to extract weight if keywords exist, as finding a weight implies a restriction
+            extracted_weight = extract_weight_from_text(target_text)
+            if extracted_weight:
+                lifting["noLiftingOver"] = True # Force check if weight found
+                logger.info(f"WorkStatusForm Fix: Extracted weight {extracted_weight}")
+                if extracted_weight in ["5", "10", "15", "25"]:
+                    lifting["weightLimit"] = extracted_weight
+                else:
+                    lifting["weightLimit"] = "custom"
+                    lifting["customWeight"] = extracted_weight
+
+            # 3.5. AGGRESSIVE AUTO-CHECK: Lower Extremity
+            lower_ext = restrictions.get("lowerExtremity", {})
+            
+            # Kneeling / Squatting
+            if any(k in target_text_lower for k in ["kneel", "squat"]):
+                lower_ext["noRepetitiveKneeling"] = True
+
+            # Climbing
+            if any(k in target_text_lower for k in ["climb", "stairs", "ladder"]):
+                lower_ext["noClimbingStairs"] = True
+
+            # Walking
+            if any(k in target_text_lower for k in ["walk", "ambulat"]):
+                lower_ext["walkingLimited"] = True
+                
+                if not lower_ext.get("walkingLimit"):
+                    if "2 hour" in target_text_lower or "2 hr" in target_text_lower:
+                        lower_ext["walkingLimit"] = "2hrs"
+                    elif "4 hour" in target_text_lower or "4 hr" in target_text_lower:
+                        lower_ext["walkingLimit"] = "4hrs"
+                    else:
+                        min_match = re.search(r'(\d+)\s*(?:min|minute)', target_text_lower)
+                        if min_match:
+                            lower_ext["walkingLimit"] = "custom"
+                            lower_ext["walkingCustomMin"] = min_match.group(1)
+                        else:
+                            lower_ext["walkingLimit"] = "other"
+                            lower_ext["walkingOther"] = "" 
+                            
+                            walk_match = re.search(r'(?:walking|ambulation)\s*(?:limit.*?to|restricted.*?to|is)\s*(.{5,50})', target_text_lower)
+                            if walk_match:
+                                lower_ext["walkingOther"] = walk_match.group(1).strip()
+            
+            # 3.7 Safety / Driving (Workplace Conditions)
+            work_cond = restrictions.get("workplaceConditions", {})
+            if any(k in target_text_lower for k in ["drive", "driving", "machinery", "forklift", "vehicle", "safety sensitive"]):
+                work_cond["noSafetySensitiveDuties"] = True
+                logger.info("WorkStatusForm Fix: Auto-checked 'noSafetySensitiveDuties'")
+            
+            # 3.8 Upper Extremity (Wrist/Hand/Gripping)
+            upper_ext = restrictions.get("upperExtremity", {})
+            if any(k in target_text_lower for k in ["grip", "grasp", "wrist", "hand", "thumb"]) and \
+               any(k in target_text_lower for k in ["avoid", "no", "limit", "repetitive"]):
+                   upper_ext["noRepetitiveGripping"] = True
+                   if "right" in target_text_lower: upper_ext["noRepetitiveGrippingRight"] = True
+                   if "left" in target_text_lower: upper_ext["noRepetitiveGrippingLeft"] = True
+
 
         return result
         
@@ -213,16 +245,12 @@ def extract_body_parts_fallback(text: str) -> Optional[str]:
     
     flags = re.IGNORECASE | re.DOTALL
     
-    # 1. Look for explicit Labels (Diagnosis/Injury)
-    # Matches: "Diagnosis: Left Knee" or "Diagnosis:\nLeft Knee"
-    # Capture up to newline or full stop
     match = re.search(r'(?:Diagnosis|Assessment|Body\s*Part|Injury\s*Location).*?:\s*([^\n\.]+)', text, flags)
     if match:
         val = match.group(1).replace("*", "").strip()
         if val and len(val) < 100: 
             return val
     
-    # 2. Look for Chief Complaint
     match = re.search(r'(?:CC|Chief\s*Complaint).*?:\s*([^\n\.]+)', text, flags)
     if match:
         val = match.group(1).replace("*", "").strip()
@@ -233,33 +261,64 @@ def extract_body_parts_fallback(text: str) -> Optional[str]:
 
 
 def extract_weight_from_text(text: str) -> Optional[str]:
-    """Helper to extract weight (lbs) from text using various patterns"""
+    """
+    Helper to extract weight (lbs) from text using various patterns.
+    Handles: "Avoid lifting more than 2 lbs", "Lift max 10lbs", "No lifting > 5 lbs"
+    """
     if not text:
         return None
         
     flags = re.IGNORECASE | re.DOTALL
     
-    # Pattern 1: Explicit "limited to" or symbols <= / < / ≤
-    # Matches: "lifting ... limited to <= 10 lbs", "lifting < 10 lbs"
-    match = re.search(r'(?:lift|push|pull).*?(?:limit.*?to|<=|<|≤|max|maximum)\s*(?:<=|<|≤)?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
-    if match:
-        return match.group(1)
-        
-    # Pattern 2: "no lifting over 10 lbs" or "no lifting > 10 lbs"
-    match = re.search(r'no (?:lift|push|pull).*?(?:over|>)\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    # 1. "Avoid/No ... more than/over/greater than X lbs"
+    # Matches: "Avoid any lifting more than 2 pounds", "No lifting over 10 lbs"
+    match = re.search(r'(?:avoid|no|not).*?(?:lift|push|pull|carry).*?(?:more than|over|greater than|exceeding|>)\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
     if match:
         return match.group(1)
 
-    # Pattern 3: "lifting restriction 10 lbs"
-    match = re.search(r'(?:lift|push|pull).*?restriction.*?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    # 2. "Max/Maximum/Limit ... X lbs"
+    # Matches: "Max lifting 15 lbs", "Lifting limit 20lbs", "limited to 5 lbs"
+    match = re.search(r'(?:max|maximum|limit).*?(?:lift|push|pull|carry)?.*?(?:to|of|is)?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
     if match:
         return match.group(1)
-        
-    # Pattern 4: Broad fallback - "lifting ... 10 lbs" within reasonable distance
-    match = re.search(r'(?:lift|push|pull).{0,50}?\s(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+
+    # 3. "Lifting ... <symbols> X lbs"
+    # Matches: "Lifting < 10 lbs", "Lifting <= 5lbs"
+    match = re.search(r'(?:lift|push|pull|carry).*?(?:<=|<|≤)\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
     if match:
         return match.group(1)
-        
+
+    # 4. "No lifting X lbs" (Implies X is the limit or the object)
+    # Matches: "No lifting 50 lbs" -> Usually means limit is lower, but often interpreted as limit. 
+    # Better: "Lifting restriction: 10 lbs"
+    match = re.search(r'(?:lift|push|pull|carry).*?restriction.*?\s*(\d+)\s*(?:lbs|pounds|lb)', text, flags)
+    if match:
+        return match.group(1)
+
+    return None
+
+def extract_date_from_text(text: str) -> Optional[str]:
+    """
+    Extract a date (MM/DD/YYYY or YYYY-MM-DD) from text, looking for keywords like 'Effective Date'
+    """
+    if not text: return None
+    
+    # Look for "Effective Date: MM/DD/YYYY" or similar
+    # \b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b matches 01/12/2026
+    match = re.search(r'(?:effective|start|date).*?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', text, re.IGNORECASE)
+    if match:
+        date_str = match.group(1)
+        # Try to normalize to YYYY-MM-DD logic could go here, but browser date input expects YYYY-MM-DD.
+        # Simple parser:
+        try:
+            parts = re.split(r'[/-]', date_str)
+            if len(parts) == 3:
+                # Assume MM/DD/YYYY if year is last and 4 digits
+                if len(parts[2]) == 4:
+                     return f"{parts[2]}-{parts[0].zfill(2)}-{parts[1].zfill(2)}"
+        except:
+            pass
+            
     return None
 
 
