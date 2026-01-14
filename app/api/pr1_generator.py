@@ -9,7 +9,7 @@ import tempfile
 import re
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from pydantic import BaseModel
@@ -289,9 +289,11 @@ def extract_work_status_section(text: str) -> str:
         return match.group(1).strip()
         
     # 2. Look for standard headers
-    match = re.search(r'(?:work status|restrictions|functional limitations|plan)(.*)', text, re.IGNORECASE | re.DOTALL)
+    # Exclude 'plan' to avoid capturing MDM/Procedures text
+    # Capture until we hit a likely next section or footer
+    match = re.search(r'(?:work status|restrictions|functional limitations)(.*?)(?=\n\n|\r\n\r\n|SIGNATURE|Provider Name:|Electronic Signature:|Subjective:|History:|$)', text, re.IGNORECASE | re.DOTALL)
     if match:
-        return match.group(1)
+        return match.group(1).strip()
     return text  # Fallback to all text
 
 
@@ -2718,7 +2720,9 @@ Return a JSON object with the following structure:
   "return_full_duty_date": "date if mentioned",
   "unable_to_return_start_date": "date if mentioned",
   "unable_to_return_end_date": "date if mentioned",
-  "unable_to_return_reason": "reason if mentioned"
+  "unable_to_return_end_date": "date if mentioned",
+  "unable_to_return_reason": "reason if mentioned",
+  "restrictions_duration": "duration if mentioned (e.g. '4 weeks', 'until next visit')"
 }
 
 CRITICAL RULES:
@@ -3086,6 +3090,8 @@ def build_section_c(
                         restrictions = extracted_work_status.get("restrictions")
                     if not detailed_restrictions and extracted_work_status.get("restrictions_details"):
                         detailed_restrictions = extracted_work_status.get("restrictions_details")
+                    if not restrictions_duration and extracted_work_status.get("restrictions_duration"):
+                        restrictions_duration = extracted_work_status.get("restrictions_duration")
     
     # Priority 7: Check intake form (fallback)
     if not work_status and intake_doc:
@@ -3547,9 +3553,10 @@ def build_section_c(
     # Identify the primary source of restriction text
     source_text_for_other = search_text or ""
     if not source_text_for_other and full_soap_text:
-        # USER IMAGES FIX: Use a regex that captures ACROSS newlines until "Effective Date" or significant gap.
+        # USER IMAGES FIX: Use a regex that captures ACROSS newlines until "Effective Date", "Duration", or significant gap.
         # This prevents the third line (driving) from being cut off.
-        res_match = re.search(r'Restrictions \(ONLY if Modified Duty\):\s*(.*?)(?=Effective Date:|\n\n|\r\n\r\n|$)', full_soap_text, re.IGNORECASE | re.DOTALL)
+        # Modified to NOT stop at "Duration:" so we can extract it later if it's part of the same block
+        res_match = re.search(r'Restrictions \(ONLY if Modified Duty\):\s*(.*?)(?=Effective Date:|\n\n|\r\n\r\n|Provider Name:|$)', full_soap_text, re.IGNORECASE | re.DOTALL)
         if res_match:
             source_text_for_other = res_match.group(1).strip()
 
@@ -3764,15 +3771,71 @@ def build_section_c(
                  
     # 4. Extract Duration: "How long will the work restrictions apply?"
     restrictions_duration = ""
-    # Look for duration patterns in source text
-    duration_match = re.search(r'(?:restrictions|limited|limitations).*?(?:apply|for|until|duration)\s+(?:for\s+)?(.*?)(?:\.|$)', source_text_for_other, re.IGNORECASE)
-    if duration_match:
-        restrictions_duration = duration_match.group(1).strip()
+    # 4. Extract Duration: "How long will the work restrictions apply?"
+    if not restrictions_duration:
+        restrictions_duration = ""
+        # Strategy A: Look for explicit "Duration:" header (common in structured notes)
+        duration_header_match = re.search(r'(?:Duration|Length of time)[:\s]+(.*?)(?:\n|$)', source_text_for_other, re.IGNORECASE)
+        if duration_header_match:
+             restrictions_duration = duration_header_match.group(1).strip()
+        
+        # Strategy B: Look for sentence-based duration patterns
+        if not restrictions_duration:
+            duration_match = re.search(r'(?:restrictions|limited|limitations).*?(?:apply|for|until|duration)\s+(?:for\s+)?(.*?)(?:\.|$)', source_text_for_other, re.IGNORECASE)
+            if duration_match:
+                restrictions_duration = duration_match.group(1).strip()
+        
+        
+        # Strategy C: Look for explicit "Duration:" header in the FULL SOAP text (if not found in local block)
+        # This handles cases where "Duration:" is a separate section outside the restrictions block
+        if not restrictions_duration:
+             # Use DOTALL to capture across newlines, stop at double newline or next common header
+             duration_full_match = re.search(r'(?:Duration|Length of time)[:\s]+(.*?)(?:\n\n|\r\n\r\n|Provider Name:|SIGNATURE|$)', full_soap_text, re.IGNORECASE | re.DOTALL)
+             if duration_full_match:
+                 restrictions_duration = duration_full_match.group(1).strip()
+
+        # Strategy D: Look for duration correlated with TTD/Status
+        # e.g. "TTD for 6 weeks", "Off work x 4 weeks"
+        if not restrictions_duration:
+            ttd_duration_match = re.search(r'(?:TTD|off work|total disability|work status).{0,50}(?:for|x|duration of)\s+([0-9]+\s*(?:weeks|days|months))', full_soap_text, re.IGNORECASE)
+            if ttd_duration_match:
+                restrictions_duration = ttd_duration_match.group(1).strip()
+
         # Clean up some common junk
-        restrictions_duration = re.sub(r'of\s+', '', restrictions_duration)
+        if restrictions_duration:
+            restrictions_duration = re.sub(r'^of\s+', '', restrictions_duration, flags=re.IGNORECASE)
+            # Remove leading/trailing asterisks or special chars
+            restrictions_duration = restrictions_duration.replace('*', '').strip()
     
     # Final accumulation
-    other_restrictions = "; ".join(list(dict.fromkeys(other_parts))) # remove duplicates preservation order
+    # Only use source_text_for_other verbatim if it looks like a specific extracted block (short)
+    # AND it does not contain large narrative keywords like "Medical Decision Making"
+    is_specific_block = (len(source_text_for_other) < len(full_soap_text) * 0.8) and \
+                        "Medical Decision Making" not in source_text_for_other and \
+                        "Data Reviewed" not in source_text_for_other
+                        
+    # Post-process cleaning for source_text_for_other to remove common leakage
+    if source_text_for_other:
+        # Remove "Temporary Total Disability..." status lines (covered by checkboxes)
+        source_text_for_other = re.sub(r'Temporary Total Disability.*?Signature:?', '', source_text_for_other, flags=re.IGNORECASE|re.DOTALL)
+        # Remove specific signature blocks that regex might miss
+        source_text_for_other = re.sub(r'SIGNATURE / PROVIDER INFORMATION.*', '', source_text_for_other, flags=re.IGNORECASE|re.DOTALL)
+        # Remove history start lines "The patient is..."
+        source_text_for_other = re.sub(r'The patient is a.*', '', source_text_for_other, flags=re.IGNORECASE)
+        # Remove separate "Electronic Signature" lines
+        source_text_for_other = re.sub(r'Electronic Signature:.*', '', source_text_for_other, flags=re.IGNORECASE)
+        source_text_for_other = source_text_for_other.strip()
+                        
+    if source_text_for_other and len(source_text_for_other) > 10 and \
+       not source_text_for_other.lower().startswith("duration") and \
+       is_specific_block:
+        # USER REQUEST: otherRestrictions should exact same as SOAP
+        # If we successfully extracted a specific restriction block, use it verbatim
+        other_restrictions = source_text_for_other.replace('\n', ' ').strip()
+        # Remove multiple spaces
+        other_restrictions = re.sub(r'\s+', ' ', other_restrictions)
+    else:
+        other_restrictions = "; ".join(list(dict.fromkeys(other_parts))) # remove duplicates preservation order
 
 
     # Extract patient name for page7 structure
@@ -3789,14 +3852,76 @@ def build_section_c(
     patient_name = patient_name or ""  # Default to empty string if not found
     
     # Calculate medication during work hours
-    medication_during_work_hours = "No"  # Default
-    if meds_affect_alertness is True or str(meds_affect_alertness).lower() in ["true", "yes"]:
-        medication_during_work_hours = "Yes"
-    elif meds_affect_alertness is False or str(meds_affect_alertness).lower() in ["false", "no"]:
-        medication_during_work_hours = "No"
+    medication_during_work_hours = "Yes"  # Default
+    # if meds_affect_alertness is True or str(meds_affect_alertness).lower() in ["true", "yes"]:
+    #     medication_during_work_hours = "Yes"
+    # elif meds_affect_alertness is False or str(meds_affect_alertness).lower() in ["false", "no"]:
+    #     medication_during_work_hours = "No"
     # If string matches "Yes" or "No", use it
-    elif isinstance(meds_affect_alertness, str) and meds_affect_alertness in ["Yes", "No"]:
-        medication_during_work_hours = meds_affect_alertness
+    # elif isinstance(meds_affect_alertness, str) and meds_affect_alertness in ["Yes", "No"]:
+    #     medication_during_work_hours = meds_affect_alertness
+
+    # -------------------------------------------------------------------------
+    # Rule: nextVisitDate should be always 4 weeks from returnToModifiedDutyDate or returnToFullDutyDate
+    # -------------------------------------------------------------------------
+    ref_date_str = return_modified_duty_date or return_full_duty_date or unable_to_return_start_date
+    if ref_date_str:
+        try:
+            # Parse the reference date (MM/DD/YYYY)
+            # handle potential whitespace just in case
+            ref_date_str = ref_date_str.strip()
+            ref_date = datetime.strptime(ref_date_str, "%m/%d/%Y")
+            
+            # Add 4 weeks
+            new_visit_date = ref_date + timedelta(weeks=4)
+            
+            # Format back to MM/DD/YYYY
+            next_visit_date = new_visit_date.strftime("%m/%d/%Y")
+            logger.info(f"Updated nextVisitDate to {next_visit_date} (4 weeks from {ref_date_str})")
+        except Exception as e:
+            logger.warning(f"Could not calculate nextVisitDate from {ref_date_str}: {e}")
+
+    # Strategy E: Imputation / Calculation Fallback
+    # If extraction found nothing, but we have dates or standard protocol (next visit in 4 weeks),
+    # we can reasonable infer the duration.
+    if not restrictions_duration:
+        # 1. Try to calculate from date diffs
+        fmt = "%m/%d/%Y"
+        try:
+             # Case 1: TTD / Off Work
+             if unable_to_return_start_date and unable_to_return_end_date:
+                  d1 = datetime.strptime(unable_to_return_start_date, fmt)
+                  d2 = datetime.strptime(unable_to_return_end_date, fmt)
+                  diff_days = (d2 - d1).days
+                  if diff_days > 0:
+                       weeks = round(diff_days / 7)
+                       if weeks > 0:
+                           restrictions_duration = f"{weeks} weeks"
+                       else:
+                           restrictions_duration = f"{diff_days} days"
+             
+             # Case 2: Modified Duty
+             elif return_modified_duty_date and return_full_duty_date:
+                  d1 = datetime.strptime(return_modified_duty_date, fmt)
+                  d2 = datetime.strptime(return_full_duty_date, fmt)
+                  diff_days = (d2 - d1).days
+                  if diff_days > 0:
+                       weeks = round(diff_days / 7)
+                       if weeks > 0:
+                           restrictions_duration = f"{weeks} weeks"
+                       else:
+                           restrictions_duration = f"{diff_days} days"
+        except:
+             pass
+        
+        # 2. If still empty, but we have a next visit date (which we often calculate as 4 weeks)
+        # Default to "Until next visit" or "4 weeks"
+        # if not restrictions_duration and next_visit_date:
+        #      restrictions_duration = "Until next visit"
+        
+        # 3. Final Fallback if we have active restrictions/status but no text
+        # if not restrictions_duration and (return_to_work_with_restrictions or unable_to_return_to_work):
+        #      restrictions_duration = "4 weeks" # Standard default
 
     return {
         "patientName": patient_name,
@@ -3930,20 +4055,43 @@ def extract_work_status_format(
     # Extract Employee Information
     employee_name = header.get("patient_name") or ""
     claim_number = header.get("claim_number") or ""
-    date_of_injury = to_yyyy_mm_dd(header.get("date_of_injury")) or ""
+    date_of_injury = to_yyyy_mm_dd(header.get("date_of_injury"))
+    if not date_of_injury and soap_doc:
+         date_of_injury = to_yyyy_mm_dd(soap_doc.get("date_of_injury"))
+         if not date_of_injury:
+              pat_info = soap_doc.get("patient_information") or soap_doc.get("patientInfo")
+              if isinstance(pat_info, dict):
+                   date_of_injury = to_yyyy_mm_dd(pat_info.get("date_of_injury") or pat_info.get("dateOfInjury"))
+    
+    if not date_of_injury and intake_doc:
+         # Try common locations in intake doc
+         val = (intake_doc.get("section_d") or {}).get("date_of_injury")
+         if val: date_of_injury = to_yyyy_mm_dd(val)
+         
+         if not date_of_injury:
+             val = intake_doc.get("date_of_injury")
+             if val: date_of_injury = to_yyyy_mm_dd(val)
+             
+    date_of_injury = date_of_injury or ""
+    
     date_of_evaluation = to_yyyy_mm_dd(header.get("date_of_first_examination")) or ""
     body_parts_injured = extract_body_parts_from_diagnoses(soap_doc, section_b)
     
     # Extract next follow-up appointment from SOAP or section C
-    next_follow_up = ""
-    if soap_doc:
+    # Priority 1: From Section C (calculated or extracted)
+    next_follow_up = to_yyyy_mm_dd(section_c.get("nextVisitDate"))
+    
+    # Priority 2: From SOAP doc directly
+    if not next_follow_up and soap_doc:
         next_visit = soap_doc.get("next_visit_date") or soap_doc.get("mmi_date")
         if not next_visit:
             patient_status = soap_doc.get("patientStatus")
             if isinstance(patient_status, dict):
                 next_visit = patient_status.get("nextVisitDate")
         if next_visit:
-            next_follow_up = to_yyyy_mm_dd(next_visit) or ""
+            next_follow_up = to_yyyy_mm_dd(next_visit)
+            
+    next_follow_up = next_follow_up or ""
     
     employee_info = {
         "employeeName": employee_name,
@@ -4014,9 +4162,14 @@ def extract_work_status_format(
     # Extract Functional Restrictions
     restrictions = section_c.get("restrictions") or {}
     other_restrictions_text = section_c.get("otherRestrictions") or ""
+    restrictions_duration = section_c.get("workRestrictionsDuration") or section_c.get("restrictions_duration") or ""
     
     # Map PR1 restrictions to new format
-    functional_restrictions = map_pr1_restrictions_to_new_format(restrictions, other_restrictions_text)
+    functional_restrictions = map_pr1_restrictions_to_new_format(
+        restrictions, 
+        other_restrictions_text,
+        restrictions_duration
+    )
     
     # Extract Provider Information
     physician_info = header.get("physician") or {}
@@ -4043,7 +4196,8 @@ def extract_work_status_format(
 
 def map_pr1_restrictions_to_new_format(
     restrictions: Dict[str, Any],
-    other_restrictions_text: str
+    other_restrictions_text: str,
+    restrictions_duration: str = ""
 ) -> Dict[str, Any]:
     """
     Map PR1 restrictions format to the new functional restrictions structure.
@@ -4264,7 +4418,9 @@ def map_pr1_restrictions_to_new_format(
             functional_restrictions["workplaceConditions"]["noSafetySensitiveDuties"] = True
     
     # Set other restrictions text
+    # Set other restrictions text
     functional_restrictions["otherRestrictions"] = other_restrictions_text or ""
+    functional_restrictions["workRestrictionsDuration"] = restrictions_duration or ""
     
     return functional_restrictions
 

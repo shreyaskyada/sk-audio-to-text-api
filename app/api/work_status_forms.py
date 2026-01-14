@@ -100,6 +100,10 @@ async def extract_work_status_from_soap(
                         raw_texts = []
                         if soap_doc.get("formatted_soap_note"):
                             raw_texts.append(str(soap_doc.get("formatted_soap_note")))
+                        if soap_doc.get("subjective"):
+                            raw_texts.append(str(soap_doc.get("subjective")))
+                        if soap_doc.get("history") or soap_doc.get("historyOfPresentIllness") or soap_doc.get("history_of_present_illness"):
+                            raw_texts.append(str(soap_doc.get("history") or soap_doc.get("historyOfPresentIllness") or soap_doc.get("history_of_present_illness")))
                         if soap_doc.get("plan"):
                             raw_texts.append(str(soap_doc.get("plan")))
                         if soap_doc.get("work_status"): # Field user edits manually in UI
@@ -121,108 +125,65 @@ async def extract_work_status_from_soap(
             
             target_text_lower = target_text.lower()
 
-            # --- WORK STATUS SELECTION Fix ---
-            # Ensure the top-level status (Full/Modified/Off) is correctly set based on the text
-            ws_selection = ws_data.get("workStatus", {})
+            # ... (Existing selections code) ...
             
-            # Check for explicit status keywords in the target text
-            # 3. Work Status Selection (Priority: Off Work > Modified Duty > Full Duty)
-            # User Request: "TTD ad karu chu te SOAP not ma thay che pan Work status from ma auto file nathi thati"
-            # Fix: Check for TTD/Off Work keywords FIRST so they take precedence over restrictions.
-            if any(k in target_text_lower for k in ["off work", "no work", "unable to work", "temporarily totally disabled", "ttd"]):
-                ws_selection["status"] = "offWork"
-                logger.info("WorkStatusForm Fix: Set status to 'offWork' based on restrictive keywords (Priority 1)")
+            # 4. FIX: Date of Injury (DOI) Aggressive Extraction
+            # If dateOfInjury is missing, try to find it in the text
+            emp_info = ws_data.get("employeeInfo", {})
+            if not emp_info.get("dateOfInjury"):
+                # Search primarily in the first chunk of text (Header/History) to avoid False Positives
+                search_scope = full_raw_text[:3000] if len(full_raw_text) > 3000 else full_raw_text
                 
-                date_found = extract_date_from_text(target_text)
-                if date_found:
-                     ws_selection["offWorkFrom"] = date_found
-                     
-            elif any(k in target_text_lower for k in ["modified duty", "light duty", "restricted duty", "restrictions apply", "work restrictions", "limitations"]):
-                ws_selection["status"] = "modifiedDuty"
-                logger.info("WorkStatusForm Fix: Set status to 'modifiedDuty' based on text (Priority 2)")
+                # Patterns to look for
+                doi_patterns = [
+                    r'(?:Date of Injury|DOI|Injury Date|Date of Acc|Injury|Date of Accident)[^0-9]*?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
+                    r'(?:Date of Injury|DOI|Injury Date|Date of Acc|Injury|Date of Accident)[^0-9]*?((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})',
+                    # Narrative: "injury on 01/14/2026", "accident on 1-1-26"
+                    r'(?:injury|accident|incident|onset)\s+(?:occurred|sustained|happened)?\s*(?:on)?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})'
+                ]
                 
-                # Auto-fill start date if found in text ("Effective Date: ...")
-                date_found = extract_date_from_text(target_text)
-                if date_found:
-                     ws_selection["modifiedDutyFrom"] = date_found
-            
-            elif any(k in target_text_lower for k in ["full duty", "regular duty", "no restrictions", "return to work without restrictions", "return to full duty"]):
-                ws_selection["status"] = "fullDuty"
-                logger.info("WorkStatusForm Fix: Set status to 'fullDuty' based on text")
+                for pat in doi_patterns:
+                    match = re.search(pat, search_scope, re.IGNORECASE)
+                    if match:
+                        raw_date = match.group(1)
+                        try:
+                            # Numeric Parsing
+                            if re.search(r'\d+[/-]\d+', raw_date):
+                                parts = re.split(r'[/-]', raw_date)
+                                if len(parts) == 3:
+                                    p0, p1, year = parts[0], parts[1], parts[2]
+                                    if len(year) == 2: year = "20" + year
+                                    emp_info["dateOfInjury"] = f"{year}-{p0.zfill(2)}-{p1.zfill(2)}"
+                                    logger.info(f"WorkStatusForm Fix: Extracted Date of Injury (Numeric): {emp_info['dateOfInjury']}")
+                                    break
+                            # Textual Parsing
+                            else:
+                                clean_date = raw_date.replace(".", "").replace(",", "")
+                                for fmt in ["%b %d %Y", "%B %d %Y"]:
+                                     try:
+                                         dt_obj = datetime.strptime(clean_date, fmt)
+                                         emp_info["dateOfInjury"] = dt_obj.strftime("%Y-%m-%d")
+                                         break
+                                     except:
+                                         continue
+                                if emp_info.get("dateOfInjury"): break
+                        except:
+                            continue
+
+                # Fallback: Check for "injury ... today" or "sustained ... today"
+                if not emp_info.get("dateOfInjury"):
+                     today_match = re.search(r'(?:injury|accident|sustained).{0,50}\s+today', search_scope, re.IGNORECASE)
+                     if today_match and emp_info.get("dateOfEvaluation"):
+                             emp_info["dateOfInjury"] = emp_info.get("dateOfEvaluation")
+                             logger.info(f"WorkStatusForm Fix: Inferred DOI from 'injury today' -> {emp_info['dateOfInjury']}")
                 
-                date_found = extract_date_from_text(target_text)
-                if date_found:
-                     ws_selection["fullDutyEffectiveDate"] = date_found
+                # Double Fallback: If "Acute" injury is mentioned, and no date found, assume DOI = Date of Evaluation
+                if not emp_info.get("dateOfInjury"):
+                     acute_match = re.search(r'(?:acute|new)\s+(?:injury|onset)', search_scope, re.IGNORECASE)
+                     if acute_match and emp_info.get("dateOfEvaluation"):
+                         emp_info["dateOfInjury"] = emp_info.get("dateOfEvaluation")
+                         logger.info(f"WorkStatusForm Fix: Inferred DOI from 'Acute Injury' context -> {emp_info['dateOfInjury']}")
 
-            # 3. Aggressive Auto-Check for Lifting
-            keywords_present = any(k in target_text_lower for k in ["lift", "push", "pull", "carrying"])
-            
-            # Refined negative check to avoid false negatives on "Avoid lifting"
-            is_negative_context = "no work restrictions" in target_text_lower or "full duty" in target_text_lower
-            
-            if keywords_present and not is_negative_context:
-                # If we see "lift" and "no", "avoid", "limit", or "restrict", check the box
-                if any(k in target_text_lower for k in ["no", "not", "avoid", "limit", "restrict", "max", "unable"]):
-                    lifting["noLiftingOver"] = True
-                    logger.info("WorkStatusForm Fix: Auto-checked 'noLiftingOver' due to restrictive keywords")
-            
-            # Always try to extract weight if keywords exist, as finding a weight implies a restriction
-            extracted_weight = extract_weight_from_text(target_text)
-            if extracted_weight:
-                lifting["noLiftingOver"] = True # Force check if weight found
-                logger.info(f"WorkStatusForm Fix: Extracted weight {extracted_weight}")
-                if extracted_weight in ["5", "10", "15", "25"]:
-                    lifting["weightLimit"] = extracted_weight
-                else:
-                    lifting["weightLimit"] = "custom"
-                    lifting["customWeight"] = extracted_weight
-
-            # 3.5. AGGRESSIVE AUTO-CHECK: Lower Extremity
-            lower_ext = restrictions.get("lowerExtremity", {})
-            
-            # Kneeling / Squatting
-            if any(k in target_text_lower for k in ["kneel", "squat"]):
-                lower_ext["noRepetitiveKneeling"] = True
-
-            # Climbing
-            if any(k in target_text_lower for k in ["climb", "stairs", "ladder"]):
-                lower_ext["noClimbingStairs"] = True
-
-            # Walking
-            if any(k in target_text_lower for k in ["walk", "ambulat"]):
-                lower_ext["walkingLimited"] = True
-                
-                if not lower_ext.get("walkingLimit"):
-                    if "2 hour" in target_text_lower or "2 hr" in target_text_lower:
-                        lower_ext["walkingLimit"] = "2hrs"
-                    elif "4 hour" in target_text_lower or "4 hr" in target_text_lower:
-                        lower_ext["walkingLimit"] = "4hrs"
-                    else:
-                        min_match = re.search(r'(\d+)\s*(?:min|minute)', target_text_lower)
-                        if min_match:
-                            lower_ext["walkingLimit"] = "custom"
-                            lower_ext["walkingCustomMin"] = min_match.group(1)
-                        else:
-                            lower_ext["walkingLimit"] = "other"
-                            lower_ext["walkingOther"] = "" 
-                            
-                            walk_match = re.search(r'(?:walking|ambulation)\s*(?:limit.*?to|restricted.*?to|is)\s*(.{5,50})', target_text_lower)
-                            if walk_match:
-                                lower_ext["walkingOther"] = walk_match.group(1).strip()
-            
-            # 3.7 Safety / Driving (Workplace Conditions)
-            work_cond = restrictions.get("workplaceConditions", {})
-            if any(k in target_text_lower for k in ["drive", "driving", "machinery", "forklift", "vehicle", "safety sensitive"]):
-                work_cond["noSafetySensitiveDuties"] = True
-                logger.info("WorkStatusForm Fix: Auto-checked 'noSafetySensitiveDuties'")
-            
-            # 3.8 Upper Extremity (Wrist/Hand/Gripping)
-            upper_ext = restrictions.get("upperExtremity", {})
-            if any(k in target_text_lower for k in ["grip", "grasp", "wrist", "hand", "thumb"]) and \
-               any(k in target_text_lower for k in ["avoid", "no", "limit", "repetitive"]):
-                   upper_ext["noRepetitiveGripping"] = False
-                   if "right" in target_text_lower: upper_ext["noRepetitiveGrippingRight"] = False
-                   if "left" in target_text_lower: upper_ext["noRepetitiveGrippingLeft"] = False
 
 
         return result
@@ -235,12 +196,14 @@ async def extract_work_status_from_soap(
 
 
 def extract_work_status_section(text: str) -> str:
-    """Isolate work status section to avoid false positives from history"""
+    """Isolate work status section to avoid false positives (e.g. from history)"""
     if not text: return ""
     # Look for headers
-    match = re.search(r'(?:work status|restrictions|functional limitations|plan)(.*)', text, re.IGNORECASE | re.DOTALL)
+    # Look for headers
+    # Exclude 'plan' to avoid capturing MDM/Procedures text
+    match = re.search(r'(?:work status|restrictions|functional limitations)(.*)', text, re.IGNORECASE | re.DOTALL)
     if match:
-        return match.group(1)
+        return match.group(1).strip()
     return text # Fallback to all text
 
 
