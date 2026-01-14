@@ -23,6 +23,9 @@ from urllib.parse import urlencode, quote
 from openai import OpenAI
 import httpx
 
+# Load environment variables
+load_dotenv()
+
 # Import schemas
 from app.schemas import (
     LoginRequest,
@@ -67,8 +70,7 @@ from app.prompts import (
     ORTHOPEDIC_SOAP_USER_PROMPT_TEMPLATE,
  )
 
-# Load environment variables
-load_dotenv()
+
 
 # Configure logging
 logging.basicConfig(

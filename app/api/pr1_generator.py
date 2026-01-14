@@ -3399,68 +3399,84 @@ def build_section_c(
 
     # --- AGGRESSIVE REGEX FALLBACK FOR RESTRICTIONS ---
     # User Request: "Auto-file thavi joi" - ensure fields are filled if keywords exist in text
+    # Always define source text for regex, regardless of flag, to avoid UnboundLocalError
+    source_text_for_regex = search_text or full_soap_text
+            
+    # Always define field_keywords (previously defined deep inside loops)
+    field_keywords = {
+        "standing": ["stand"],
+        "walking": ["walk"],
+        "sitting": ["sit"],
+        "climbing": ["climb", "ladder", "stair"],
+        "kneeling": ["kneel", "squat"],
+        "forwardBending": ["bend", "stoop"],
+        "twisting": ["twist"],
+        "crawling": ["crawl"],
+        "keyboarding": ["keyboard", "type", "typing"],
+        "liftCarryPounds": ["lift", "carry", "limit to", "lbs"],
+        "grasping": ["grasp", "grip"],
+        "pushingPulling": ["push", "pull"]
+    }
+
+    # Helper to apply regex if field is empty - Defined unconditionally
+    def fill_if_empty(field_key, pattern_str, display_name):
+        if not return_to_work_with_restrictions: return
+        if not restrictions_obj.get(field_key):
+            # 1. Prefix Negation: "No X", "Avoid X", "No prolonged X"
+            # Pattern matches: (Negation) (Adjective?) (Target Word)
+            # handle "No X or Y" by allowing words between Negation and Pattern
+            
+            # regex to capture groups: 1=Negation, 2=Adjective or context (opt), 3=Keyword
+            # Improved to allow up to 6 words (handles "standing or walking") and more characters
+            prefix_pattern = r'((?:no|avoid|limit|restrict|unable to|stop|must be allowed to))\s+((?:[\w,]+\s+){0,6})(' + pattern_str + r'\w*)'
+            
+            match = re.search(prefix_pattern, source_text_for_regex, re.IGNORECASE)
+            if match:
+                # Construct standardized string:
+                negation = match.group(1).title() # "No"
+                context = match.group(2).lower() # "prolonged " or "standing or "
+                
+                # Fix for shared negations: "No prolonged standing or walking"
+                # Clean context by removing OTHER target keywords and conjunctions
+                context_cleaned = context
+                for keyword in ["standing", "walking", "sitting", "climbing", "kneeling", "stooping", "bending", "squatting"]:
+                    context_cleaned = re.sub(r'\b' + keyword + r'\w*\b', '', context_cleaned, flags=re.IGNORECASE)
+                context_cleaned = re.sub(r'\s+(?:or|and)\s+', ' ', context_cleaned)
+                context_cleaned = re.sub(r'\s+', ' ', context_cleaned).strip()
+                
+                if context_cleaned:
+                    final_text = f"{negation} {context_cleaned} {display_name}"
+                else:
+                    final_text = f"{negation} {display_name}"
+                
+                # Check for post-modifiers like "more than occasionally"
+                # Capture modifiers even if separated by some words
+                post_match = re.search(pattern_str + r'\w*(?:\s+[\w,]+){0,3}\s+((?:more than|than)?\s*(?:occasionally|frequently|constantly|seldom|as needed))', source_text_for_regex, re.IGNORECASE)
+                if post_match:
+                    modifier = post_match.group(1).strip()
+                    # Avoid duplication: "Sit as needed as needed"
+                    if modifier.lower() not in final_text.lower():
+                        final_text += f" {modifier}"
+                
+                # Final cleanup
+                final_text = re.sub(r'\s+', ' ', final_text).strip()
+                restrictions_obj[field_key] = final_text
+                logger.info(f"PR1 Logic: Auto-filled {field_key} via regex (prefix): '{final_text}'")
+                return # Done
+
+            # 2. Suffix Negation: "X is not permitted", "X not allowed"
+            suffix_pattern = r'(' + pattern_str + r'\w*)\s+(?:is\s+|are\s+)?(?:not\s+permitted|not\s+allowed|prohibited)'
+            match_suffix = re.search(suffix_pattern, source_text_for_regex, re.IGNORECASE)
+            if match_suffix:
+                final_text = f"No {display_name}"
+                restrictions_obj[field_key] = final_text
+                logger.info(f"PR1 Logic: Auto-filled {field_key} via regex (suffix): '{final_text}'")
+
     if return_to_work_with_restrictions:
         # Define mappings: field -> (regex_pattern, cleanup_regex)
         # We capture the full phrase like "No prolonged standing"
         
-        source_text_for_regex = search_text  # Use the extracted Restrictions/Plan text
-        if not source_text_for_regex:
-            source_text_for_regex = full_soap_text
-            
         common_negative_lookahead = r'(?![a-zA-Z])' # End of word boundary
-        
-        # Helper to apply regex if field is empty
-        def fill_if_empty(field_key, pattern_str, display_name):
-            if not restrictions_obj.get(field_key):
-                # 1. Prefix Negation: "No X", "Avoid X", "No prolonged X"
-                # Pattern matches: (Negation) (Adjective?) (Target Word)
-                # handle "No X or Y" by allowing words between Negation and Pattern
-                
-                # regex to capture groups: 1=Negation, 2=Adjective or context (opt), 3=Keyword
-                # Improved to allow up to 6 words (handles "standing or walking") and more characters
-                prefix_pattern = r'((?:no|avoid|limit|restrict|unable to|stop|must be allowed to))\s+((?:[\w,]+\s+){0,6})(' + pattern_str + r'\w*)'
-                
-                match = re.search(prefix_pattern, source_text_for_regex, re.IGNORECASE)
-                if match:
-                    # Construct standardized string:
-                    negation = match.group(1).title() # "No"
-                    context = match.group(2).lower() # "prolonged " or "standing or "
-                    
-                    # Fix for shared negations: "No prolonged standing or walking"
-                    # Clean context by removing OTHER target keywords and conjunctions
-                    context_cleaned = context
-                    for keyword in ["standing", "walking", "sitting", "climbing", "kneeling", "stooping", "bending", "squatting"]:
-                        context_cleaned = re.sub(r'\b' + keyword + r'\w*\b', '', context_cleaned, flags=re.IGNORECASE)
-                    context_cleaned = re.sub(r'\s+(?:or|and)\s+', ' ', context_cleaned)
-                    context_cleaned = re.sub(r'\s+', ' ', context_cleaned).strip()
-                    
-                    if context_cleaned:
-                        final_text = f"{negation} {context_cleaned} {display_name}"
-                    else:
-                        final_text = f"{negation} {display_name}"
-                    
-                    # Check for post-modifiers like "more than occasionally"
-                    # Capture modifiers even if separated by some words
-                    post_match = re.search(pattern_str + r'\w*(?:\s+[\w,]+){0,3}\s+((?:more than|than)?\s*(?:occasionally|frequently|constantly|seldom|as needed))', source_text_for_regex, re.IGNORECASE)
-                    if post_match:
-                        modifier = post_match.group(1).strip()
-                        # Avoid duplication: "Sit as needed as needed"
-                        if modifier.lower() not in final_text.lower():
-                            final_text += f" {modifier}"
-                    
-                    # Final cleanup
-                    final_text = re.sub(r'\s+', ' ', final_text).strip()
-                    restrictions_obj[field_key] = final_text
-                    logger.info(f"PR1 Logic: Auto-filled {field_key} via regex (prefix): '{final_text}'")
-                    return # Done
-
-                # 2. Suffix Negation: "X is not permitted", "X not allowed"
-                suffix_pattern = r'(' + pattern_str + r'\w*)\s+(?:is\s+|are\s+)?(?:not\s+permitted|not\s+allowed|prohibited)'
-                match_suffix = re.search(suffix_pattern, source_text_for_regex, re.IGNORECASE)
-                if match_suffix:
-                    final_text = f"No {display_name}"
-                    restrictions_obj[field_key] = final_text
-                    logger.info(f"PR1 Logic: Auto-filled {field_key} via regex (suffix): '{final_text}'")
 
         # Apply rules - Pass standardized Display Names
         # ONLY apply these if the fields are still empty after structured parsing? 
@@ -3549,20 +3565,7 @@ def build_section_c(
         # Also split by "," if "no" or "avoid" follows the comma
         segments = re.split(r'[;.]+', source_text_for_other)
         
-        field_keywords = {
-            "standing": ["stand"],
-            "walking": ["walk"],
-            "sitting": ["sit"],
-            "climbing": ["climb", "ladder", "stair"],
-            "kneeling": ["kneel", "squat"],
-            "forwardBending": ["bend", "stoop"],
-            "twisting": ["twist"],
-            "crawling": ["crawl"],
-            "keyboarding": ["keyboard", "type", "typing"],
-            "liftCarryPounds": ["lift", "carry", "limit to", "lbs"],
-            "grasping": ["grasp", "grip"],
-            "pushingPulling": ["push", "pull"]
-        }
+
         
         for segment in segments:
             segment = segment.strip()

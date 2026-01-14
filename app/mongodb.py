@@ -26,7 +26,19 @@ async def connect_to_mongo():
         
         # Test connection
         await mongo_client.admin.command('ping')
-        logger.info(f"✅ Connected to MongoDB: {MONGODB_DB_NAME}")
+        
+        # Log which URL is being used (masked)
+        masked_url = MONGODB_URL
+        if "@" in MONGODB_URL:
+            # Mask credentials: mongodb+srv://user:pass@cluster... -> mongodb+srv://***@cluster...
+            try:
+                part1 = MONGODB_URL.split("@")[1]
+                proto = MONGODB_URL.split("://")[0]
+                masked_url = f"{proto}://***@{part1}"
+            except:
+                pass
+        
+        logger.info(f"✅ Connected to MongoDB: {MONGODB_DB_NAME} at {masked_url}")
         return True
     except Exception as e:
         logger.error(f"❌ MongoDB connection failed: {e}")
