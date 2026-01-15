@@ -3319,7 +3319,23 @@ def build_section_c(
         "return to work with restrictions" in full_text_lower
     )
     
-    if is_modified_aggressive:
+    # NEW: Aggressive TTD/Unable to Work Detection
+    # Prioritize TTD if found in full text, as it overrides modified duty
+    is_ttd_aggressive = (
+        "ttd" in full_text_lower or 
+        "temporary total" in full_text_lower or 
+        "unable to work" in full_text_lower or 
+        "off work" in full_text_lower or
+        "no work" in full_text_lower or
+        unable_to_return_to_work # Include previously detected status
+    )
+
+    if is_ttd_aggressive:
+        unable_to_return_to_work = True
+        return_to_full_duty = False
+        return_to_work_with_restrictions = False
+        logger.info("Forcing 'Unable to return to work' to TRUE due to Aggressive Keyword detection (TTD)")
+    elif is_modified_aggressive:
         return_to_work_with_restrictions = True
         return_to_full_duty = False
         unable_to_return_to_work = False
@@ -3771,28 +3787,27 @@ def build_section_c(
                  
     # 4. Extract Duration: "How long will the work restrictions apply?"
     restrictions_duration = ""
-    # 4. Extract Duration: "How long will the work restrictions apply?"
     if not restrictions_duration:
-        restrictions_duration = ""
-        # Strategy A: Look for explicit "Duration:" header (common in structured notes)
-        duration_header_match = re.search(r'(?:Duration|Length of time)[:\s]+(.*?)(?:\n|$)', source_text_for_other, re.IGNORECASE)
-        if duration_header_match:
-             restrictions_duration = duration_header_match.group(1).strip()
+        # Strategy A: Look for explicit "Duration:" header in FULL SOAP text first (most reliable)
+        # Pattern: "Duration: 4 weeks until re-evaluation" or "Duration: 6 weeks"
+        duration_full_match = re.search(r'(?:Duration|Length of time)[:\s]+(.*?)(?:\\n|\\r|SIGNATURE|Provider Name:|Electronic Signature:|$)', full_soap_text, re.IGNORECASE | re.DOTALL)
+        if duration_full_match:
+            restrictions_duration = duration_full_match.group(1).strip()
+            # Clean up: Remove everything after first sentence/period if it looks like unrelated content
+            # e.g. "4 weeks until re-evaluation. SIGNATURE..." -> "4 weeks until re-evaluation"
+            restrictions_duration = re.split(r'\.|\n\n', restrictions_duration)[0].strip()
         
-        # Strategy B: Look for sentence-based duration patterns
+        # Strategy B: Look in local restrictions block
+        if not restrictions_duration:
+            duration_header_match = re.search(r'(?:Duration|Length of time)[:\s]+(.*?)(?:\n|$)', source_text_for_other, re.IGNORECASE)
+            if duration_header_match:
+                restrictions_duration = duration_header_match.group(1).strip()
+        
+        # Strategy C: Look for sentence-based duration patterns
         if not restrictions_duration:
             duration_match = re.search(r'(?:restrictions|limited|limitations).*?(?:apply|for|until|duration)\s+(?:for\s+)?(.*?)(?:\.|$)', source_text_for_other, re.IGNORECASE)
             if duration_match:
                 restrictions_duration = duration_match.group(1).strip()
-        
-        
-        # Strategy C: Look for explicit "Duration:" header in the FULL SOAP text (if not found in local block)
-        # This handles cases where "Duration:" is a separate section outside the restrictions block
-        if not restrictions_duration:
-             # Use DOTALL to capture across newlines, stop at double newline or next common header
-             duration_full_match = re.search(r'(?:Duration|Length of time)[:\s]+(.*?)(?:\n\n|\r\n\r\n|Provider Name:|SIGNATURE|$)', full_soap_text, re.IGNORECASE | re.DOTALL)
-             if duration_full_match:
-                 restrictions_duration = duration_full_match.group(1).strip()
 
         # Strategy D: Look for duration correlated with TTD/Status
         # e.g. "TTD for 6 weeks", "Off work x 4 weeks"
@@ -3801,11 +3816,25 @@ def build_section_c(
             if ttd_duration_match:
                 restrictions_duration = ttd_duration_match.group(1).strip()
 
-        # Clean up some common junk
+        # CRITICAL CLEANING: Remove contamination
         if restrictions_duration:
+            # Remove common junk phrases that leak in
             restrictions_duration = re.sub(r'^of\s+', '', restrictions_duration, flags=re.IGNORECASE)
-            # Remove leading/trailing asterisks or special chars
             restrictions_duration = restrictions_duration.replace('*', '').strip()
+            
+            # Remove phrases that are clearly not duration
+            junk_phrases = ['pain control', 'as needed', 'for pain', 'signature', 'provider name', 'electronic']
+            for junk in junk_phrases:
+                if junk in restrictions_duration.lower():
+                    # If the entire string is just junk, clear it
+                    if restrictions_duration.lower().strip() == junk:
+                        restrictions_duration = ""
+                        break
+                    # Otherwise try to extract just the duration part before the junk
+                    parts = re.split(r'(?:for pain|as needed|signature)', restrictions_duration, flags=re.IGNORECASE)
+                    if parts and parts[0].strip():
+                        restrictions_duration = parts[0].strip()
+                        break
     
     # Final accumulation
     # Only use source_text_for_other verbatim if it looks like a specific extracted block (short)
@@ -3864,20 +3893,47 @@ def build_section_c(
     # -------------------------------------------------------------------------
     # Rule: nextVisitDate should be always 4 weeks from returnToModifiedDutyDate or returnToFullDutyDate
     # -------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Rule: nextVisitDate Calculation
+    # Dynamic: Extract from 'restrictions_duration' (e.g. "6 weeks") if available.
+    # Fallback: Default to 4 weeks if no duration specified.
+    # -------------------------------------------------------------------------
     ref_date_str = return_modified_duty_date or return_full_duty_date or unable_to_return_start_date
     if ref_date_str:
         try:
             # Parse the reference date (MM/DD/YYYY)
-            # handle potential whitespace just in case
             ref_date_str = ref_date_str.strip()
             ref_date = datetime.strptime(ref_date_str, "%m/%d/%Y")
             
-            # Add 4 weeks
-            new_visit_date = ref_date + timedelta(weeks=4)
+            # Default to 4 weeks
+            weeks_to_add = 4
+            days_to_add = 0
+            
+            # ATTEMPT DYNAMIC PARSING from extracted Duration
+            if restrictions_duration:
+                # Regex to find number + unit (weeks/days/months)
+                dur_match = re.search(r'(\d+)\s*(week|day|month)', restrictions_duration, re.IGNORECASE)
+                if dur_match:
+                    amount = int(dur_match.group(1))
+                    unit = dur_match.group(2).lower()
+                    
+                    if "week" in unit:
+                        weeks_to_add = amount
+                        logger.info(f"Dynamic Date: Found {amount} weeks duration")
+                    elif "day" in unit:
+                        weeks_to_add = 0
+                        days_to_add = amount
+                        logger.info(f"Dynamic Date: Found {amount} days duration")
+                    elif "month" in unit:
+                        weeks_to_add = amount * 4 # Approx
+                        logger.info(f"Dynamic Date: Found {amount} months duration")
+            
+            # Calculate new date
+            new_visit_date = ref_date + timedelta(weeks=weeks_to_add, days=days_to_add)
             
             # Format back to MM/DD/YYYY
             next_visit_date = new_visit_date.strftime("%m/%d/%Y")
-            logger.info(f"Updated nextVisitDate to {next_visit_date} (4 weeks from {ref_date_str})")
+            logger.info(f"Updated nextVisitDate to {next_visit_date} (Duration: {weeks_to_add}w {days_to_add}d from {ref_date_str})")
         except Exception as e:
             logger.warning(f"Could not calculate nextVisitDate from {ref_date_str}: {e}")
 
@@ -3922,6 +3978,13 @@ def build_section_c(
         # 3. Final Fallback if we have active restrictions/status but no text
         # if not restrictions_duration and (return_to_work_with_restrictions or unable_to_return_to_work):
         #      restrictions_duration = "4 weeks" # Standard default
+
+    # If TTD is checked but reason is empty, map 'Other Restrictions' text to 'State reason'
+    if unable_to_return_to_work and not unable_to_return_reason and other_restrictions:
+        unable_to_return_reason = other_restrictions
+        # User Request: remove from Other if moved to State reason in this specific condition
+        other_restrictions = ""
+        logger.info(f"Auto-filled unableToReturnReason from otherRestrictions and cleared Other: {unable_to_return_reason}")
 
     return {
         "patientName": patient_name,
