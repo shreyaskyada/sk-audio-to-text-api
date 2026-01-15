@@ -3986,6 +3986,10 @@ def build_section_c(
         other_restrictions = ""
         logger.info(f"Auto-filled unableToReturnReason from otherRestrictions and cleared Other: {unable_to_return_reason}")
 
+    # User Request: Ensure TTD end date defaults to nextVisitDate if missing (Same as Work Status Form)
+    if unable_to_return_to_work and not unable_to_return_end_date and next_visit_date:
+        unable_to_return_end_date = next_visit_date
+
     return {
         "patientName": patient_name,
         "returnToFullDuty": return_to_full_duty,
@@ -4190,6 +4194,8 @@ def extract_work_status_format(
         work_status_value = "offWork"
         off_work_from = to_yyyy_mm_dd(unable_to_return_start) or ""
         off_work_to = to_yyyy_mm_dd(unable_to_return_end) or ""
+        if not off_work_to and next_follow_up:
+            off_work_to = next_follow_up
     elif return_with_restrictions:
         work_status_value = "modifiedDuty"
         # Use date_of_evaluation as modified duty start date
@@ -4199,6 +4205,8 @@ def extract_work_status_format(
             modified_duty_to = to_yyyy_mm_dd(return_to_full_duty_date) or ""
         elif unable_to_return_end:
             modified_duty_to = to_yyyy_mm_dd(unable_to_return_end) or ""
+        elif next_follow_up:
+            modified_duty_to = next_follow_up
     
     # Check for Permanent & Stationary / MMI
     if soap_doc:
