@@ -2,6 +2,7 @@
 Transcription Storage functions for MongoDB
 """
 import logging
+import asyncio
 from datetime import datetime
 from typing import Dict, Optional, List
 from bson import ObjectId
@@ -70,7 +71,33 @@ async def save_transcription_to_db(transcription_data: dict) -> Dict:
         result = await db[TRANSCRIPTIONS_COLLECTION].insert_one(transcription_doc)
         transcription_doc["_id"] = str(result.inserted_id)
         
-        logger.info(f"✅ Transcription saved to database with ID: {transcription_doc['_id']}")
+        transcription_id = transcription_doc["_id"]
+        print(f"✅ [TRANSCRIPTION SAVE] Transcription saved to database with ID: {transcription_id}")
+        logger.info(f"✅ Transcription saved to database with ID: {transcription_id}")
+        
+        # Start background worker to generate SOAP note
+        # Import here to avoid circular dependencies
+        try:
+            print(f"🚀 [TRANSCRIPTION SAVE] Starting background SOAP worker for transcription_id: {transcription_id}")
+            from app.api.background_worker import generate_soap_note_in_background
+            
+            # Schedule background task (non-blocking)
+            # Use asyncio.create_task to run in background
+            try:
+                # Create task without awaiting - runs in background
+                task = asyncio.create_task(generate_soap_note_in_background(transcription_id))
+                print(f"✅ [TRANSCRIPTION SAVE] Background SOAP worker task created and scheduled")
+                print(f"   Task object: {task}")
+                logger.info(f"🚀 Background SOAP generation scheduled for transcription_id: {transcription_id}")
+            except Exception as task_error:
+                print(f"⚠️ [TRANSCRIPTION SAVE] ERROR: Failed to schedule background task")
+                print(f"   Error: {str(task_error)}")
+                logger.warning(f"⚠️ Failed to schedule background task: {str(task_error)}")
+        except Exception as e:
+            # Don't fail the transcription save if background worker fails to start
+            print(f"⚠️ [TRANSCRIPTION SAVE] WARNING: Failed to start background SOAP worker")
+            print(f"   Error: {str(e)}")
+            logger.warning(f"⚠️ Failed to start background SOAP worker: {str(e)}")
         
         return transcription_doc
         
@@ -209,6 +236,9 @@ async def update_transcription_in_db(transcription_id: str, update_data: dict) -
         # Add updated_at timestamp
         update_data["updated_at"] = datetime.utcnow()
         
+        # Check if transcription text is being updated (to trigger SOAP regeneration)
+        text_updated = 'text' in update_data
+        
         # Update document
         result = await db[TRANSCRIPTIONS_COLLECTION].update_one(
             {"_id": object_id},
@@ -216,7 +246,41 @@ async def update_transcription_in_db(transcription_id: str, update_data: dict) -
         )
         
         if result.modified_count > 0:
+            print(f"✅ [TRANSCRIPTION UPDATE] Transcription updated: {transcription_id}")
             logger.info(f"✅ Transcription updated: {transcription_id}")
+            
+            # If transcription text was updated, trigger background worker to regenerate SOAP note
+            if text_updated:
+                try:
+                    print(f"🔄 [TRANSCRIPTION UPDATE] Transcription text updated, triggering background SOAP regeneration")
+                    from app.api.background_worker import generate_soap_note_in_background
+                    
+                    # Delete existing SOAP notes for this transcription to regenerate fresh
+                    try:
+                        from app.api.soap_storage import get_all_soap_notes_by_transcription_id, delete_soap_note
+                        existing_soaps = await get_all_soap_notes_by_transcription_id(transcription_id)
+                        for soap in existing_soaps:
+                            await delete_soap_note(soap.get("_id"))
+                            print(f"🗑️ [TRANSCRIPTION UPDATE] Deleted old SOAP note: {soap.get('_id')}")
+                        if existing_soaps:
+                            logger.info(f"🗑️ Deleted {len(existing_soaps)} old SOAP note(s) for regeneration")
+                    except Exception as delete_error:
+                        print(f"⚠️ [TRANSCRIPTION UPDATE] Warning: Could not delete old SOAP notes: {str(delete_error)}")
+                        logger.warning(f"⚠️ Could not delete old SOAP notes: {str(delete_error)}")
+                    
+                    # Schedule background task to regenerate SOAP note
+                    try:
+                        task = asyncio.create_task(generate_soap_note_in_background(transcription_id))
+                        print(f"✅ [TRANSCRIPTION UPDATE] Background SOAP regeneration task scheduled")
+                        logger.info(f"🚀 Background SOAP regeneration scheduled for updated transcription_id: {transcription_id}")
+                    except Exception as task_error:
+                        print(f"⚠️ [TRANSCRIPTION UPDATE] ERROR: Failed to schedule background task: {str(task_error)}")
+                        logger.warning(f"⚠️ Failed to schedule background task for updated transcription: {str(task_error)}")
+                except Exception as e:
+                    # Don't fail the transcription update if background worker fails to start
+                    print(f"⚠️ [TRANSCRIPTION UPDATE] WARNING: Failed to start background SOAP worker: {str(e)}")
+                    logger.warning(f"⚠️ Failed to start background SOAP worker for updated transcription: {str(e)}")
+            
             return True
         elif result.matched_count > 0:
             logger.warning(f"Transcription found but not modified: {transcription_id}")

@@ -11,7 +11,8 @@ from app.api.soap_storage import (
     get_all_soap_notes,
     get_soap_notes_stats,
     update_soap_note,
-    delete_soap_note
+    delete_soap_note,
+    get_soap_note_by_transcription_id
 )
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,42 @@ async def get_soap_statistics():
         raise HTTPException(
             status_code=500,
             detail="Failed to get SOAP notes statistics"
+        )
+
+
+@router.get("/by-transcription/{transcription_id}")
+async def get_soap_note_by_transcription(transcription_id: str):
+    """
+    Get SOAP note by transcription ID
+    
+    **Parameters:**
+    - transcription_id: MongoDB ObjectId of the transcription
+    
+    **Returns:**
+    - Complete SOAP note document if exists
+    - 404 if not found
+    
+    **Example:**
+    - `/api/v1/soap-notes/by-transcription/507f1f77bcf86cd799439011`
+    """
+    try:
+        soap_note = await get_soap_note_by_transcription_id(transcription_id)
+        
+        if soap_note is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"SOAP note not found for transcription_id: {transcription_id}"
+            )
+        
+        return JSONResponse(jsonable_encoder(soap_note))
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving SOAP note by transcription_id {transcription_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve SOAP note"
         )
 
 
