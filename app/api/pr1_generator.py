@@ -5111,7 +5111,34 @@ async def generate_pr1_from_soap(
     soap_id: str = Form(..., description="SOAP note MongoDB ID"),
     use_latest_intake: bool = Form(False, description="Use latest intake form"),
     use_latest_followup: bool = Form(False, description="Use latest follow-up form"),
-    flags: Optional[str] = Form(None, description="JSON string with PR-1 flags (e.g., {'progress_report': true})")
+    flags: Optional[str] = Form(None, description="JSON string with PR-1 flags")
+):
+    try:
+        flags_dict = None
+        if flags:
+            try:
+                flags_dict = json.loads(flags)
+            except Exception as e:
+                logger.warning(f"Invalid JSON in flags parameter: {flags}, error: {e}")
+        
+        return await process_pr1_generation_service(
+            soap_id=soap_id,
+            use_latest_intake=use_latest_intake,
+            use_latest_followup=use_latest_followup,
+            flags=flags_dict
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in PR1 generation endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def process_pr1_generation_service(
+    soap_id: str,
+    use_latest_intake: bool = False,
+    use_latest_followup: bool = False,
+    flags: Optional[Dict[str, Any]] = None
 ):
     """
     Generate PR-1 form from SOAP note (using formatted_soap_note field) and latest intake/follow-up data
@@ -5178,6 +5205,7 @@ async def generate_pr1_from_soap(
         
         try:
             soap_doc = await db[COLL_SOAP].find_one({"_id": ObjectId(soap_id)})
+            logger.info(f"Fetched SOAP note with ID: {soap_id}, status: {soap_doc.get('status') if soap_doc else 'NOT_FOUND'}")
             if not soap_doc:
                 raise HTTPException(
                     status_code=404,
@@ -5193,6 +5221,54 @@ async def generate_pr1_from_soap(
             )
         
         logger.info(f"Fetched SOAP note with ID: {soap_id}")
+        
+        # Check for saved PR1 form (Cache Check)
+        saved_pr1 = await db[COLL_SAVED_PR1].find_one({"soap_id": soap_id})
+        if saved_pr1 and saved_pr1.get("form_data") and saved_pr1.get("status") != "pending":
+            logger.info(f"✅ Found saved PR1 form for SOAP ID: {soap_id}, returning cached version")
+            
+            # Construct simplified soap_data from soap_doc for response
+            soap_data_dict = {
+                "subjective": soap_doc.get("subjective", ""),
+                "objective": soap_doc.get("objective", ""),
+                "assessment": soap_doc.get("assessment", ""),
+                "plan": soap_doc.get("plan", ""),
+                "date_of_service": soap_doc.get("date_of_service", ""),
+                "patient_info": soap_doc.get("patient_info", {})
+            }
+            # Add other common fields
+            for key in ["examiner", "specialty", "npi", "state_license", 
+                       "contact_phone", "contact_fax", "contact_email", "practice_name",
+                       "primary_treating_physician"]:
+                if soap_doc.get(key):
+                    soap_data_dict[key] = soap_doc.get(key)
+
+            return JSONResponse({
+                "status": "success",
+                "pr1_values": saved_pr1["form_data"],
+                "metadata": {
+                    "soap_used": True,
+                    "soap_source": "soap_note_id",
+                    "soap_id": soap_id,
+                    "source": "cache",
+                    "cached_at": saved_pr1.get("updated_at") or saved_pr1.get("created_at")
+                },
+                "soap_data": soap_data_dict
+            })
+            
+        # Create/Update pending status in PR1 collection
+        if saved_pr1:
+             await db[COLL_SAVED_PR1].update_one(
+                {"_id": saved_pr1["_id"]},
+                {"$set": {"status": "pending", "updated_at": datetime.utcnow().isoformat()}}
+            )
+        else:
+             await db[COLL_SAVED_PR1].insert_one({
+                "soap_id": soap_id,
+                "status": "pending", 
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat()
+            })
         
         # Step 3: Check for existing structured fields in SOAP document
         # These are the standard SOAP fields that might already exist in MongoDB
@@ -5274,7 +5350,7 @@ async def generate_pr1_from_soap(
             if should_run_full_conversion:
                 try:
                     logger.info("Running full GPT conversion of formatted soap note...")
-                    gpt_extracted_data = convert_pdf_text_to_soap_json(formatted_soap_note)
+                    gpt_extracted_data = await asyncio.to_thread(convert_pdf_text_to_soap_json, formatted_soap_note)
                     logger.info("✅ Successfully extracted structured data from formatted_soap_note using GPT")
                 except HTTPException:
                     raise
@@ -5340,13 +5416,8 @@ async def generate_pr1_from_soap(
             logger.info(f"Final merged data has 'subjective': {'✓' if soap_data_dict.get('subjective') else '✗'}")
         
         # Step 7: Parse flags if provided
-        pr1_flags = None
-        if flags:
-            try:
-                pr1_flags = json.loads(flags)
-            except json.JSONDecodeError as e:
-                logger.warning(f"Invalid JSON in flags parameter: {flags}, error: {e}")
-                pr1_flags = None
+        pr1_flags = flags or {}
+
         
         # Step 8: Fetch latest intake and follow-up data if requested
         intake_doc = None
@@ -5414,6 +5485,17 @@ async def generate_pr1_from_soap(
         logger.info(f"   - Intake: {'Used (source: latest)' if intake_doc else 'Not used'}")
         logger.info(f"   - Follow-up: {'Used (source: latest)' if follow_doc else 'Not used'}")
         logger.info(f"   - SOAP: Used (source: SOAP note ID: {soap_id})")
+        
+        # Update PR1 status to completed
+        await db[COLL_SAVED_PR1].update_one(
+            {"soap_id": soap_id},
+            {"$set": {
+                "form_data": pr1, 
+                "status": "completed",
+                "updated_at": datetime.utcnow().isoformat()
+            }},
+            upsert=True
+        )
         
         return JSONResponse(response_data)
         

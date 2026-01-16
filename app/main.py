@@ -3,7 +3,7 @@ Medical Transcription & SOAP Note API
 Clean, modular FastAPI application with MongoDB feedback storage
 """
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -49,6 +49,9 @@ from app.api.appointment_storage import seed_mock_appointments, sync_appointment
 from app.api.soap_storage import (
     save_soap_note_to_db, 
     get_all_soap_notes_by_transcription_id,
+    get_soap_note_by_transcription_id,
+    get_soap_note_by_id,  # Helper needed for downstream workflow
+    create_pending_soap_note,
     update_soap_note
 )
 from app.api.transcription_storage import (
@@ -2073,10 +2076,208 @@ async def get_transcription_by_id_endpoint(
         )
 
 
+
+
+async def run_downstream_workflows(soap_id: str, transcription_id: Optional[str] = None):
+    """
+    Execute downstream tasks after SOAP generation:
+    1. Parse SOAP content to update transcription statuses (RFA, Work Status)
+    2. Generate PR1 form
+    3. Generate Work Status form
+    """
+    logger.info(f"🔄 Starting downstream workflows for SOAP ID: {soap_id}")
+    try:
+        # Fetch SOAP note for content parsing
+        soap_doc = await get_soap_note_by_id(soap_id)
+        if not soap_doc:
+            logger.error(f"Cannot run downstream workflows: SOAP note {soap_id} not found")
+            return
+
+        # Determine transcription_id if not provided
+        if not transcription_id:
+            transcription_id = soap_doc.get("transcription_id")
+
+        # 1. Update statuses if we have a transcription ID
+        if transcription_id:
+             try:
+                note_content = soap_doc.get("formatted_soap_note") or soap_doc.get("soap_note") or ""
+                status_updates = {}
+                
+                # Check for RFA
+                if "**REQUEST FOR AUTHORIZATION (RFA)**" in note_content or "**Requested Service:**" in note_content:
+                    status_updates["needs_rfa"] = True
+                    # Extract RFA name
+                    rfa_match = re.search(r'\*\*Requested Service:\*\*[\s\n]+(.*?)(?=\n\*\*|$)', note_content, re.IGNORECASE | re.DOTALL)
+                    if rfa_match:
+                        # Take first line or up to 100 chars
+                        rfa_text = rfa_match.group(1).strip().split('\n')[0]
+                        status_updates["rfa_name"] = rfa_text[:100]
+                
+                # Check for Work Status
+                if "**WORK STATUS**" in note_content:
+                    status_updates["needs_work_status"] = True
+                    # Extract Work Status
+                    ws_match = re.search(r'\*\*WORK STATUS\*\*[\s\n]+(.*?)(?=\n\*\*|$)', note_content, re.IGNORECASE | re.DOTALL)
+                    if ws_match:
+                        ws_text = ws_match.group(1).strip().split('\n')[0]
+                        status_updates["work_status"] = ws_text[:100]
+                        
+                        # Map to code
+                        if "Total Disability" in ws_text or "TTD" in ws_text:
+                            status_updates["work_status_code"] = "TTD"
+                        elif "Modified" in ws_text:
+                            status_updates["work_status_code"] = "MODIFIED"
+                        elif "Full Duty" in ws_text:
+                            status_updates["work_status_code"] = "FULL"
+                
+                if status_updates:
+                    logger.info(f"🔄 Updating transcription {transcription_id} with extracted statuses: {status_updates}")
+                    await update_transcription_in_db(transcription_id, status_updates)
+                    
+             except Exception as parse_error:
+                logger.warning(f"⚠️ Failed to extract statuses from SOAP note: {parse_error}")
+
+        # 2. Generate PR1
+        logger.info(f"Step 2: Generating PR1 for SOAP {soap_id}...")
+        try:
+            # Detect flags from SOAP note content
+            note_content = soap_doc.get("formatted_soap_note") or soap_doc.get("soap_note") or ""
+            has_rfa = "**REQUEST FOR AUTHORIZATION (RFA)**" in note_content or "**Requested Service:**" in note_content
+            
+            # Use same flags as manual generation, with dynamic RFA detection
+            pr1_flags = {
+                "progress_report": True,
+                "request_for_authorization": has_rfa,
+                "change_in_patient_condition": False
+            }
+            
+            logger.info(f"   PR1 Flags: progress_report=True, request_for_authorization={has_rfa}")
+            
+            await pr1_generator.process_pr1_generation_service(
+                soap_id=soap_id,
+                use_latest_intake=True, 
+                use_latest_followup=False,  # Match manual API behavior
+                flags=pr1_flags
+            )
+            logger.info(f"✅ PR1 generation completed for SOAP {soap_id}")
+        except Exception as pr1_error:
+            logger.error(f"❌ PR1 generation failed for SOAP {soap_id}: {pr1_error}", exc_info=True)
+        
+        # 3. Generate Work Status
+        logger.info(f"Step 3: Generating Work Status for SOAP {soap_id}...")
+        try:
+            await work_status_forms.process_work_status_generation(
+                soap_id=soap_id,
+                use_latest_intake=True, 
+                use_latest_followup=True
+            )
+            logger.info(f"✅ Work Status generation completed for SOAP {soap_id}")
+        except Exception as ws_error:
+            logger.error(f"❌ Work Status generation failed for SOAP {soap_id}: {ws_error}", exc_info=True)
+        
+        logger.info(f"✅ Downstream workflows completed for SOAP {soap_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error in downstream workflows for SOAP {soap_id}: {e}", exc_info=True)
+
+
+async def run_full_generation_workflow(transcription_id: str, user_id: Optional[str] = None):
+    """
+    Background workflow to generate SOAP, PR1, and Work Status forms sequentially.
+    """
+    logger.info(f"🚀 Starting background workflow for transcription {transcription_id}")
+    try:
+        # 0. Update status to in_progress
+        await update_transcription_in_db(transcription_id, {"background_running_status": "in_progress"})
+        
+        # Fetch transcription to check if text exists
+        transcription_doc = await get_transcription_by_id(transcription_id)
+        if not transcription_doc or not transcription_doc.get("text"):
+            logger.warning(f"Transcription {transcription_id} has no text, skipping workflow")
+            await update_transcription_in_db(transcription_id, {"background_running_status": "failed"})
+            return
+
+        # 1. Generate SOAP
+        logger.info(f"Step 1: Generating SOAP note for {transcription_id}...")
+        
+        # Prepare SOAP Request
+        soap_req = SOAPRequest(
+            transcription_id=transcription_id,
+            transcription=transcription_doc.get("text"),  # Pass the text!
+            userId=user_id,
+            # Use defaults for other fields
+        )
+        
+        # Fetch intake data for logic
+        intake_doc = await fetch_latest_intake_form()
+        intake_form_data = format_intake_form_data_for_prompt(intake_doc) if intake_doc else None
+        
+        # Call generation logic
+        
+        # Create Pending SOAP Note
+        pending_soap = await create_pending_soap_note(transcription_id, user_id)
+        logger.info(f"Step 1: Generated pending SOAP note ID: {pending_soap['_id']}")
+
+        # Call generation logic (returns dict, does NOT save to DB)
+        soap_result_data = await generate_comprehensive_soap_note(
+            soap_request=soap_req, 
+            intake_form_data=intake_form_data, 
+            intake_doc=intake_doc
+        )
+        
+        # Manually Update Pending SOAP Note to Completed
+        try:
+             soap_result_data["status"] = "completed"
+             # Use update_soap_note imported from storage
+             await update_soap_note(pending_soap['_id'], soap_result_data)
+             
+             soap_id = pending_soap['_id']
+             logger.info(f"✅ Background SOAP note completed with ID: {soap_id}")
+             
+             # Update the result with the ID for downstream use
+             soap_result = soap_result_data
+             soap_result["_id"] = soap_id
+             soap_result["document_id"] = soap_id
+                 
+        except Exception as db_error:
+             logger.error(f"❌ Failed to save background SOAP note: {db_error}")
+             raise Exception(f"Database save failed: {db_error}")
+        
+        # Handle SOAP result
+        logger.info(f"SOAP Result Type: {type(soap_result)}")
+        # Check if soap_result is a Pydantic model or dict
+        if hasattr(soap_result, "document_id"):
+            soap_id = soap_result.document_id
+        elif isinstance(soap_result, dict):
+             soap_id = soap_result.get("document_id") or soap_result.get("_id")
+        else:
+             soap_id = None
+             
+        if soap_id:
+             soap_id = str(soap_id)
+        
+        if not soap_id:
+             logger.error("Failed to get SOAP ID from generation result")
+             raise Exception("SOAP generation failed to return document ID")
+
+        # Run downstream workflows (Status Updates, PR1, Work Status)
+        await run_downstream_workflows(soap_id, transcription_id)
+
+        # 4. Update status to completed
+        await update_transcription_in_db(transcription_id, {"background_running_status": "completed"})
+        logger.info(f"✅ Background workflow completed for {transcription_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Background workflow failed for {transcription_id}: {e}", exc_info=True)
+        await update_transcription_in_db(transcription_id, {"background_running_status": "failed"})
+
+
+
 @app.put("/api/v1/transcriptions/{transcription_id}", response_model=TranscriptionListItem)
 async def update_transcription_endpoint(
     transcription_id: str,
-    update_request: TranscriptionUpdateRequest
+    update_request: TranscriptionUpdateRequest,
+    background_tasks: BackgroundTasks
 ):
     """
     Update a transcription by ID.
@@ -2125,6 +2326,11 @@ async def update_transcription_endpoint(
         
         # Check if transcription text is being updated
         transcription_text_changed = "text" in update_data
+        
+        # If text is updated, set status to Pending
+        if transcription_text_changed:
+            update_data["background_running_status"] = "Pending"
+
         
         # Get original transcription to compare text if needed
         original_transcription = None
@@ -2284,8 +2490,12 @@ async def update_transcription_endpoint(
                 detail=f"Transcription not found after update: {transcription_id}"
             )
         
+        # Trigger background workflow if text is updated
+        if transcription_text_changed:
+            background_tasks.add_task(run_full_generation_workflow, transcription_id, update_request.user_id)
+
         return TranscriptionListItem(
-            id=updated_transcription.get("_id", ""),
+            id=str(updated_transcription.get("_id", "")),
             text=updated_transcription.get("text", ""),
             confidence=updated_transcription.get("confidence", 0.0),
             language=updated_transcription.get("language", "unknown"),
@@ -2298,6 +2508,7 @@ async def update_transcription_endpoint(
             needs_work_status=updated_transcription.get("needs_work_status", False),
             work_status=updated_transcription.get("work_status"),
             work_status_code=updated_transcription.get("work_status_code"),
+            background_running_status=updated_transcription.get("background_running_status"),
             created_at=updated_transcription.get("created_at", datetime.utcnow())
         )
         
@@ -2537,6 +2748,7 @@ async def get_default_soap_prompts():
 @app.post("/api/v1/generate-soap", response_model=SOAPResponse)
 async def generate_soap_comprehensive(
     soap_request: SOAPRequest,
+    background_tasks: BackgroundTasks,
     intake_id: Optional[str] = Query(None, description="MongoDB intake form ID to use for PMH, Medications, and Social/Occupational History"),
     use_latest_intake: Optional[bool] = Query(False, description="Use latest intake form if True")
 ):
@@ -2590,7 +2802,30 @@ async def generate_soap_comprehensive(
         # Fetch transcription from database if transcription_id is provided
         transcription_doc = None
         if soap_request.transcription_id:
-            # Always generate new SOAP note (removed cache check to allow regeneration)
+            # Check for existing SOAP note first to avoid re-generation
+            existing_soap = await get_soap_note_by_transcription_id(soap_request.transcription_id)
+            if existing_soap:
+                logger.info(f"✅ Found existing SOAP note for transcription {soap_request.transcription_id}, returning cached version.")
+                
+                # Ensure created_at is converted to string for Pydantic validation
+                if isinstance(existing_soap.get("created_at"), datetime):
+                    existing_soap["created_at"] = existing_soap["created_at"].isoformat()
+                
+                # Ensure required string fields are not None
+                existing_soap["transcription"] = existing_soap.get("transcription") or ""
+                existing_soap["corrected_transcription"] = existing_soap.get("corrected_transcription") or ""
+                existing_soap["subjective"] = existing_soap.get("subjective") or ""
+                existing_soap["objective"] = existing_soap.get("objective") or ""
+                existing_soap["assessment"] = existing_soap.get("assessment") or ""
+                existing_soap["plan"] = existing_soap.get("plan") or ""
+                existing_soap["formatted_soap_note"] = existing_soap.get("formatted_soap_note") or ""
+                
+                soap_response = SOAPResponse(**existing_soap)
+                soap_response.document_id = existing_soap.get("_id")
+                soap_response.status = existing_soap.get("status", "completed")
+                return soap_response
+
+            # If not found, fetch transcription to generate key
             transcription_doc = await get_transcription_by_id(soap_request.transcription_id)
             if not transcription_doc:
                 raise HTTPException(
@@ -2626,6 +2861,10 @@ async def generate_soap_comprehensive(
         else:
             logger.warning("⚠️ No intake form data available - will use 'As per chart'")
         
+        # Create Pending SOAP Note (for manual generation)
+        pending_soap = await create_pending_soap_note(soap_request.transcription_id, soap_request.userId)
+        logger.info(f"⏳ Generated pending SOAP note ID: {pending_soap['_id']}")
+
         # Generate comprehensive SOAP note (pass both formatted data and raw doc for post-processing)
         soap_result = await generate_comprehensive_soap_note(soap_request, intake_form_data, intake_doc, model=soap_request.model)
         
@@ -2697,14 +2936,43 @@ async def generate_soap_comprehensive(
             except Exception as e:
                 logger.error(f"Error injecting metadata into generated SOAP note: {e}")
 
-        # Save to MongoDB
-        document_id = None
+        # Update Pending (Save to MongoDB)
+        document_id = pending_soap["_id"]
         try:
-            saved_doc = await save_soap_note_to_db(soap_result)
-            document_id = saved_doc.get('_id')
-            logger.info(f"✅ SOAP note saved with ID: {document_id}")
+            soap_result["status"] = "completed"
+            await update_soap_note(document_id, soap_result)
+            logger.info(f"✅ SOAP note completed with ID: {document_id}")
+            
+            # Verify SOAP is saved to DB before triggering background tasks
+            # This prevents race condition where PR1 tries to read SOAP before it's committed
+            saved_soap = await get_soap_note_by_id(document_id)
+            if not saved_soap:
+                logger.error(f"⚠️ SOAP note {document_id} not found in DB after save - retrying...")
+                await asyncio.sleep(0.5)  # Wait for DB commit
+                saved_soap = await get_soap_note_by_id(document_id)
+            
+            if saved_soap:
+                logger.info(f"✅ Verified SOAP note {document_id} is in database")
+                
+                # Trigger downstream workflows (PR1 and Work Status generation) in background
+                # Get transcription_id from request or from saved SOAP note
+                trans_id = soap_request.transcription_id
+                if not trans_id:
+                    trans_id = saved_soap.get("transcription_id")
+                
+                if document_id:
+                    logger.info(f"🔄 Triggering downstream workflows for SOAP {document_id} (transcription: {trans_id})")
+                    # Add small delay to ensure DB write is fully committed
+                    async def delayed_workflow():
+                        await asyncio.sleep(0.5)  # 500ms delay to ensure DB commit
+                        await run_downstream_workflows(soap_id=document_id, transcription_id=trans_id)
+                    
+                    background_tasks.add_task(delayed_workflow)
+            else:
+                logger.error(f"❌ Failed to verify SOAP note {document_id} in database - skipping downstream workflows")
+                
         except Exception as db_error:
-            logger.error(f"⚠️ Failed to save SOAP note to database: {db_error}")
+            logger.error(f"⚠️ Failed to update SOAP note status: {db_error}")
             logger.warning("Continuing without database storage...")
         
         # Return as SOAPResponse with document ID
