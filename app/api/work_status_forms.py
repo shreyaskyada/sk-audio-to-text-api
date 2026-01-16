@@ -72,18 +72,62 @@ async def extract_work_status_from_soap(
             except json.JSONDecodeError:
                 logger.warning(f"Invalid JSON in flags parameter: {flags}")
         
+        return await process_work_status_generation(
+            soap_id=soap_id,
+            use_latest_intake=use_latest_intake,
+            use_latest_followup=use_latest_followup,
+            flags=flags_dict
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in work-status-form extraction: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to extract date: {str(e)}")
+
+
+async def process_work_status_generation(
+    soap_id: str,
+    use_latest_intake: bool = False,
+    use_latest_followup: bool = False,
+    flags: Dict[str, Any] = None
+):
+    """
+    Service function to extract work status data from SOAP note.
+    """
+    try:
+        db = get_database()
+        if db:
+            saved_form = await db['work_status_forms'].find_one({"soap_id": soap_id})
+            if saved_form and saved_form.get("status") != "pending":
+                logger.info(f"✅ Found saved Work Status form for SOAP ID: {soap_id}")
+                return {"work_status_data": serialize_mongodb_doc(saved_form), "metadata": {"source": "cache"}}
+            
+            if saved_form:
+                 await db['work_status_forms'].update_one(
+                     {"_id": saved_form["_id"]},
+                     {"$set": {"status": "pending", "updated_at": datetime.utcnow()}}
+                 )
+            else:
+                 await db['work_status_forms'].insert_one({
+                     "soap_id": soap_id,
+                     "status": "pending",
+                     "created_at": datetime.utcnow(),
+                     "updated_at": datetime.utcnow()
+                 })
+
         # Use existing extraction engine
         payload = PR1GenerateRequest(
             soap_id=soap_id,
             use_latest_intake=use_latest_intake,
             use_latest_followup=use_latest_followup,
-            flags=flags_dict
+            flags=flags
         )
         
         # Get base extraction result
         result = await extract_work_status_from_pr1(payload)
         
         # --- POST-PROCESSING FIX for Work Status Form ---
+
         if result and "work_status_data" in result:
             ws_data = result["work_status_data"]
             restrictions = ws_data.get("functionalRestrictions", {})
@@ -185,6 +229,19 @@ async def extract_work_status_from_soap(
                          logger.info(f"WorkStatusForm Fix: Inferred DOI from 'Acute Injury' context -> {emp_info['dateOfInjury']}")
 
 
+
+        # Save Completed
+        if db and result and "work_status_data" in result:
+             form_data = result["work_status_data"]
+             form_data["soap_id"] = soap_id
+             form_data["status"] = "completed"
+             form_data["updated_at"] = datetime.utcnow()
+             
+             await db['work_status_forms'].update_one(
+                 {"soap_id": soap_id},
+                 {"$set": form_data},
+                 upsert=True
+             )
 
         return result
         

@@ -44,6 +44,8 @@ class TranscriptionResponse(BaseModel):
     needs_work_status: Optional[bool] = False
     work_status: Optional[str] = None
     work_status_code: Optional[str] = None
+    background_running_status: Optional[str] = None  # Pending, in_progress, completed, failed
+
     
     # New SOAP section fields
     chief_complaint: Optional[str] = None
@@ -73,6 +75,8 @@ class TranscriptionListItem(BaseModel):
     needs_work_status: Optional[bool] = False
     work_status: Optional[str] = None
     work_status_code: Optional[str] = None
+    background_running_status: Optional[str] = None
+
     
     # New SOAP section fields
     chief_complaint: Optional[str] = None
@@ -108,6 +112,8 @@ class TranscriptionCreateRequest(BaseModel):
     needs_work_status: Optional[bool] = False
     work_status: Optional[str] = None
     work_status_code: Optional[str] = None
+    background_running_status: Optional[str] = "Pending"
+
     
     # New SOAP section fields
     chief_complaint: Optional[str] = None
@@ -133,6 +139,8 @@ class TranscriptionUpdateRequest(BaseModel):
     needs_work_status: Optional[bool] = None
     work_status: Optional[str] = None
     work_status_code: Optional[str] = None
+    background_running_status: Optional[str] = None
+
     
     # New SOAP section fields
     chief_complaint: Optional[str] = None
@@ -298,6 +306,7 @@ class SOAPResponse(BaseModel):
     userId: Optional[str] = None  # Patient ID/Unique identifier
     format: str = "markdown"  # Format of the SOAP note
     document_id: Optional[str] = None  # MongoDB document ID if saved to database
+    status: Optional[str] = None  # pending, completed
 
 
 class ClientLogRequest(BaseModel):

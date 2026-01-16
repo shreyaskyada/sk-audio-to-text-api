@@ -76,6 +76,34 @@ async def save_soap_note_to_db(soap_data: dict) -> Dict:
         raise
 
 
+async def create_pending_soap_note(transcription_id: str, user_id: Optional[str] = None) -> Dict:
+    """
+    Create a placeholder SOAP note with pending status.
+    Returns the created document with _id.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+            
+        doc = {
+            "transcription_id": transcription_id,
+            "userId": user_id,
+            "status": "pending",
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        result = await db[SOAP_NOTES_COLLECTION].insert_one(doc)
+        doc["_id"] = str(result.inserted_id)
+        
+        logger.info(f"⏳ Created pending SOAP note: {doc['_id']} for transcription {transcription_id}")
+        return doc
+        
+    except Exception as e:
+        logger.error(f"Error creating pending SOAP note: {e}")
+        raise
+
 async def get_soap_note_by_id(soap_note_id: str) -> Optional[Dict]:
     """
     Retrieve a SOAP note by its ID
