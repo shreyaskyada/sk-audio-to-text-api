@@ -119,9 +119,10 @@ async def get_all_completed_appointment_ids() -> List[str]:
 async def sync_appointments_with_transcriptions():
     """
     Sync appointments with transcriptions and SOAP notes:
-    1. If a SOAP note exists -> completed
-    2. If only a transcription exists -> soap pending
-    3. If neither exists -> scheduled
+    1. If a COMPLETED SOAP note exists -> completed
+    2. If a PENDING SOAP note exists -> soap pending
+    3. If only a transcription exists -> soap pending
+    4. If neither exists -> scheduled
     """
     try:
         db = get_database()
@@ -132,19 +133,25 @@ async def sync_appointments_with_transcriptions():
         transcription_user_ids = await db[TRANSCRIPTIONS_COLLECTION].distinct("user_id")
         transcription_ids = [str(uid) for uid in transcription_user_ids if uid]
         
-        # Get IDs from SOAP notes
-        soap_user_ids = await db[SOAP_NOTES_COLLECTION].distinct("userId")
+        # Get IDs from COMPLETED SOAP notes only (not pending)
+        soap_user_ids = await db[SOAP_NOTES_COLLECTION].distinct("userId", {"status": "completed"})
         soap_ids = [str(uid) for uid in soap_user_ids if uid]
         
-        # 1. Set 'completed' for those with SOAP notes
+        # Get IDs from PENDING SOAP notes
+        pending_soap_user_ids = await db[SOAP_NOTES_COLLECTION].distinct("userId", {"status": "pending"})
+        pending_soap_ids = [str(uid) for uid in pending_soap_user_ids if uid]
+        
+        # 1. Set 'completed' for those with COMPLETED SOAP notes
         if soap_ids:
             await db[APPOINTMENTS_COLLECTION].update_many(
                 {"appointment_id": {"$in": soap_ids}},
                 {"$set": {"status": "completed", "updated_at": datetime.utcnow()}}
             )
             
-        # 2. Set 'soap pending' for those with transcriptions but NO SOAP notes
+        # 2. Set 'soap pending' for those with PENDING SOAP notes OR transcriptions but NO completed SOAP
         pending_ids = list(set(transcription_ids) - set(soap_ids))
+        # Also include those with pending SOAP notes
+        pending_ids = list(set(pending_ids) | set(pending_soap_ids))
         if pending_ids:
             await db[APPOINTMENTS_COLLECTION].update_many(
                 {"appointment_id": {"$in": pending_ids}},
@@ -152,13 +159,13 @@ async def sync_appointments_with_transcriptions():
             )
             
         # 3. Set 'scheduled' for those WITHOUT transcriptions
-        all_done_ids = list(set(transcription_ids) | set(soap_ids))
+        all_done_ids = list(set(transcription_ids) | set(soap_ids) | set(pending_soap_ids))
         await db[APPOINTMENTS_COLLECTION].update_many(
             {"appointment_id": {"$nin": all_done_ids}, "patient": {"$exists": True}},
             {"$set": {"status": "scheduled", "updated_at": datetime.utcnow()}}
         )
             
-        logger.info(f"✅ Synced appointments: {len(soap_ids)} completed, {len(pending_ids)} soap pending")
+        logger.info(f"✅ Synced appointments: {len(soap_ids)} completed, {len(pending_ids)} soap pending, {len(pending_soap_ids)} with pending SOAP")
     except Exception as e:
         logger.error(f"Error syncing appointments: {e}")
 

@@ -1631,6 +1631,7 @@ async def login(request: LoginRequest):
 
 @app.post("/api/v1/transcribe", response_model=TranscriptionResponse)
 async def transcribe_audio(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     generate_soap: bool = Form(False),
     username: Optional[str] = Form(None),
@@ -1811,9 +1812,10 @@ async def transcribe_audio(
                 'user_id': user_id
             }
             saved_doc = await save_transcription_to_db(transcription_data)
-            document_id = saved_doc.get('_id')
+            document_id = str(saved_doc.get('_id'))
             logger.info(f"✅ Transcription saved to database with ID: {document_id}")
             
+            # Delete audio file after successful transcription save (no longer needed)
             # Delete audio file after successful transcription save (no longer needed)
             if saved_file_path and os.path.exists(saved_file_path):
                 try:
@@ -1821,13 +1823,23 @@ async def transcribe_audio(
                     logger.info(f"🗑️ Audio file deleted: {saved_file_path}")
                 except Exception as delete_error:
                     logger.warning(f"⚠️ Failed to delete audio file {saved_file_path}: {delete_error}")
-                    # Continue even if deletion fails - transcription is already saved
+
+            # TRIGGER BACKGROUND WORKFLOW ALWAYS
+            if document_id:
+                logger.info(f"🚀 Triggering background workflow for transcription {document_id}")
+                background_tasks.add_task(run_full_generation_workflow, document_id, user_id)
+
         except Exception as db_error:
             logger.error(f"⚠️ Failed to save transcription to database: {db_error}")
             logger.warning("Continuing without database storage...")
             # Still try to delete audio file even if DB save failed
             if saved_file_path and os.path.exists(saved_file_path):
                 try:
+                    os.remove(saved_file_path)
+                    logger.info(f"🗑️ Audio file deleted after DB error: {saved_file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete temp file: {e}")
+
                     os.remove(saved_file_path)
                     logger.info(f"🗑️ Audio file deleted after transcription: {saved_file_path}")
                 except Exception as delete_error:
@@ -2137,43 +2149,58 @@ async def run_downstream_workflows(soap_id: str, transcription_id: Optional[str]
              except Exception as parse_error:
                 logger.warning(f"⚠️ Failed to extract statuses from SOAP note: {parse_error}")
 
-        # 2. Generate PR1
-        logger.info(f"Step 2: Generating PR1 for SOAP {soap_id}...")
-        try:
-            # Detect flags from SOAP note content
-            note_content = soap_doc.get("formatted_soap_note") or soap_doc.get("soap_note") or ""
-            has_rfa = "**REQUEST FOR AUTHORIZATION (RFA)**" in note_content or "**Requested Service:**" in note_content
-            
-            # Use same flags as manual generation, with dynamic RFA detection
-            pr1_flags = {
-                "progress_report": True,
-                "request_for_authorization": has_rfa,
-                "change_in_patient_condition": False
-            }
-            
-            logger.info(f"   PR1 Flags: progress_report=True, request_for_authorization={has_rfa}")
-            
-            await pr1_generator.process_pr1_generation_service(
-                soap_id=soap_id,
-                use_latest_intake=True, 
-                use_latest_followup=False,  # Match manual API behavior
-                flags=pr1_flags
-            )
-            logger.info(f"✅ PR1 generation completed for SOAP {soap_id}")
-        except Exception as pr1_error:
-            logger.error(f"❌ PR1 generation failed for SOAP {soap_id}: {pr1_error}", exc_info=True)
+        # 2 & 3. Generate PR1 and Work Status in parallel (faster!)
+        logger.info(f"Step 2 & 3: Generating PR1 and Work Status in parallel for SOAP {soap_id}...")
         
-        # 3. Generate Work Status
-        logger.info(f"Step 3: Generating Work Status for SOAP {soap_id}...")
-        try:
-            await work_status_forms.process_work_status_generation(
-                soap_id=soap_id,
-                use_latest_intake=True, 
-                use_latest_followup=True
-            )
-            logger.info(f"✅ Work Status generation completed for SOAP {soap_id}")
-        except Exception as ws_error:
-            logger.error(f"❌ Work Status generation failed for SOAP {soap_id}: {ws_error}", exc_info=True)
+        # Detect flags from SOAP note content
+        note_content = soap_doc.get("formatted_soap_note") or soap_doc.get("soap_note") or ""
+        has_rfa = "**REQUEST FOR AUTHORIZATION (RFA)**" in note_content or "**Requested Service:**" in note_content
+        
+        # Use same flags as manual generation, with dynamic RFA detection
+        pr1_flags = {
+            "progress_report": True,
+            "request_for_authorization": has_rfa,
+            "change_in_patient_condition": False
+        }
+        
+        logger.info(f"   PR1 Flags: progress_report=True, request_for_authorization={has_rfa}")
+        
+        # Define async tasks for parallel execution
+        async def generate_pr1():
+            try:
+                await pr1_generator.process_pr1_generation_service(
+                    soap_id=soap_id,
+                    use_latest_intake=True, 
+                    use_latest_followup=False,  # Match manual API behavior
+                    flags=pr1_flags
+                )
+                logger.info(f"✅ PR1 generation completed for SOAP {soap_id}")
+                return True
+            except Exception as pr1_error:
+                logger.error(f"❌ PR1 generation failed for SOAP {soap_id}: {pr1_error}", exc_info=True)
+                return False
+        
+        async def generate_work_status():
+            try:
+                await work_status_forms.process_work_status_generation(
+                    soap_id=soap_id,
+                    use_latest_intake=True, 
+                    use_latest_followup=False  # Match PR1 behavior
+                )
+                logger.info(f"✅ Work Status generation completed for SOAP {soap_id}")
+                return True
+            except Exception as ws_error:
+                logger.error(f"❌ Work Status generation failed for SOAP {soap_id}: {ws_error}", exc_info=True)
+                return False
+        
+        # Run both generations in parallel
+        pr1_result, ws_result = await asyncio.gather(
+            generate_pr1(),
+            generate_work_status(),
+            return_exceptions=False
+        )
+        
+        logger.info(f"✅ Parallel generation completed - PR1: {pr1_result}, Work Status: {ws_result}")
         
         logger.info(f"✅ Downstream workflows completed for SOAP {soap_id}")
         
