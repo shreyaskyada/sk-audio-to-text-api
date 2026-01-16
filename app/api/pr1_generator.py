@@ -4204,6 +4204,9 @@ def extract_work_status_format(
     
     # Extract Employee Information
     employee_name = header.get("patient_name") or ""
+    if not employee_name and soap_doc:
+        employee_name = (soap_doc.get("patient_info") or {}).get("name") or soap_doc.get("patient_name") or ""
+
     claim_number = header.get("claim_number") or ""
     date_of_injury = to_yyyy_mm_dd(header.get("date_of_injury"))
     if not date_of_injury and soap_doc:
@@ -4224,7 +4227,15 @@ def extract_work_status_format(
              
     date_of_injury = date_of_injury or ""
     
-    date_of_evaluation = to_yyyy_mm_dd(header.get("date_of_first_examination")) or ""
+    # Priority: SOAP Date of Service > PR1 First Exam Date
+    date_of_evaluation = ""
+    if soap_doc:
+        date_of_evaluation = to_yyyy_mm_dd(soap_doc.get("date_of_service") or soap_doc.get("date") or soap_doc.get("created_at"))
+    
+    if not date_of_evaluation:
+        date_of_evaluation = to_yyyy_mm_dd(header.get("date_of_first_examination")) or ""
+    
+    # Generate Body Parts Injured from SOAP/Diagnoses
     body_parts_injured = extract_body_parts_from_diagnoses(soap_doc, section_b)
     
     # Extract next follow-up appointment from SOAP or section C

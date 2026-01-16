@@ -231,6 +231,49 @@ async def process_work_status_generation(
                          emp_info["dateOfInjury"] = emp_info.get("dateOfEvaluation")
                          logger.info(f"WorkStatusForm Fix: Inferred DOI from 'Acute Injury' context -> {emp_info['dateOfInjury']}")
 
+            # 5. FIX: Body Parts Injured Aggressive Extraction
+            if not emp_info.get("bodyPartsInjured") or emp_info.get("bodyPartsInjured") == "N/A":
+                # Try simple regex extraction from raw text
+                body_part = extract_body_parts_fallback(full_raw_text)
+                if body_part:
+                    emp_info["bodyPartsInjured"] = body_part
+                    logger.info(f"WorkStatusForm Fix: Extracted Body Part from clean fallback: {body_part}")
+                else:
+                    # Try finding common body parts in text if fallback specific format fails
+                    common_parts = ["Lumbar Spine", "Lower Back", "Back", "Cervical Spine", "Neck", 
+                                   "Left Shoulder", "Right Shoulder", "Shoulder", "Left Knee", "Right Knee", "Knee",
+                                   "Left Wrist", "Right Wrist", "Wrist", "Left Ankle", "Right Ankle", "Ankle"]
+                    
+                    found_parts = []
+                    # Limit search range for efficiency
+                    search_scope = full_raw_text[:2000] if full_raw_text else ""
+                    
+                    for part in common_parts:
+                        # Simple case-insensitive check
+                        if re.search(r'\b' + re.escape(part) + r'\b', search_scope, re.IGNORECASE):
+                             # Special handling to avoid "No Back Pain"
+                             # Check negative assertion isn't immediately before
+                             if not re.search(r'(?:no|not|denies)\s+' + re.escape(part), search_scope, re.IGNORECASE):
+                                  found_parts.append(part)
+                    
+                    if found_parts:
+                        # De-duplicate generic vs specific (e.g. if "Lumbar Spine" and "Back" both found, prefer L-Spine)
+                        # Simple approach: If any specific found, ignore generic "Back"
+                        final_parts = list(set(found_parts)) # dedupe
+                        emp_info["bodyPartsInjured"] = ", ".join(final_parts)
+                        logger.info(f"WorkStatusForm Fix: Inferred Body Parts from keywords: {emp_info['bodyPartsInjured']}")
+
+            # 6. FIX: Employee Name Fallback
+            if not emp_info.get("employeeName"):
+                 # Try extract from raw text if SOAP structure failed
+                 name_match = re.search(r'(?:Patient Name|Patient|Name):\s*([A-Za-z\s\.]+)', full_raw_text[:1000], re.IGNORECASE)
+                 if name_match:
+                     extracted_name = name_match.group(1).strip()
+                     # Clean up
+                     if len(extracted_name) < 40 and "Date" not in extracted_name:
+                         emp_info["employeeName"] = extracted_name
+                         logger.info(f"WorkStatusForm Fix: Extracted Employee Name from raw text: {extracted_name}")
+
 
         # Save Completed
         logger.info(f"📝 Work Status extraction result type: {type(result)}")
