@@ -4148,7 +4148,34 @@ def extract_work_status_format(
     # Priority 1: From Section C (calculated or extracted)
     next_follow_up = to_yyyy_mm_dd(section_c.get("nextVisitDate"))
     
-    # Priority 2: From SOAP doc directly
+    # CRITICAL OVERRIDE for Work Status Form: Next Follow-Up should strictly be 4 weeks 
+    # regardless of SOAP duration (User Request: "only work status ma 4 week nu thay")
+    # We recalculate 4 weeks from the effective date found in section_c
+    try:
+        ref_start_date = (
+            section_c.get("returnToModifiedDutyDate") or 
+            section_c.get("returnToFullDutyDate") or 
+            section_c.get("unableToReturnStartDate")
+        )
+        if ref_start_date:
+            # Dates in Section C are typically MM/DD/YYYY from build_section_c
+            # Handle potential formats just in case
+            dt_ref = None
+            for fmt in ["%m/%d/%Y", "%Y-%m-%d"]:
+                 try:
+                     dt_ref = datetime.strptime(ref_start_date, fmt)
+                     break
+                 except: continue
+            
+            if dt_ref:
+                # Force 4 weeks exactly
+                forced_date = dt_ref + timedelta(weeks=4)
+                next_follow_up = forced_date.strftime("%Y-%m-%d")
+                logger.info(f"WorkStatus extraction: Forced nextFollowUpAppointment to 4 weeks: {next_follow_up}")
+    except Exception as e:
+        logger.warning(f"Error enforcing 4-week override for Work Status: {e}")
+
+    # Priority 2: From SOAP doc directly (Fallback if override failed and Section C empty)
     if not next_follow_up and soap_doc:
         next_visit = soap_doc.get("next_visit_date") or soap_doc.get("mmi_date")
         if not next_visit:
