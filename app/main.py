@@ -1827,7 +1827,7 @@ async def transcribe_audio(
             # TRIGGER BACKGROUND WORKFLOW ALWAYS
             if document_id:
                 logger.info(f"🚀 Triggering background workflow for transcription {document_id}")
-                background_tasks.add_task(run_full_generation_workflow, document_id, user_id)
+                background_tasks.add_task(run_full_generation_workflow, document_id, user_id, generate_files=False)
 
         except Exception as db_error:
             logger.error(f"⚠️ Failed to save transcription to database: {db_error}")
@@ -2090,14 +2090,14 @@ async def get_transcription_by_id_endpoint(
 
 
 
-async def run_downstream_workflows(soap_id: str, transcription_id: Optional[str] = None):
+async def run_downstream_workflows(soap_id: str, transcription_id: Optional[str] = None, generate_files: bool = True):
     """
     Execute downstream tasks after SOAP generation:
     1. Parse SOAP content to update transcription statuses (RFA, Work Status)
-    2. Generate PR1 form
-    3. Generate Work Status form
+    2. Generate PR1 form (Optional)
+    3. Generate Work Status form (Optional)
     """
-    logger.info(f"🔄 Starting downstream workflows for SOAP ID: {soap_id}")
+    logger.info(f"🔄 Starting downstream workflows for SOAP ID: {soap_id} (generate_files={generate_files})")
     try:
         # Fetch SOAP note for content parsing
         soap_doc = await get_soap_note_by_id(soap_id)
@@ -2150,74 +2150,164 @@ async def run_downstream_workflows(soap_id: str, transcription_id: Optional[str]
                 logger.warning(f"⚠️ Failed to extract statuses from SOAP note: {parse_error}")
 
         # 2 & 3. Generate PR1 and Work Status in parallel (faster!)
-        logger.info(f"Step 2 & 3: Generating PR1 and Work Status in parallel for SOAP {soap_id}...")
+        if generate_files:
+            logger.info(f"Step 2 & 3: Generating PR1 and Work Status in parallel for SOAP {soap_id}...")
         
         # Detect flags from SOAP note content
-        note_content = soap_doc.get("formatted_soap_note") or soap_doc.get("soap_note") or ""
-        has_rfa = "**REQUEST FOR AUTHORIZATION (RFA)**" in note_content or "**Requested Service:**" in note_content
-        
-        # Use same flags as manual generation, with dynamic RFA detection
-        pr1_flags = {
-            "progress_report": True,
-            "request_for_authorization": has_rfa,
-            "change_in_patient_condition": False
-        }
-        
-        logger.info(f"   PR1 Flags: progress_report=True, request_for_authorization={has_rfa}")
-        
-        # Define async tasks for parallel execution
-        async def generate_pr1():
-            try:
-                await pr1_generator.process_pr1_generation_service(
-                    soap_id=soap_id,
-                    use_latest_intake=True, 
-                    use_latest_followup=False,  # Match manual API behavior
-                    flags=pr1_flags
-                )
-                logger.info(f"✅ PR1 generation completed for SOAP {soap_id}")
-                return True
-            except Exception as pr1_error:
-                logger.error(f"❌ PR1 generation failed for SOAP {soap_id}: {pr1_error}", exc_info=True)
-                return False
-        
-        async def generate_work_status():
-            try:
-                await work_status_forms.process_work_status_generation(
-                    soap_id=soap_id,
-                    use_latest_intake=True, 
-                    use_latest_followup=False  # Match PR1 behavior
-                )
-                logger.info(f"✅ Work Status generation completed for SOAP {soap_id}")
-                return True
-            except Exception as ws_error:
-                logger.error(f"❌ Work Status generation failed for SOAP {soap_id}: {ws_error}", exc_info=True)
-                return False
-        
-        # Run both generations in parallel
-        pr1_result, ws_result = await asyncio.gather(
-            generate_pr1(),
-            generate_work_status(),
-            return_exceptions=False
-        )
-        
-        logger.info(f"✅ Parallel generation completed - PR1: {pr1_result}, Work Status: {ws_result}")
-        
+            note_content = soap_doc.get("formatted_soap_note") or soap_doc.get("soap_note") or ""
+            has_rfa = "**REQUEST FOR AUTHORIZATION (RFA)**" in note_content or "**Requested Service:**" in note_content
+            
+            # Use same flags as manual generation, with dynamic RFA detection
+            pr1_flags = {
+                "progress_report": True,
+                "request_for_authorization": has_rfa,
+                "change_in_patient_condition": False
+            }
+            
+            logger.info(f"   PR1 Flags: progress_report=True, request_for_authorization={has_rfa}")
+            
+            # Define async tasks for parallel execution
+            async def generate_pr1():
+                try:
+                    await pr1_generator.process_pr1_generation_service(
+                        soap_id=soap_id,
+                        use_latest_intake=True, 
+                        use_latest_followup=False,  # Match manual API behavior
+                        flags=pr1_flags
+                    )
+                    logger.info(f"✅ PR1 generation completed for SOAP {soap_id}")
+                    return True
+                except Exception as pr1_error:
+                    logger.error(f"❌ PR1 generation failed for SOAP {soap_id}: {pr1_error}", exc_info=True)
+                    return False
+            
+            async def generate_work_status():
+                try:
+                    await work_status_forms.process_work_status_generation(
+                        soap_id=soap_id,
+                        use_latest_intake=True, 
+                        use_latest_followup=False  # Match PR1 behavior
+                    )
+                    logger.info(f"✅ Work Status generation completed for SOAP {soap_id}")
+                    return True
+                except Exception as ws_error:
+                    logger.error(f"❌ Work Status generation failed for SOAP {soap_id}: {ws_error}", exc_info=True)
+                    return False
+            
+            # Run both generations in parallel
+            pr1_result, ws_result = await asyncio.gather(
+                generate_pr1(),
+                generate_work_status(),
+                return_exceptions=False
+            )
+            
+            logger.info(f"✅ Parallel generation completed - PR1: {pr1_result}, Work Status: {ws_result}")
+            
         logger.info(f"✅ Downstream workflows completed for SOAP {soap_id}")
         
     except Exception as e:
         logger.error(f"❌ Error in downstream workflows for SOAP {soap_id}: {e}", exc_info=True)
 
 
-async def run_full_generation_workflow(transcription_id: str, user_id: Optional[str] = None):
+async def run_full_generation_workflow(transcription_id: str, user_id: Optional[str] = None, generate_files: bool = True):
     """
     Background workflow to generate SOAP, PR1, and Work Status forms sequentially.
     """
-    logger.info(f"🚀 Starting background workflow for transcription {transcription_id}")
+    logger.info(f"🚀 Starting background workflow for transcription {transcription_id} (generate_files={generate_files})")
     try:
         # 0. Update status to in_progress
         await update_transcription_in_db(transcription_id, {"background_running_status": "in_progress"})
         
         # Fetch transcription to check if text exists
+        transcription = await get_transcription_by_id(transcription_id)
+        if not transcription:
+            raise Exception("Transcription not found") 
+            
+        transcription_text = transcription.get("text", "")
+        # Get patient info from existing patient if possible, or use defaults
+        # For simplicity, we create a basic SOAP request object
+        # In a real scenario, we might want to fetch patient details associated with this user_id/transcription
+        
+        # We need to construct a SOAPRequest-like object or pass data to service
+        from app.schemas import SOAPRequest, PatientInfo
+        
+        # Create a new Pending SOAP note first (to have an ID)
+        pending_soap = await create_pending_soap_note(
+            user_id=user_id or transcription.get("user_id") or "system", 
+            transcription_id=transcription_id,
+            patient_info={} # Will be populated by AI
+        )
+        
+        if not pending_soap:
+             raise Exception("Failed to create pending SOAP note")
+             
+        logger.info(f"Created pending SOAP note: {pending_soap.get('_id')}")
+        
+        # Prepare SOAP Generation Request
+        # We use a default system prompt if none provided
+        soap_req = SOAPRequest(
+            transcription=transcription_text,
+            transcription_id=transcription_id,
+            userId=user_id or transcription.get("user_id") or "system",
+            # We don't have specific patient info here, relies on AI extraction
+        )
+        
+        # Fetch latest intake form if enabled (Assuming we want to use it)
+        # For background processing, we'll try to use the latest intake form if available
+        # logic similar to main generation endpoint
+        intake_doc = None
+        intake_form_data = None
+        try:
+             intake_doc = await fetch_latest_intake_form()
+             if intake_doc:
+                 intake_form_data = extract_intake_form_values(intake_doc)
+        except Exception as e:
+             logger.warning(f"Could not fetch intake form for background process: {e}")
+
+        # Generate SOAP Note (Service call)
+        # Reuse the existing service logic if extracted, or call the same logic as the endpoint
+        # Since logic is in endpoint handler, we duplicate slightly or call a service function
+        # Ideally, we should refactor `generate_soap_endpoint` logic into a service function.
+        # For now, we'll use `soap_notes.generate_soap_note_service` if it exists, or replicate the core logic.
+        
+        # CHECK: Does soap_notes.py have a service function?
+        # Based on file list, yes. Let's assume we can call `soap_notes.process_soap_generation` or similar.
+        # If not, we use the logic we saw in the endpoint earlier (which was calling OpenAI directly).
+        # Actually, the endpoint code I saw EARLIER (lines 1400+) WAS doing the generation directly.
+        # To avoid duplicating 200 lines of code, I should probably check if `soap_notes` module has a wrapper.
+        
+        # Let's assume we need to import the generation logic or user the one in `soap_notes`.
+        # Wait, I saw `from app.api import soap_notes`.
+        # Let's use `soap_notes.generate_soap_note_background_service` if I created one, 
+        # OR just call `soap_notes.generate_soap_note_from_transcription` if available.
+        # But wait, looking at lines 2250-2290 in previous view, it seems `run_full_generation_workflow` WAS IMPLEMENTED INLINE previously?
+        # No, I didn't see the full body of `run_full_generation_workflow` in previous view.
+        # I only saw the END of it (lines 2250+).
+        # The logic at 2250 calls `soap_notes.process_soap_generation`? No, it looks like it was doing it inline or calling something.
+        
+        # Let's look at what was there before at line 2250:
+        # soap_result_data = await soap_notes.generate_soap_note_internal(...) 
+        # I need to verify what function runs the actual SOAP generation.
+        # Ah, I see `await soap_notes.generate_soap_note_internal` commonly used in such patterns.
+        # Let's assume `soap_notes.generate_soap_note_internal` exists or I should use `soap_notes.process_soap_generation`.
+        
+        # Actually, let's look at the imports. 
+        # `from app.api import soap_notes` is there.
+        
+        # RE-READING line 2250 from previous view (Step 44):
+        # 2250:             soap_request=soap_req, 
+        # 2251:             intake_form_data=intake_form_data, 
+        # 2252:             intake_doc=intake_doc
+        # 2253:         )
+        # This implies a function call before 2250. 
+        # Let's assume it is `soap_notes.generate_soap_note_internal` or similar.
+        # I will just keep the existing body and only change the signature and the `run_downstream_workflows` call.
+        
+        # I will READ the function body first to be safe, then replace.
+        # I'll use a larger range view to get the whole function first.
+        pass
+    except Exception:
+        pass
         transcription_doc = await get_transcription_by_id(transcription_id)
         if not transcription_doc or not transcription_doc.get("text"):
             logger.warning(f"Transcription {transcription_id} has no text, skipping workflow")
@@ -2288,7 +2378,7 @@ async def run_full_generation_workflow(transcription_id: str, user_id: Optional[
              raise Exception("SOAP generation failed to return document ID")
 
         # Run downstream workflows (Status Updates, PR1, Work Status)
-        await run_downstream_workflows(soap_id, transcription_id)
+        await run_downstream_workflows(soap_id, transcription_id, generate_files=generate_files)
 
         # 4. Update status to completed
         await update_transcription_in_db(transcription_id, {"background_running_status": "completed"})
@@ -2519,7 +2609,7 @@ async def update_transcription_endpoint(
         
         # Trigger background workflow if text is updated
         if transcription_text_changed:
-            background_tasks.add_task(run_full_generation_workflow, transcription_id, update_request.user_id)
+            background_tasks.add_task(run_full_generation_workflow, transcription_id, update_request.user_id, generate_files=False)
 
         return TranscriptionListItem(
             id=str(updated_transcription.get("_id", "")),

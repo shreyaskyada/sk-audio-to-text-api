@@ -24,10 +24,12 @@ async def get_all_appointments() -> List[Dict]:
         if db is None:
             return []
         
-        cursor = db[APPOINTMENTS_COLLECTION].find({"patient": {"$exists": True}})
+        cursor = db[APPOINTMENTS_COLLECTION].find({})
         appointments = []
         async for doc in cursor:
             doc['_id'] = str(doc['_id'])
+            if "patient" not in doc:
+                doc["patient"] = "Unknown Patient"
             appointments.append(doc)
         return appointments
     except Exception as e:
@@ -179,9 +181,10 @@ async def seed_mock_appointments():
             return
         
         # Cleanup invalid records (those missing patient names, created by previous buggy syncs)
-        deleted_invalid = await db[APPOINTMENTS_COLLECTION].delete_many({"patient": {"$exists": False}})
-        if deleted_invalid.deleted_count > 0:
-            logger.info(f"🗑️ Deleted {deleted_invalid.deleted_count} invalid appointment records")
+        # commented out to preserve records created via upsert
+        # deleted_invalid = await db[APPOINTMENTS_COLLECTION].delete_many({"patient": {"$exists": False}})
+        # if deleted_invalid.deleted_count > 0:
+        #     logger.info(f"🗑️ Deleted {deleted_invalid.deleted_count} invalid appointment records")
         
         mock_appointments = [
             {"appointment_id": "1", "patient": "John Martinez", "status": "scheduled", "time": "09:00 AM"},

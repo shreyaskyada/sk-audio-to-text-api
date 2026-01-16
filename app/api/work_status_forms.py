@@ -274,6 +274,35 @@ async def process_work_status_generation(
                          emp_info["employeeName"] = extracted_name
                          logger.info(f"WorkStatusForm Fix: Extracted Employee Name from raw text: {extracted_name}")
 
+            # 7. FIX: Date of Evaluation (DOE)
+            if not emp_info.get("dateOfEvaluation"):
+                # Try from SOAP metadata first
+                if soap_doc and soap_doc.get("date_of_service"):
+                     emp_info["dateOfEvaluation"] = soap_doc.get("date_of_service")
+                     logger.info(f"WorkStatusForm Fix: Populated DOE from SOAP metadata: {emp_info['dateOfEvaluation']}")
+                
+                # Try extraction from text if still missing
+                if not emp_info.get("dateOfEvaluation") and full_raw_text:
+                     # Look for "Date of Visit: ..." or "Date: ..." in the first 1000 chars
+                     visit_date_match = re.search(r'(?:Date of Visit|Date of Service|Visit Date|Date):\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', full_raw_text[:1000], re.IGNORECASE)
+                     if visit_date_match:
+                         raw_date = visit_date_match.group(1)
+                         try:
+                             parts = re.split(r'[/-]', raw_date)
+                             if len(parts) == 3:
+                                 p0, p1, year = parts[0], parts[1], parts[2]
+                                 if len(year) == 2: year = "20" + year
+                                 # Standardize to YYYY-MM-DD (Assume MM/DD/YYYY)
+                                 emp_info["dateOfEvaluation"] = f"{year}-{p0.zfill(2)}-{p1.zfill(2)}"
+                                 logger.info(f"WorkStatusForm Fix: Extracted DOE from text: {emp_info['dateOfEvaluation']}")
+                         except Exception as e:
+                             logger.warning(f"Failed to parse DOE from text: {e}")
+
+                # Final fallback to today's date if we just generated it
+                if not emp_info.get("dateOfEvaluation"):
+                    emp_info["dateOfEvaluation"] = datetime.utcnow().strftime("%Y-%m-%d")
+                    logger.info(f"WorkStatusForm Fix: Defaulted DOE to today: {emp_info['dateOfEvaluation']}")
+
 
         # Save Completed
         logger.info(f"📝 Work Status extraction result type: {type(result)}")
