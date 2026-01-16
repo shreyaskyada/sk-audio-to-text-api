@@ -94,9 +94,12 @@ async def process_work_status_generation(
     """
     Service function to extract work status data from SOAP note.
     """
+    print(f"\n{'='*80}\n🔄 WORK STATUS GENERATION CALLED FOR SOAP: {soap_id}\n{'='*80}\n", flush=True)
+    logger.info(f"🔄 Starting Work Status generation for SOAP ID: {soap_id}")
+    logger.info(f"   Parameters: use_latest_intake={use_latest_intake}, use_latest_followup={use_latest_followup}")
     try:
         db = get_database()
-        if db:
+        if db is not None:
             saved_form = await db['work_status_forms'].find_one({"soap_id": soap_id})
             if saved_form and saved_form.get("status") != "pending":
                 logger.info(f"✅ Found saved Work Status form for SOAP ID: {soap_id}")
@@ -229,9 +232,12 @@ async def process_work_status_generation(
                          logger.info(f"WorkStatusForm Fix: Inferred DOI from 'Acute Injury' context -> {emp_info['dateOfInjury']}")
 
 
-
         # Save Completed
-        if db and result and "work_status_data" in result:
+        logger.info(f"📝 Work Status extraction result type: {type(result)}")
+        logger.info(f"📝 Has work_status_data: {'work_status_data' in result if result else False}")
+        
+        if db is not None and result and "work_status_data" in result:
+             logger.info(f"💾 Saving Work Status form to database for SOAP {soap_id}")
              form_data = result["work_status_data"]
              form_data["soap_id"] = soap_id
              form_data["status"] = "completed"
@@ -242,6 +248,9 @@ async def process_work_status_generation(
                  {"$set": form_data},
                  upsert=True
              )
+             logger.info(f"✅ Work Status form saved successfully for SOAP {soap_id}")
+        else:
+             logger.warning(f"⚠️ Work Status form NOT saved - db={db is not None}, result={result is not None}, has_data={'work_status_data' in result if result else False}")
 
         return result
         
