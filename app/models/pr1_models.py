@@ -144,6 +144,8 @@ class SavedPR1Form(BaseModel):
     soap_id: str
     patient_name: str
     form_data: Dict[str, Any]
+    soap_data: Optional[Dict[str, Any]] = None  # SOAP data used for generation
+    metadata: Optional[Dict[str, Any]] = None   # Metadata about which sources were used
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

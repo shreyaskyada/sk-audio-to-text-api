@@ -50,3 +50,21 @@ async def reset_reports(appointment_id: str):
         raise HTTPException(status_code=500, detail="Failed to reset appointment reports")
     
     return {"message": "Appointment reports reset successfully"}
+
+@router.post("/sync")
+async def sync_appointments():
+    """
+    Manually trigger synchronization of appointments with transcriptions and SOAP notes.
+    This updates appointment statuses based on:
+    - Completed SOAP notes -> 'completed'
+    - Pending SOAP notes -> 'soap pending'
+    - Transcriptions without SOAP -> 'soap pending'
+    - No transcription -> 'scheduled'
+    """
+    try:
+        from app.api.appointment_storage import sync_appointments_with_transcriptions
+        await sync_appointments_with_transcriptions()
+        return {"message": "Appointments synchronized successfully"}
+    except Exception as e:
+        logger.error(f"Error syncing appointments: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to sync appointments: {str(e)}")

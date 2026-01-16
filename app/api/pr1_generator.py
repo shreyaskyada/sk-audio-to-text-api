@@ -734,10 +734,18 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
         formatted_soap = doc.get("formatted_soap_note")
         transcription_text = doc.get("transcription") or doc.get("corrected_transcription")
         
-        # First try to extract Plan section from formatted_soap_note
+        # PRIORITY 1: Try to parse RFA section directly from formatted SOAP note (most reliable)
         if formatted_soap and isinstance(formatted_soap, str):
+            logger.info("Attempting direct parsing of RFA section from formatted_soap_note...")
+            parsed_rfa = parse_rfa_section_from_formatted_soap(formatted_soap)
+            if parsed_rfa:
+                rfa_items = parsed_rfa
+                logger.info(f"✓ Found {len(rfa_items)} RFA items from direct RFA section parsing")
+        
+        # PRIORITY 2: Try GPT extraction from Plan section if direct parsing didn't work
+        if not rfa_items and formatted_soap and isinstance(formatted_soap, str):
             # Look for Plan section specifically
-            plan_match = re.search(r'## P – PLAN\s*\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
+            plan_match = re.search(r'## P – PLAN\\s*\\n(.*?)(?=---|$)', formatted_soap, re.IGNORECASE | re.DOTALL)
             if plan_match:
                 plan_group = plan_match.group(1)
                 plan_text = plan_group.strip() if plan_group else ""
@@ -756,7 +764,7 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                     rfa_items = extracted_rfa
                     logger.info(f"✓ Found {len(rfa_items)} RFA items from formatted_soap_note GPT extraction")
         
-        # Try transcription if still not found
+        # PRIORITY 3: Try transcription if still not found
         if not rfa_items and transcription_text and isinstance(transcription_text, str):
             logger.info("Attempting GPT extraction of RFA items from transcription...")
             extracted_rfa = extract_rfa_items_from_text(transcription_text)
@@ -2379,7 +2387,82 @@ def extract_cpt_codes_from_text(text: str) -> List[str]:
     return unique_codes
 
 
+def parse_rfa_section_from_formatted_soap(formatted_soap_note: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    Parse RFA section directly from formatted SOAP note text.
+    Extracts requested service, primary CPT, and all supportive CPTs from the RFA section.
+    
+    This function looks for the "REQUEST FOR AUTHORIZATION (RFA)" section and extracts:
+    - Requested Service description
+    - Primary CPT code
+    - All Supportive CPT codes (grouped by category)
+    
+    Returns a list of RFA items in the standard format.
+    """
+    if not formatted_soap_note or not isinstance(formatted_soap_note, str):
+        return None
+    
+    try:
+        # Look for RFA section in the formatted SOAP note
+        rfa_match = re.search(
+            r'\*\*REQUEST FOR AUTHORIZATION \(RFA\)\*\*(.*?)(?=\n\*\*[A-Z]|\Z)',
+            formatted_soap_note,
+            re.IGNORECASE | re.DOTALL
+        )
+        
+        if not rfa_match:
+            return None
+        
+        rfa_section = rfa_match.group(1)
+        logger.info(f"Found RFA section in formatted SOAP note ({len(rfa_section)} characters)")
+        
+        # Extract Requested Service
+        requested_service = ""
+        service_match = re.search(r'\*\*Requested Service:\*\*\s*\n\s*-\s*(.+?)(?=\n\n|\n\*\*|$)', rfa_section, re.DOTALL)
+        if service_match:
+            requested_service = service_match.group(1).strip()
+        
+        # Extract Primary CPT
+        primary_cpt = ""
+        primary_cpt_match = re.search(r'\*\*Primary CPT:\*\*\s*\n\s*(.+?)(?=\n\n|\n\*\*|$)', rfa_section, re.DOTALL)
+        if primary_cpt_match:
+            primary_cpt_text = primary_cpt_match.group(1).strip()
+            # Extract just the code (first 5-6 characters before the dash)
+            code_match = re.match(r'([A-Z]?\d{4,5})', primary_cpt_text)
+            if code_match:
+                primary_cpt = code_match.group(1)
+        
+        # Extract ALL CPT codes from the entire RFA section using regex
+        all_cpt_codes = extract_cpt_codes_from_text(rfa_section)
+        
+        # Remove primary CPT from supportive list
+        supportive_cpts = [code for code in all_cpt_codes if code != primary_cpt]
+        
+        logger.info(f"Parsed RFA section: Service='{requested_service[:50]}...', Primary CPT={primary_cpt}, Supportive CPTs={len(supportive_cpts)} codes")
+        
+        # Create a single RFA item with all the codes
+        if requested_service or primary_cpt:
+            rfa_item = {
+                "type": "treatment",
+                "serviceRequested": requested_service if requested_service else "Medical procedure",
+                "cpt": primary_cpt if primary_cpt else "",
+                "supportiveCpts": supportive_cpts,
+                "diagnosis": "",  # Will be filled from SOAP assessment
+                "diagnosisCode": "",  # Will be filled from SOAP assessment
+                "frequencyDuration": "1"
+            }
+            
+            return [rfa_item]
+        
+        return None
+        
+    except Exception as e:
+        logger.warning(f"Error parsing RFA section from formatted SOAP: {e}")
+        return None
+
+
 def extract_rfa_items_from_text(text: str) -> Optional[List[Dict[str, Any]]]:
+
     """Extract RFA items (treatment requests and drug requests) from transcription or SOAP text using GPT"""
     if not text or not str(text).strip():
         return None
@@ -5513,16 +5596,30 @@ async def process_pr1_generation_service(
         logger.info(f"   - Follow-up: {'Used (source: latest)' if follow_doc else 'Not used'}")
         logger.info(f"   - SOAP: Used (source: SOAP note ID: {soap_id})")
         
-        # Update PR1 status to completed
-        await db[COLL_SAVED_PR1].update_one(
-            {"soap_id": soap_id},
-            {"$set": {
-                "form_data": pr1, 
-                "status": "completed",
-                "updated_at": datetime.utcnow().isoformat()
-            }},
-            upsert=True
+        # Extract patient name for SavedPR1Form
+        patient_name = pick_name(intake_doc, soap_doc)
+        if not patient_name:
+            # Try to extract from patient_info in SOAP doc
+            patient_info = soap_doc.get("patient_info")
+            if patient_info and isinstance(patient_info, dict):
+                patient_name = patient_info.get("name") or patient_info.get("patientName")
+        if not patient_name:
+            # Try from pr1 data itself
+            patient_name = pr1.get("patientName") or pr1.get("patient_name")
+        patient_name = patient_name or "Unknown Patient"
+        
+        # Save PR1 form using the dedicated /pr1/save API endpoint
+        saved_pr1_payload = SavedPR1Form(
+            soap_id=soap_id,
+            patient_name=patient_name,
+            form_data=pr1,
+            soap_data=soap_data_dict,
+            metadata=response_data["metadata"]
         )
+        
+        # Call the save_pr1_form function to store the PR1
+        save_result = await save_pr1_form(saved_pr1_payload)
+        logger.info(f"✅ PR1 form saved via /pr1/save API: {save_result.get('message')}")
         
         return JSONResponse(response_data)
         
