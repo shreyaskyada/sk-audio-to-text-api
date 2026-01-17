@@ -3992,24 +3992,24 @@ def build_section_c(
             weeks_to_add = 4
             days_to_add = 0
             
-            # ATTEMPT DYNAMIC PARSING from extracted Duration
-            if restrictions_duration:
-                # Regex to find number + unit (weeks/days/months)
-                dur_match = re.search(r'(\d+)\s*(week|day|month)', restrictions_duration, re.IGNORECASE)
-                if dur_match:
-                    amount = int(dur_match.group(1))
-                    unit = dur_match.group(2).lower()
+            # ATTEMPT DYNAMIC PARSING from extracted Duration - COMMENTED OUT PER USER REQUEST (Force 4 weeks)
+            # if restrictions_duration:
+            #     # Regex to find number + unit (weeks/days/months)
+            #     dur_match = re.search(r'(\d+)\s*(week|day|month)', restrictions_duration, re.IGNORECASE)
+            #     if dur_match:
+            #         amount = int(dur_match.group(1))
+            #         unit = dur_match.group(2).lower()
                     
-                    if "week" in unit:
-                        weeks_to_add = amount
-                        logger.info(f"Dynamic Date: Found {amount} weeks duration")
-                    elif "day" in unit:
-                        weeks_to_add = 0
-                        days_to_add = amount
-                        logger.info(f"Dynamic Date: Found {amount} days duration")
-                    elif "month" in unit:
-                        weeks_to_add = amount * 4 # Approx
-                        logger.info(f"Dynamic Date: Found {amount} months duration")
+            #         if "week" in unit:
+            #             weeks_to_add = amount
+            #             logger.info(f"Dynamic Date: Found {amount} weeks duration")
+            #         elif "day" in unit:
+            #             weeks_to_add = 0
+            #             days_to_add = amount
+            #             logger.info(f"Dynamic Date: Found {amount} days duration")
+            #         elif "month" in unit:
+            #             weeks_to_add = amount * 4 # Approx
+            #             logger.info(f"Dynamic Date: Found {amount} months duration")
             
             # Calculate new date
             new_visit_date = ref_date + timedelta(weeks=weeks_to_add, days=days_to_add)
