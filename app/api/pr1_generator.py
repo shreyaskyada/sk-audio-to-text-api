@@ -1004,13 +1004,14 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
             )
             
             if service_requested:  # Only add if service requested exists
-                # Merge mentioned CPT codes into supportive CPTs (avoid duplicating primary CPT)
-                if mentioned_cpt_codes:
-                    for code in mentioned_cpt_codes:
-                        code_str = str(code).strip()
-                        if code_str and code_str != cpt.strip() and code_str not in supportive_cpts:
-                            supportive_cpts.append(code_str)
-                            # logger.info(f"Added mentioned CPT code {code_str} to supportive CPTs for '{service_requested}'")
+                # FIXED: Removed blind addition of mentioned CPT codes to every item to prevent duplication
+                # The mentioned codes will be checked and added as standalone items at the end
+                # if mentioned_cpt_codes:
+                #     for code in mentioned_cpt_codes:
+                #         code_str = str(code).strip()
+                #         if code_str and code_str != cpt.strip() and code_str not in supportive_cpts:
+                #             supportive_cpts.append(code_str)
+                #             # logger.info(f"Added mentioned CPT code {code_str} to supportive CPTs for '{service_requested}'")
                 
                 # CRITICAL: Extract CPT codes ONLY from transcription (not generate based on diagnosis codes)
                 # But only if we don't have enough supportive codes or want to be thorough
@@ -1113,7 +1114,82 @@ def build_section_a_rfa(soap_doc: Optional[Dict[str, Any]], intake_doc: Optional
                 drug_requests.extend(result_drug_requests)
         logger.info(f"✅ Parallel RFA processing complete. Total requests: {len(requests)}")
 
+    # CRITICAL FIX: Add mentioned CPT codes as standalone requests only ONCE
+    # instead of adding them to every RFA item (which caused massive duplication)
+    if mentioned_cpt_codes:
+        # Get set of existing CPTs to avoid duplicates
+        existing_cpts = set()
+        for req in requests:
+            if req.get("cpt"):
+                existing_cpts.add(str(req.get("cpt")).strip())
+        
+        # Add any mentioned CPT codes that aren't already in the requests
+        added_count = 0
+        for code in mentioned_cpt_codes:
+            code_str = str(code).strip()
+            if code_str and code_str not in existing_cpts:
+                # Create service name
+                service_name = cpt_descriptions.get(code_str, f"Supportive Service ({code_str})")
+                
+                new_req = {
+                    "type": "treatment",
+                    "diagnosis": "",  # Use default/empty if not linked to specific item
+                    "diagnosisCode": primary_code or "",
+                    "diagnosis_code": primary_code or "",
+                    "serviceRequested": service_name,
+                    "service_requested": service_name,
+                    "cpt": code_str,
+                    "frequencyDuration": "As needed",
+                    "frequency_duration": "As needed"
+                }
+                requests.append(new_req)
+                medical_treatment_requests.append(new_req)
+                existing_cpts.add(code_str)
+                added_count += 1
+        
+        if added_count > 0:
+            logger.info(f"Added {added_count} standalone mentioned CPT codes that were not in RFA items")
+
     
+    
+    # FINAL DEDUPLICATION: Ensure no CPT code appears more than once in the final list
+    # This catches duplicates that come from different RFA items asking for the same service (e.g. Crutches)
+    if requests:
+        unique_requests = []
+        seen_cpts = set()
+        
+        for req in requests:
+            cpt = str(req.get("cpt") or "").strip()
+            
+            # If it has a CPT code, check for duplicates
+            if cpt:
+                if cpt not in seen_cpts:
+                    seen_cpts.add(cpt)
+                    unique_requests.append(req)
+                else:
+                    # Optional: If this duplicate has a diagnosis but the stored one doesn't, we could swap?
+                    # For now, simple deduplication is safer to stabilize the output
+                    pass
+            else:
+                # If no CPT code (just text description), check service name to avoid duplicate text
+                svc = str(req.get("serviceRequested") or "").strip()
+                if svc:
+                    # Use a composite key for non-CPT items
+                    key = f"NO_CPT:{svc}"
+                    if key not in seen_cpts:
+                        seen_cpts.add(key)
+                        unique_requests.append(req)
+                else:
+                    # Fallback for empty items
+                    unique_requests.append(req)
+        
+        # Replace the original list with the deduplicated one
+        logger.info(f"Deduplicated RFA requests: {len(requests)} -> {len(unique_requests)}")
+        requests = unique_requests
+        
+        # Re-filter medical_treatment_requests to match the deduplicated list
+        medical_treatment_requests = [req for req in requests if req.get("type") == "treatment"]
+
     if requests:
         logger.info(f"RFA Section A: {len(requests)} requests extracted (from SOAP dictation)")
     
