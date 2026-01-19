@@ -692,7 +692,7 @@ def calc_checkboxes(
         "progress_report": f.get("progress_report", True),  # default True for routine visit
         "response_to_request_for_information": f.get("response_to_request_for_information", False),
         "expedited_request_for_authorization": f.get("expedited_request_for_authorization", False),
-        "change_in_work_status": f.get("change_in_work_status", False) or bool(fb.get("work_status_perception")),
+        "change_in_work_status": True, # Static True per User Request
         "change_in_patient_condition": f.get("change_in_patient_condition", False) or bool(s.get("discussion_assessment")),
         "change_in_treatment_plan": f.get("change_in_treatment_plan", False) or bool(s.get("change_in_treatment_plan")),
         "released_from_care": f.get("released_from_care", False) or bool(s.get("discharge_from_care")),
@@ -3964,7 +3964,7 @@ def build_section_c(
     patient_name = patient_name or ""  # Default to empty string if not found
     
     # Calculate medication during work hours
-    medication_during_work_hours = "Yes"  # Default
+    medication_during_work_hours = "No"  # Default
     # if meds_affect_alertness is True or str(meds_affect_alertness).lower() in ["true", "yes"]:
     #     medication_during_work_hours = "Yes"
     # elif meds_affect_alertness is False or str(meds_affect_alertness).lower() in ["false", "no"]:
@@ -3989,35 +3989,46 @@ def build_section_c(
             ref_date = datetime.strptime(ref_date_str, "%m/%d/%Y")
             
             # Default to 4 weeks
+            # Default to 4 weeks for Next Visit Date (Standard Protocol)
             weeks_to_add = 4
             days_to_add = 0
             
-            # ATTEMPT DYNAMIC PARSING from extracted Duration - COMMENTED OUT PER USER REQUEST (Force 4 weeks)
-            # if restrictions_duration:
-            #     # Regex to find number + unit (weeks/days/months)
-            #     dur_match = re.search(r'(\d+)\s*(week|day|month)', restrictions_duration, re.IGNORECASE)
-            #     if dur_match:
-            #         amount = int(dur_match.group(1))
-            #         unit = dur_match.group(2).lower()
+            # ATTEMPT DYNAMIC PARSING from extracted Duration - Populate TTD END DATE (Per User Request)
+            # User Rule: Next Visit Date should stay static 4 weeks, but TTD End Date should follow SOAP duration.
+            if unable_to_return_to_work and restrictions_duration:
+                # Regex to find number + unit (weeks/days/months)
+                dur_match = re.search(r'(\d+)\s*(week|day|month)', restrictions_duration, re.IGNORECASE)
+                if dur_match:
+                    amount = int(dur_match.group(1))
+                    unit = dur_match.group(2).lower()
                     
-            #         if "week" in unit:
-            #             weeks_to_add = amount
-            #             logger.info(f"Dynamic Date: Found {amount} weeks duration")
-            #         elif "day" in unit:
-            #             weeks_to_add = 0
-            #             days_to_add = amount
-            #             logger.info(f"Dynamic Date: Found {amount} days duration")
-            #         elif "month" in unit:
-            #             weeks_to_add = amount * 4 # Approx
-            #             logger.info(f"Dynamic Date: Found {amount} months duration")
+                    ttd_weeks = 0
+                    ttd_days = 0
+                    
+                    if "week" in unit:
+                        ttd_weeks = amount
+                    elif "day" in unit:
+                        ttd_days = amount
+                    elif "month" in unit:
+                        ttd_weeks = amount * 4 # Approx
+                        
+                    logger.info(f"Dynamic Date (TTD): Found {amount} {unit} duration in SOAP")
+                    
+                    # Apply to TTD End Date (unable_to_return_end_date)
+                    # ref_date is unable_to_return_start_date in this context (for TTD)
+                    if ref_date:
+                        ttd_end_date_obj = ref_date + timedelta(weeks=ttd_weeks, days=ttd_days)
+                        unable_to_return_end_date = ttd_end_date_obj.strftime("%m/%d/%Y")
+                        logger.info(f"Updated TTD End Date to {unable_to_return_end_date} based on SOAP duration")
             
-            # Calculate new date
+            # Calculate next_visit_date (Always 4 weeks from ref_date)
             new_visit_date = ref_date + timedelta(weeks=weeks_to_add, days=days_to_add)
             
             # Format back to MM/DD/YYYY
             next_visit_date = new_visit_date.strftime("%m/%d/%Y")
-            logger.info(f"Updated nextVisitDate to {next_visit_date} (Duration: {weeks_to_add}w {days_to_add}d from {ref_date_str})")
+            logger.info(f"Calculated nextVisitDate: {next_visit_date} (Static 4 weeks from {ref_date_str})")
         except Exception as e:
+            logger.warning(f"Could not calculate dates from {ref_date_str}: {e}")
             logger.warning(f"Could not calculate nextVisitDate from {ref_date_str}: {e}")
 
     # Strategy E: Imputation / Calculation Fallback
@@ -4087,6 +4098,13 @@ def build_section_c(
         "unableToReturnReason": unable_to_return_reason or "",
         "returnToWorkWithRestrictions": return_to_work_with_restrictions,
         "restrictions": restrictions_obj,
+
+        # Page 8 Checkboxes (Patient Status) - Auto-check if date is present
+        "nextVisitChecked": True if next_visit_date else False,
+        "mmiChecked": True if maximum_medical_improvement_date else False,
+        "dischargedChecked": True if discharged_from_care_date else False,
+        "returnToFullDutyChecked": True if return_full_duty_date else False,
+        "returnToModifiedDutyChecked": True if return_modified_duty_date else False,
         **restrictions_obj, # Unpack restrictions to root level for easier frontend access
         "restrictions_duration": restrictions_duration or "",
         "workRestrictionsDuration": restrictions_duration or "", # Match frontend casing
