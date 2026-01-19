@@ -692,7 +692,7 @@ def calc_checkboxes(
         "progress_report": f.get("progress_report", True),  # default True for routine visit
         "response_to_request_for_information": f.get("response_to_request_for_information", False),
         "expedited_request_for_authorization": f.get("expedited_request_for_authorization", False),
-        "change_in_work_status": f.get("change_in_work_status", False) or bool(fb.get("work_status_perception")),
+        "change_in_work_status": True, # Static True per User Request
         "change_in_patient_condition": f.get("change_in_patient_condition", False) or bool(s.get("discussion_assessment")),
         "change_in_treatment_plan": f.get("change_in_treatment_plan", False) or bool(s.get("change_in_treatment_plan")),
         "released_from_care": f.get("released_from_care", False) or bool(s.get("discharge_from_care")),
