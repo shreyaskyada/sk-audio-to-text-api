@@ -93,11 +93,7 @@ def generate_cpt_with_ai(procedure_description: str, openai_client=None) -> tupl
     
     if not openai_client:
         try:
-            # Try to import from main or pr1_generator
-            try:
-                from app.main import create_openai_client
-            except ImportError:
-                from app.api.pr1_generator import create_openai_client
+            from app.services.cpt_service import create_openai_client
             openai_client = create_openai_client()
         except Exception:
             return (None, [])
@@ -277,10 +273,7 @@ def validate_cpt_codes_relevance(cpt_codes: list, transcription: str, openai_cli
     
     if not openai_client:
         try:
-            try:
-                from app.main import create_openai_client
-            except ImportError:
-                from app.api.pr1_generator import create_openai_client
+            from app.services.cpt_service import create_openai_client
             openai_client = create_openai_client()
         except Exception:
             return cpt_codes  # Return as-is if can't validate
