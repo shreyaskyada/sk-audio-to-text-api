@@ -11,6 +11,7 @@ python-dotenv==1.0.0
 
 # HTTP Requests & API Clients
 requests==2.31.0
+httpx==0.25.2
 openai==1.54.0
 
 # Data Validation
