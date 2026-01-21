@@ -21,11 +21,17 @@ def create_openai_client():
     
     if http_proxy or https_proxy:
         logger.info(f"Using proxy configuration: {http_proxy or https_proxy}")
+        # Configure transport with proxy and local address binding
+        proxy_url = http_proxy or https_proxy
+        transport = httpx.HTTPTransport(
+            local_address="0.0.0.0",
+            proxy=proxy_url
+        )
+        
         return OpenAI(
             api_key=api_key,
             http_client=httpx.Client(
-                proxies=http_proxy or https_proxy or None,
-                transport=httpx.HTTPTransport(local_address="0.0.0.0")
+                transport=transport
             )
         )
     else:
