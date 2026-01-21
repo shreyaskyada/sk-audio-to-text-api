@@ -3,7 +3,7 @@ Medical Transcription & SOAP Note API
 Clean, modular FastAPI application with MongoDB feedback storage
 """
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -45,6 +45,7 @@ from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
 from app.api import appointments, feedback, soap_notes, intake_forms, followup_forms, pr1_generator, work_status_forms, pr2_forms, patient_signatures
+from app.websocket_manager import manager
 from app.api.appointment_storage import seed_mock_appointments, sync_appointments_with_transcriptions, get_all_completed_appointment_ids
 from app.api.soap_storage import (
     save_soap_note_to_db, 
@@ -1609,6 +1610,16 @@ async def health_check():
     }
 
 
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
+    await manager.connect(websocket, client_id)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, client_id)
+
+
 @app.post("/api/v1/auth/login", response_model=LoginResponse)
 async def login(request: LoginRequest):
     """Authenticate user and return JWT access token"""
@@ -2217,6 +2228,11 @@ async def run_full_generation_workflow(transcription_id: str, user_id: Optional[
     try:
         # 0. Update status to in_progress
         await update_transcription_in_db(transcription_id, {"background_running_status": "in_progress"})
+        await manager.broadcast({
+            "status": "processing", 
+            "step": "started", 
+            "message": "Transcription processed. Starting SOAP generation..."
+        }, transcription_id)
         
         # Fetch transcription to check if text exists
         transcription = await get_transcription_by_id(transcription_id)
@@ -2334,6 +2350,13 @@ async def run_full_generation_workflow(transcription_id: str, user_id: Optional[
         # Create Pending SOAP Note
         pending_soap = await create_pending_soap_note(transcription_id, user_id)
         logger.info(f"Step 1: Generated pending SOAP note ID: {pending_soap['_id']}")
+        
+        await manager.broadcast({
+            "status": "processing", 
+            "step": "soap_generation", 
+            "message": "Generating SOAP note with AI...",
+            "soap_id": pending_soap['_id']
+        }, transcription_id)
 
         # Call generation logic (returns dict, does NOT save to DB)
         soap_result_data = await generate_comprehensive_soap_note(
@@ -2350,6 +2373,13 @@ async def run_full_generation_workflow(transcription_id: str, user_id: Optional[
              
              soap_id = pending_soap['_id']
              logger.info(f"✅ Background SOAP note completed with ID: {soap_id}")
+             
+             await manager.broadcast({
+                "status": "processing", 
+                "step": "soap_complete", 
+                "message": "SOAP Note generated. Creating forms...",
+                "soap_id": soap_id
+             }, transcription_id)
              
              # Update the result with the ID for downstream use
              soap_result = soap_result_data
@@ -2383,10 +2413,22 @@ async def run_full_generation_workflow(transcription_id: str, user_id: Optional[
         # 4. Update status to completed
         await update_transcription_in_db(transcription_id, {"background_running_status": "completed"})
         logger.info(f"✅ Background workflow completed for {transcription_id}")
+        
+        await manager.broadcast({
+            "status": "completed", 
+            "step": "all_done", 
+            "message": "All processing completed.",
+            "soap_id": soap_id
+        }, transcription_id)
 
     except Exception as e:
         logger.error(f"❌ Background workflow failed for {transcription_id}: {e}", exc_info=True)
         await update_transcription_in_db(transcription_id, {"background_running_status": "failed"})
+        await manager.broadcast({
+            "status": "error", 
+            "step": "failed", 
+            "message": f"Processing failed: {str(e)}"
+        }, transcription_id)
 
 
 
