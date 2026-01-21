@@ -9,16 +9,7 @@ from bson import ObjectId
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-class PatientSignatureRequest(BaseModel):
-    soap_id: str
-    signature_data: str  # Base64 encoded signature image
-    patient_name: Optional[str] = None
-    form_type: Optional[str] = "PR1"  # "PR1" or "WorkStatus"
-
-class PatientSignatureResponse(BaseModel):
-    status: str
-    message: str
-    signature_id: str
+from app.models.patient_signature import PatientSignatureRequest, PatientSignatureResponse
 
 @router.post("/patient-signatures", response_model=PatientSignatureResponse)
 async def save_patient_signature(request: PatientSignatureRequest = Body(...)):

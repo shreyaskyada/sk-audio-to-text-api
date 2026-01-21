@@ -3,16 +3,16 @@ Appointments API endpoints
 """
 import logging
 from fastapi import APIRouter, HTTPException, Body
-from app.api.appointment_storage import get_appointment_stats, update_appointment_status, reset_appointment_reports
+from app.services.appointment_storage import get_appointment_stats, update_appointment_status, reset_appointment_reports
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.get("/")
+@router.get("")
 async def get_all():
     """Get all appointments"""
-    from app.api.appointment_storage import get_all_appointments
+    from app.services.appointment_storage import get_all_appointments
     return await get_all_appointments()
 
 @router.get("/stats")
@@ -23,7 +23,7 @@ async def get_stats():
 @router.get("/completed-ids")
 async def get_completed_ids():
     """Get all completed appointment IDs from DB"""
-    from app.api.appointment_storage import get_all_completed_appointment_ids
+    from app.services.appointment_storage import get_all_completed_appointment_ids
     return await get_all_completed_appointment_ids()
 
 @router.put("/{appointment_id}")
@@ -62,7 +62,7 @@ async def sync_appointments():
     - No transcription -> 'scheduled'
     """
     try:
-        from app.api.appointment_storage import sync_appointments_with_transcriptions
+        from app.services.appointment_storage import sync_appointments_with_transcriptions
         await sync_appointments_with_transcriptions()
         return {"message": "Appointments synchronized successfully"}
     except Exception as e:

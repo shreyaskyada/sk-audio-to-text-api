@@ -6,13 +6,14 @@ from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse
 from typing import Optional
 
-from app.api.soap_storage import (
+from app.services.soap_storage import (
     get_soap_note_by_id,
     get_all_soap_notes,
     get_soap_notes_stats,
     update_soap_note,
     delete_soap_note
 )
+from app.services.workflow import run_downstream_workflows
 
 logger = logging.getLogger(__name__)
 
@@ -159,90 +160,12 @@ async def update_stored_soap_note(
             )
             
         # Trigger downstream workflows (PR1 & Work Status)
-        # Import dynamically to avoid circular dependency if possible, or refactor later.
-        # Since we can't easily import from main.py due to circular deps, 
-        # and checking if we can move logic. 
-        # For now, we will assume we need to trigger it.
-        # But wait, without refactoring I can't call main.py's function.
-        # I will refrain from refactoring in this single turn if possible to keep it safe.
-        # I will inject the logic here directly.
+        logger.info(f"🔄 Triggering update workflows for SOAP {soap_note_id}...")
         
-        # Helper to run workflows
-        async def run_update_workflows():
-             from app.api import pr1_generator, work_status_forms
-             from app.api.transcription_storage import update_transcription_in_db
-             from app.api.soap_storage import get_soap_note_by_id
-             import re
-             
-             logger.info(f"🔄 Running update workflows for SOAP {soap_note_id}...")
-             
-             # 1. Fetch updated note
-             soap_doc = await get_soap_note_by_id(soap_note_id)
-             if not soap_doc: return
-             
-             note_content = soap_doc.get("formatted_soap_note") or soap_doc.get("soap_note") or ""
-             transcription_id = soap_doc.get("transcription_id")
-             
-             # 2. Update status flags in transcription
-             if transcription_id:
-                 status_updates = {}
-                 if "**REQUEST FOR AUTHORIZATION (RFA)**" in note_content or "**Requested Service:**" in note_content:
-                     status_updates["needs_rfa"] = True
-                     rfa_match = re.search(r'\*\*Requested Service:\*\*[\s\n]+(.*?)(?=\n\*\*|$)', note_content, re.IGNORECASE | re.DOTALL)
-                     if rfa_match:
-                         status_updates["rfa_name"] = rfa_match.group(1).strip().split('\n')[0][:100]
-                         
-                 if "**WORK STATUS**" in note_content:
-                     status_updates["needs_work_status"] = True
-                     ws_match = re.search(r'\*\*WORK STATUS\*\*[\s\n]+(.*?)(?=\n\*\*|$)', note_content, re.IGNORECASE | re.DOTALL)
-                     if ws_match:
-                         ws_val = ws_match.group(1).strip().split('\n')[0]
-                         status_updates["work_status"] = ws_val[:100]
-                         if "Total Disability" in ws_val or "TTD" in ws_val: status_updates["work_status_code"] = "TTD"
-                         elif "Modified" in ws_val: status_updates["work_status_code"] = "MODIFIED"
-                         elif "Full Duty" in ws_val: status_updates["work_status_code"] = "FULL"
-                         
-                 if status_updates:
-                     await update_transcription_in_db(transcription_id, status_updates)
-                     
-             # 3. Generate PR1 and Work Status (Always generate on update as per user request)
-             # Detect RFA for PR1 flag
-             has_rfa = "**REQUEST FOR AUTHORIZATION (RFA)**" in note_content or "**Requested Service:**" in note_content
-             pr1_flags = {
-                "progress_report": True,
-                "request_for_authorization": has_rfa,
-                "change_in_patient_condition": False
-             }
-             
-             logger.info(f"🚀 Triggering PR1 & Work Status generation for updated SOAP {soap_note_id}")
-             
-             try:
-                await pr1_generator.process_pr1_generation_service(
-                    soap_id=soap_note_id,
-                    use_latest_intake=True,
-                    use_latest_followup=False,
-                    flags=pr1_flags
-                )
-             except Exception as e:
-                 logger.error(f"Failed to generate PR1: {e}")
-                 
-             try:
-                await work_status_forms.process_work_status_generation(
-                    soap_id=soap_note_id,
-                    use_latest_intake=True,
-                    use_latest_followup=False
-                )
-             except Exception as e:
-                 logger.error(f"Failed to generate Work Status: {e}")
-
-        # Execute workflow
         if background_tasks:
-            background_tasks.add_task(run_update_workflows)
+            background_tasks.add_task(run_downstream_workflows, soap_id=soap_note_id, generate_files=True)
         else:
-            # Fallback if background_tasks not provided (shouldn't happen if updated correctly)
-            # But since endpoint is async, we can just await it or fire-and-forget?
-            # Better to await if we can't use background tasks
-            await run_update_workflows()
+            await run_downstream_workflows(soap_id=soap_note_id, generate_files=True)
 
         return JSONResponse({
             "message": "SOAP note updated successfully and pipelines triggered",

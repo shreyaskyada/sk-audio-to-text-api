@@ -9,15 +9,11 @@ from bson import ObjectId
 from typing import Any, Dict
 
 from app.models.followup_form import FollowUpForm
-from app.mongodb import get_database
+from app.services.followup_service import save_followup_form, fetch_latest_followup_form
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Configuration
-FOLLOWUP_FORMS_COLLECTION = 'followup_intake_forms'
-
 
 def serialize_mongodb_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -55,67 +51,18 @@ def serialize_mongodb_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
 async def create_followup_intake(payload: FollowUpForm):
     """
     Create a new follow-up intake form
-    
-    **Parameters:**
-    - payload: FollowUpForm object with all sections (A through D)
-    
-    **Returns:**
-    - status: Success status
-    - message: Success message
-    - document_id: MongoDB document ID of the saved follow-up form
-    
-    **Example Request:**
-    ```json
-    {
-        "section_a": {
-            "name": "John Doe",
-            "dob": "02/10/1985",
-            "case_or_claim_no": "WC-998877",
-            "visit_no_or_version": "Visit 4"
-        },
-        "section_b": {
-            "pain_better_since_last": true,
-            "pain_score_0_10": "3",
-            "pain_location": "Shoulder",
-            ...
-        },
-        "section_c": {
-            "bp": "120/78",
-            "pulse": "72",
-            ...
-        },
-        "section_d": {
-            "patient_signature": "John Doe",
-            "date": "02/10/2025",
-            "staff_clinician_name": "M. Rivera, PA-C"
-        }
-    }
-    ```
     """
     try:
-        # Get the database (using existing database connection)
-        db = get_database()
-        if db is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Database connection not available"
-            )
-        
-        collection = db[FOLLOWUP_FORMS_COLLECTION]
-        
-        # Convert Pydantic model to dict and add timestamp
+        # Convert Pydantic model to dict
         form_data = payload.model_dump()
-        form_data["created_at"] = datetime.utcnow()
         
-        # Insert into MongoDB
-        result = await collection.insert_one(form_data)
-        
-        logger.info(f"✅ Follow-up intake form saved with ID: {result.inserted_id}")
+        # Save using service
+        document_id = await save_followup_form(form_data)
         
         return JSONResponse({
             "status": "success",
             "message": "Follow-up intake form saved.",
-            "document_id": str(result.inserted_id)
+            "document_id": document_id
         })
         
     except HTTPException:
@@ -129,48 +76,12 @@ async def create_followup_intake(payload: FollowUpForm):
 
 
 @router.get("/follow-up/latest")
-async def get_latest_followup_form():
+async def get_latest_followup_form_endpoint():
     """
     Get the most recently created follow-up intake form
-    
-    **Returns:**
-    - Complete follow-up form document with all fields
-    - Includes document_id and created_at timestamp
-    - Returns 404 if no follow-up forms exist
-    
-    **Example Response:**
-    ```json
-    {
-        "_id": "507f1f77bcf86cd799439011",
-        "document_id": "507f1f77bcf86cd799439011",
-        "section_a": {
-            "name": "John Doe",
-            "dob": "02/10/1985",
-            "case_or_claim_no": "WC-998877",
-            "visit_no_or_version": "Visit 4"
-        },
-        "section_b": { ... },
-        "section_c": { ... },
-        "section_d": { ... },
-        "created_at": "2024-11-10T17:22:16.436963"
-    }
-    ```
     """
     try:
-        # Get the database (using existing database connection)
-        db = get_database()
-        if db is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Database connection not available"
-            )
-        
-        collection = db[FOLLOWUP_FORMS_COLLECTION]
-        
-        # Find the latest follow-up form (sorted by created_at descending, limit 1)
-        latest_form = await collection.find_one(
-            sort=[("created_at", -1)]
-        )
+        latest_form = await fetch_latest_followup_form()
         
         if latest_form is None:
             raise HTTPException(
@@ -178,13 +89,11 @@ async def get_latest_followup_form():
                 detail="No follow-up forms found"
             )
         
-        # Serialize MongoDB document (convert ObjectId and datetime to strings)
+        # Serialize MongoDB document
         serialized_form = serialize_mongodb_doc(latest_form)
         
         # Add document_id for convenience
         serialized_form["document_id"] = serialized_form.get("_id")
-        
-        logger.info(f"✅ Retrieved latest follow-up form with ID: {serialized_form.get('_id')}")
         
         return JSONResponse(serialized_form)
         
@@ -196,4 +105,5 @@ async def get_latest_followup_form():
             status_code=500,
             detail=f"Failed to retrieve latest follow-up form: {str(e)}"
         )
+
 
