@@ -3304,6 +3304,40 @@ app.include_router(appointments.router, prefix="/api/v1/appointments", tags=["ap
 
 
 # ============================================
+# DATABASE RESET ENDPOINT (FOR DEVELOPMENT/LOGIN)
+# ============================================
+
+@app.post("/api/v1/reset-database")
+async def reset_database_endpoint():
+    """
+    Reset database by clearing all collections.
+    This endpoint is called when a user logs in to clear all previous data.
+    """
+    try:
+        from app.mongodb import reset_database_on_login
+        
+        logger.info("🔄 Database reset requested...")
+        result = await reset_database_on_login()
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": "Database reset successfully",
+                "result": result
+            }
+        )
+    except Exception as e:
+        logger.error(f"❌ Database reset failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "message": "Database reset failed",
+                "error": str(e)
+            }
+        )
+
+
+# ============================================
 # STARTUP & SHUTDOWN EVENTS
 # ============================================
 

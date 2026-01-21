@@ -67,3 +67,63 @@ def get_database_by_name(db_name: str):
         return None
     return mongo_client[db_name]
 
+
+async def reset_database_on_login():
+    """
+    Clear all data from database when user logs in.
+    This deletes all documents from all collections.
+    """
+    try:
+        db = get_database()
+        if db is None:
+            logger.warning("Database connection not available for reset")
+            return {"status": "skipped", "message": "No database connection"}
+        
+        # List of collections to clear
+        collections_to_clear = [
+            'transcriptions',
+            'soap_notes',
+            'appointments',
+            'intake_forms',
+            'feedback',
+            'followup_forms',
+            'pr1_forms',
+            'pr2_forms',
+            'work_status_forms',
+            'patient_signatures',
+            'api_logs'
+        ]
+        
+        cleared_collections = []
+        total_deleted = 0
+        
+        for collection_name in collections_to_clear:
+            try:
+                collection = db[collection_name]
+                result = await collection.delete_many({})
+                deleted_count = result.deleted_count
+                total_deleted += deleted_count
+                if deleted_count > 0:
+                    cleared_collections.append({
+                        "collection": collection_name,
+                        "deleted_count": deleted_count
+                    })
+                    logger.info(f"🗑️ Cleared {deleted_count} documents from {collection_name}")
+            except Exception as e:
+                logger.error(f"❌ Error clearing {collection_name}: {e}")
+        
+        logger.info(f"✅ Database reset complete. Total {total_deleted} documents deleted from {len(cleared_collections)} collections")
+        
+        return {
+            "status": "success",
+            "total_deleted": total_deleted,
+            "cleared_collections": cleared_collections
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Database reset failed: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
