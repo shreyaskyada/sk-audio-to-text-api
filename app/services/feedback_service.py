@@ -1,0 +1,76 @@
+import logging
+from datetime import datetime
+from typing import Dict, List, Any
+from bson import ObjectId
+from app.database import get_database
+from app.schemas.feedback_schema import FeedbackRequest, ErrorCorrection
+
+logger = logging.getLogger(__name__)
+
+FEEDBACK_COLLECTION = 'feedback'
+
+class FeedbackService:
+    @staticmethod
+    async def add_feedback(feedback_data: FeedbackRequest) -> Dict:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+        
+        errors_list = []
+        for error in feedback_data.errors_found:
+            if isinstance(error, ErrorCorrection):
+                errors_list.append({"wrong": error.wrong, "correct": error.correct})
+            elif isinstance(error, dict):
+                errors_list.append(error)
+            else:
+                errors_list.append(str(error))
+        
+        feedback_doc = {
+            "rating": feedback_data.rating,
+            "rating_text": feedback_data.rating_text or (
+                f"{feedback_data.rating} stars" if feedback_data.rating > 0 else "No rating given"
+            ),
+            "feedback": feedback_data.feedback,
+            "transcription_id": feedback_data.transcription_id,
+            "transcription_preview": feedback_data.transcription_preview,
+            "errors_found": errors_list,
+            "total_errors": feedback_data.total_errors,
+            "feedback_type": feedback_data.feedback_type,
+            "timestamp": datetime.utcnow()
+        }
+        
+        result = await db[FEEDBACK_COLLECTION].insert_one(feedback_doc)
+        feedback_doc["id"] = str(result.inserted_id)
+        return feedback_doc
+
+    @staticmethod
+    async def get_stats() -> Dict:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+        
+        total = await db[FEEDBACK_COLLECTION].count_documents({})
+        if total == 0:
+            return {"total": 0, "average_rating": 0.0, "recent": []}
+        
+        pipeline = [
+            {"$match": {"rating": {"$gt": 0}}},
+            {"$group": {"_id": None, "avg_rating": {"$avg": "$rating"}}}
+        ]
+        
+        avg_result = await db[FEEDBACK_COLLECTION].aggregate(pipeline).to_list(1)
+        avg_rating = avg_result[0]["avg_rating"] if avg_result else 0.0
+        recent_docs = await db[FEEDBACK_COLLECTION].find().sort("timestamp", -1).limit(10).to_list(10)
+        
+        return {
+            "total": total,
+            "average_rating": round(avg_rating, 2),
+            "recent": recent_docs
+        }
+
+    @staticmethod
+    async def get_all() -> List[Dict]:
+        db = get_database()
+        if db is None:
+            raise Exception("Database not available")
+        return await db[FEEDBACK_COLLECTION].find().sort("timestamp", -1).to_list(None)

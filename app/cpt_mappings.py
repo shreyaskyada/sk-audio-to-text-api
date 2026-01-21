@@ -204,7 +204,7 @@ For Imaging: MRI/CT/X-ray CPTs
 Return the JSON object with ALL possible comprehensive codes."""
 
         response = openai_client.chat.completions.create(
-            model='gpt-5.1',  # Latest GPT-5.1 model
+            model='gpt-4o',  # Use GPT-4o model
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
