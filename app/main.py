@@ -3,7 +3,7 @@ Medical Transcription & SOAP Note API
 Clean, modular FastAPI application with MongoDB feedback storage
 """
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -45,7 +45,8 @@ from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
 from app.api import appointments, feedback, soap_notes, intake_forms, followup_forms, pr1_generator, work_status_forms, pr2_forms, patient_signatures
-from app.api.appointment_storage import seed_mock_appointments, sync_appointments_with_transcriptions, get_all_completed_appointment_ids
+from app.websocket_manager import manager
+from app.api.appointment_storage import seed_mock_appointments, sync_appointments_with_transcriptions, get_all_completed_appointment_ids, update_appointment_status
 from app.api.soap_storage import (
     save_soap_note_to_db, 
     get_all_soap_notes_by_transcription_id,
@@ -1629,6 +1630,20 @@ async def login(request: LoginRequest):
         )
 
 
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
+    await manager.connect(websocket, client_id)
+    try:
+        while True:
+            # Keep the connection open
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, client_id)
+    except Exception as e:
+        logger.error(f"WebSocket error for {client_id}: {e}")
+        manager.disconnect(websocket, client_id)
+
+
 @app.post("/api/v1/transcribe", response_model=TranscriptionResponse)
 async def transcribe_audio(
     background_tasks: BackgroundTasks,
@@ -1826,6 +1841,11 @@ async def transcribe_audio(
 
             # TRIGGER BACKGROUND WORKFLOW ALWAYS
             if document_id:
+                # Update appointment status to 'soap pending' in DB
+                if user_id:
+                    await update_appointment_status(str(user_id), "soap pending")
+                    logger.info(f"🔄 Updated appointment status to 'soap pending' for {user_id}")
+
                 logger.info(f"🚀 Triggering background workflow for transcription {document_id}")
                 background_tasks.add_task(run_full_generation_workflow, document_id, user_id, generate_files=False)
 
@@ -2217,6 +2237,11 @@ async def run_full_generation_workflow(transcription_id: str, user_id: Optional[
     try:
         # 0. Update status to in_progress
         await update_transcription_in_db(transcription_id, {"background_running_status": "in_progress"})
+        await manager.broadcast({
+            "status": "processing", 
+            "step": "started", 
+            "message": "Transcription processed. Starting SOAP generation..."
+        }, transcription_id)
         
         # Fetch transcription to check if text exists
         transcription = await get_transcription_by_id(transcription_id)
@@ -2224,18 +2249,15 @@ async def run_full_generation_workflow(transcription_id: str, user_id: Optional[
             raise Exception("Transcription not found") 
             
         transcription_text = transcription.get("text", "")
-        # Get patient info from existing patient if possible, or use defaults
-        # For simplicity, we create a basic SOAP request object
-        # In a real scenario, we might want to fetch patient details associated with this user_id/transcription
-        
-        # We need to construct a SOAPRequest-like object or pass data to service
-        from app.schemas import SOAPRequest, PatientInfo
+        if not transcription_text:
+             raise Exception("Transcription has no text")
+
+        from app.schemas import SOAPRequest
         
         # Create a new Pending SOAP note first (to have an ID)
         pending_soap = await create_pending_soap_note(
             user_id=user_id or transcription.get("user_id") or "system", 
-            transcription_id=transcription_id,
-            patient_info={} # Will be populated by AI
+            transcription_id=transcription_id
         )
         
         if not pending_soap:
@@ -2244,97 +2266,16 @@ async def run_full_generation_workflow(transcription_id: str, user_id: Optional[
         logger.info(f"Created pending SOAP note: {pending_soap.get('_id')}")
         
         # Prepare SOAP Generation Request
-        # We use a default system prompt if none provided
         soap_req = SOAPRequest(
             transcription=transcription_text,
             transcription_id=transcription_id,
             userId=user_id or transcription.get("user_id") or "system",
-            # We don't have specific patient info here, relies on AI extraction
         )
         
-        # Fetch latest intake form if enabled (Assuming we want to use it)
-        # For background processing, we'll try to use the latest intake form if available
-        # logic similar to main generation endpoint
-        intake_doc = None
-        intake_form_data = None
-        try:
-             intake_doc = await fetch_latest_intake_form()
-             if intake_doc:
-                 intake_form_data = extract_intake_form_values(intake_doc)
-        except Exception as e:
-             logger.warning(f"Could not fetch intake form for background process: {e}")
-
-        # Generate SOAP Note (Service call)
-        # Reuse the existing service logic if extracted, or call the same logic as the endpoint
-        # Since logic is in endpoint handler, we duplicate slightly or call a service function
-        # Ideally, we should refactor `generate_soap_endpoint` logic into a service function.
-        # For now, we'll use `soap_notes.generate_soap_note_service` if it exists, or replicate the core logic.
-        
-        # CHECK: Does soap_notes.py have a service function?
-        # Based on file list, yes. Let's assume we can call `soap_notes.process_soap_generation` or similar.
-        # If not, we use the logic we saw in the endpoint earlier (which was calling OpenAI directly).
-        # Actually, the endpoint code I saw EARLIER (lines 1400+) WAS doing the generation directly.
-        # To avoid duplicating 200 lines of code, I should probably check if `soap_notes` module has a wrapper.
-        
-        # Let's assume we need to import the generation logic or user the one in `soap_notes`.
-        # Wait, I saw `from app.api import soap_notes`.
-        # Let's use `soap_notes.generate_soap_note_background_service` if I created one, 
-        # OR just call `soap_notes.generate_soap_note_from_transcription` if available.
-        # But wait, looking at lines 2250-2290 in previous view, it seems `run_full_generation_workflow` WAS IMPLEMENTED INLINE previously?
-        # No, I didn't see the full body of `run_full_generation_workflow` in previous view.
-        # I only saw the END of it (lines 2250+).
-        # The logic at 2250 calls `soap_notes.process_soap_generation`? No, it looks like it was doing it inline or calling something.
-        
-        # Let's look at what was there before at line 2250:
-        # soap_result_data = await soap_notes.generate_soap_note_internal(...) 
-        # I need to verify what function runs the actual SOAP generation.
-        # Ah, I see `await soap_notes.generate_soap_note_internal` commonly used in such patterns.
-        # Let's assume `soap_notes.generate_soap_note_internal` exists or I should use `soap_notes.process_soap_generation`.
-        
-        # Actually, let's look at the imports. 
-        # `from app.api import soap_notes` is there.
-        
-        # RE-READING line 2250 from previous view (Step 44):
-        # 2250:             soap_request=soap_req, 
-        # 2251:             intake_form_data=intake_form_data, 
-        # 2252:             intake_doc=intake_doc
-        # 2253:         )
-        # This implies a function call before 2250. 
-        # Let's assume it is `soap_notes.generate_soap_note_internal` or similar.
-        # I will just keep the existing body and only change the signature and the `run_downstream_workflows` call.
-        
-        # I will READ the function body first to be safe, then replace.
-        # I'll use a larger range view to get the whole function first.
-        pass
-    except Exception:
-        pass
-        transcription_doc = await get_transcription_by_id(transcription_id)
-        if not transcription_doc or not transcription_doc.get("text"):
-            logger.warning(f"Transcription {transcription_id} has no text, skipping workflow")
-            await update_transcription_in_db(transcription_id, {"background_running_status": "failed"})
-            return
-
-        # 1. Generate SOAP
-        logger.info(f"Step 1: Generating SOAP note for {transcription_id}...")
-        
-        # Prepare SOAP Request
-        soap_req = SOAPRequest(
-            transcription_id=transcription_id,
-            transcription=transcription_doc.get("text"),  # Pass the text!
-            userId=user_id,
-            # Use defaults for other fields
-        )
-        
-        # Fetch intake data for logic
+        # Fetch latest intake form data
         intake_doc = await fetch_latest_intake_form()
         intake_form_data = format_intake_form_data_for_prompt(intake_doc) if intake_doc else None
         
-        # Call generation logic
-        
-        # Create Pending SOAP Note
-        pending_soap = await create_pending_soap_note(transcription_id, user_id)
-        logger.info(f"Step 1: Generated pending SOAP note ID: {pending_soap['_id']}")
-
         # Call generation logic (returns dict, does NOT save to DB)
         soap_result_data = await generate_comprehensive_soap_note(
             soap_request=soap_req, 
@@ -2345,48 +2286,49 @@ async def run_full_generation_workflow(transcription_id: str, user_id: Optional[
         # Manually Update Pending SOAP Note to Completed
         try:
              soap_result_data["status"] = "completed"
-             # Use update_soap_note imported from storage
-             await update_soap_note(pending_soap['_id'], soap_result_data)
+             await update_soap_note(str(pending_soap['_id']), soap_result_data)
              
-             soap_id = pending_soap['_id']
+             soap_id = str(pending_soap['_id'])
              logger.info(f"✅ Background SOAP note completed with ID: {soap_id}")
              
-             # Update the result with the ID for downstream use
-             soap_result = soap_result_data
-             soap_result["_id"] = soap_id
-             soap_result["document_id"] = soap_id
+             await manager.broadcast({
+                "status": "processing", 
+                "step": "soap_complete", 
+                "message": "SOAP Note generated. Creating forms...",
+                "soap_id": soap_id
+             }, transcription_id)
                  
         except Exception as db_error:
              logger.error(f"❌ Failed to save background SOAP note: {db_error}")
              raise Exception(f"Database save failed: {db_error}")
         
-        # Handle SOAP result
-        logger.info(f"SOAP Result Type: {type(soap_result)}")
-        # Check if soap_result is a Pydantic model or dict
-        if hasattr(soap_result, "document_id"):
-            soap_id = soap_result.document_id
-        elif isinstance(soap_result, dict):
-             soap_id = soap_result.get("document_id") or soap_result.get("_id")
-        else:
-             soap_id = None
-             
-        if soap_id:
-             soap_id = str(soap_id)
-        
-        if not soap_id:
-             logger.error("Failed to get SOAP ID from generation result")
-             raise Exception("SOAP generation failed to return document ID")
-
         # Run downstream workflows (Status Updates, PR1, Work Status)
         await run_downstream_workflows(soap_id, transcription_id, generate_files=generate_files)
 
         # 4. Update status to completed
         await update_transcription_in_db(transcription_id, {"background_running_status": "completed"})
-        logger.info(f"✅ Background workflow completed for {transcription_id}")
+        
+        # Update appointment status for the UI
+        target_user_id = user_id or transcription.get("user_id")
+        if target_user_id:
+            await update_appointment_status(str(target_user_id), "soap complete")
+            logger.info(f"✅ Updated appointment status to 'soap complete' for {target_user_id}")
+
+        await manager.broadcast({
+            "status": "completed", 
+            "step": "all_done", 
+            "message": "All processing completed.",
+            "soap_id": soap_id
+        }, transcription_id)
 
     except Exception as e:
         logger.error(f"❌ Background workflow failed for {transcription_id}: {e}", exc_info=True)
         await update_transcription_in_db(transcription_id, {"background_running_status": "failed"})
+        await manager.broadcast({
+            "status": "error", 
+            "step": "failed", 
+            "message": f"Processing failed: {str(e)}"
+        }, transcription_id)
 
 
 
@@ -2444,13 +2386,6 @@ async def update_transcription_endpoint(
         # Check if transcription text is being updated
         transcription_text_changed = "text" in update_data
         
-        # If text is updated, set status to Pending
-        if transcription_text_changed:
-            update_data["background_running_status"] = "Pending"
-
-        
-        # Get original transcription to compare text if needed
-        original_transcription = None
         if transcription_text_changed:
             original_transcription = await get_transcription_by_id(transcription_id)
             if original_transcription:
@@ -2458,6 +2393,23 @@ async def update_transcription_endpoint(
                 new_text = update_data.get("text", "")
                 # Only regenerate if text actually changed
                 transcription_text_changed = original_text != new_text
+                
+                if transcription_text_changed:
+                    update_data["background_running_status"] = "Pending"
+                    
+                    # Find user_id/appointment_id
+                    target_user_id = update_data.get("user_id") or original_transcription.get("user_id")
+                    if target_user_id:
+                        # 1. Update appointment status in DB to 'soap pending'
+                        await update_appointment_status(str(target_user_id), "soap pending")
+                        
+                        # 2. Broadcast immediate update so the button changes to Red "SOAP Pending"
+                        await manager.broadcast({
+                            "status": "processing",
+                            "step": "started",
+                            "message": "Transcription edited. Regenerating SOAP note..."
+                        }, transcription_id)
+                        logger.info(f"🔄 Immediate broadcast for transcription {transcription_id}")
         
         # Update transcription in database
         success = await update_transcription_in_db(transcription_id, update_data)
