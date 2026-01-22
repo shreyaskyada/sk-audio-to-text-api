@@ -44,8 +44,9 @@ from app.schemas import (
 from app.mongodb import connect_to_mongo, close_mongo_connection, get_database
 
 # Import API routers
-from app.api import appointments, feedback, soap_notes, intake_forms, followup_forms, pr1_generator, work_status_forms, pr2_forms, patient_signatures
+from app.api import appointments, feedback, soap_notes, intake_forms, followup_forms, pr1_generator, work_status_forms, pr2_forms, patient_signatures, reset
 from app.websocket_manager import manager
+
 from app.api.appointment_storage import seed_mock_appointments, sync_appointments_with_transcriptions, get_all_completed_appointment_ids, update_appointment_status
 from app.api.soap_storage import (
     save_soap_note_to_db, 
@@ -3254,10 +3255,18 @@ app.include_router(logs.router, prefix="/api/v1", tags=["logs"])
 # Include appointments router
 app.include_router(appointments.router, prefix="/api/v1/appointments", tags=["appointments"])
 
+# Include reset router
+app.include_router(reset.router, prefix="/api/v1", tags=["reset"])
+
+
+
+
+
 
 # ============================================
 # STARTUP & SHUTDOWN EVENTS
 # ============================================
+
 
 @app.on_event("startup")
 async def startup_event():
