@@ -170,25 +170,29 @@ async def generate_soap_comprehensive_endpoint(
         
         transcription_doc = None
         if soap_request.transcription_id:
-            existing_soap = await get_soap_note_by_transcription_id(soap_request.transcription_id)
-            if existing_soap:
-                logger.info(f"✅ Found existing SOAP note for transcription {soap_request.transcription_id}, returning cached version.")
-                
-                if isinstance(existing_soap.get("created_at"), datetime):
-                    existing_soap["created_at"] = existing_soap["created_at"].isoformat()
-                
-                existing_soap["transcription"] = existing_soap.get("transcription") or ""
-                existing_soap["corrected_transcription"] = existing_soap.get("corrected_transcription") or ""
-                existing_soap["subjective"] = existing_soap.get("subjective") or ""
-                existing_soap["objective"] = existing_soap.get("objective") or ""
-                existing_soap["assessment"] = existing_soap.get("assessment") or ""
-                existing_soap["plan"] = existing_soap.get("plan") or ""
-                existing_soap["formatted_soap_note"] = existing_soap.get("formatted_soap_note") or ""
-                
-                soap_response = SOAPResponse(**existing_soap)
-                soap_response.document_id = existing_soap.get("_id")
-                soap_response.status = existing_soap.get("status", "completed")
-                return soap_response
+            # Check for existing SOAP note only if force is False
+            if not soap_request.force:
+                existing_soap = await get_soap_note_by_transcription_id(soap_request.transcription_id)
+                if existing_soap:
+                    logger.info(f"✅ Found existing SOAP note for transcription {soap_request.transcription_id}, returning cached version.")
+                    
+                    if isinstance(existing_soap.get("created_at"), datetime):
+                        existing_soap["created_at"] = existing_soap["created_at"].isoformat()
+                    
+                    existing_soap["transcription"] = existing_soap.get("transcription") or ""
+                    existing_soap["corrected_transcription"] = existing_soap.get("corrected_transcription") or ""
+                    existing_soap["subjective"] = existing_soap.get("subjective") or ""
+                    existing_soap["objective"] = existing_soap.get("objective") or ""
+                    existing_soap["assessment"] = existing_soap.get("assessment") or ""
+                    existing_soap["plan"] = existing_soap.get("plan") or ""
+                    existing_soap["formatted_soap_note"] = existing_soap.get("formatted_soap_note") or ""
+                    
+                    soap_response = SOAPResponse(**existing_soap)
+                    soap_response.document_id = existing_soap.get("_id")
+                    soap_response.status = existing_soap.get("status", "completed")
+                    return soap_response
+            else:
+                logger.info(f"🔄 Force regeneration requested for transcription {soap_request.transcription_id}. Bypassing cache.")
 
             transcription_doc = await get_transcription_by_id(soap_request.transcription_id)
             if not transcription_doc:
@@ -332,6 +336,7 @@ async def generate_soap_comprehensive_endpoint(
 async def generate_soap_simple_endpoint(
     background_tasks: BackgroundTasks,
     transcription_id: Optional[str] = Form(None),
+    
     transcription: Optional[str] = Form(None),
     patient_name: Optional[str] = Form(None),
     patient_age: Optional[int] = Form(None),

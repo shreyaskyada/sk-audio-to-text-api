@@ -70,6 +70,7 @@ class SOAPRequest(BaseModel):
     objective: Optional[ObjectiveSection] = None
     assessment: Optional[List[AssessmentItem]] = []
     plan: Optional[PlanSection] = None
+    force: Optional[bool] = False
     
     @field_validator('model')
     @classmethod

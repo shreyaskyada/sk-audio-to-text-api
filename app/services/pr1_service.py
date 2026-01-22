@@ -4707,10 +4707,9 @@ async def build_pr1_payload(
     logger.info("✅ Parallel extraction complete")
     
     # Page 2 signature block
-    # Check if section_a has any requests (new format uses "requests" array)
-    has_requests = bool(section_a.get("requests") and len(section_a.get("requests", [])) > 0)
+    # include_section_a should match the header checkbox
     signature_block = {
-        "include_section_a": has_requests,
+        "include_section_a": checkboxes.get("request_for_authorization", True),
         "include_section_b": True,
         "include_section_c": True,
         "physician_signature": (soap_doc or {}).get("examiner"),
