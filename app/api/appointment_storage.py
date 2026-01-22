@@ -46,7 +46,7 @@ async def get_appointment_stats():
             return {"total": 0, "completed": 0, "upcoming": 0, "next_appointment": "None"}
         
         total = await db[APPOINTMENTS_COLLECTION].count_documents({"patient": {"$exists": True}})
-        completed = await db[APPOINTMENTS_COLLECTION].count_documents({"status": "completed"})
+        completed = await db[APPOINTMENTS_COLLECTION].count_documents({"status": "soap complete"})
         upcoming = await db[APPOINTMENTS_COLLECTION].count_documents({"status": "scheduled"})
         
         # Get next appointment
@@ -101,8 +101,8 @@ async def get_all_completed_appointment_ids() -> List[str]:
         if db is None:
             return []
         
-        # Get appointments where status is strictly 'completed'
-        cursor = db[APPOINTMENTS_COLLECTION].find({"status": "completed"})
+        # Get appointments where status is strictly 'soap complete'
+        cursor = db[APPOINTMENTS_COLLECTION].find({"status": "soap complete"})
         completed_ids = []
         async for doc in cursor:
             aid = doc.get("appointment_id")
@@ -143,11 +143,11 @@ async def sync_appointments_with_transcriptions():
         pending_soap_user_ids = await db[SOAP_NOTES_COLLECTION].distinct("userId", {"status": "pending"})
         pending_soap_ids = [str(uid) for uid in pending_soap_user_ids if uid]
         
-        # 1. Set 'completed' for those with COMPLETED SOAP notes
+        # 1. Set 'soap complete' for those with COMPLETED SOAP notes
         if soap_ids:
             await db[APPOINTMENTS_COLLECTION].update_many(
                 {"appointment_id": {"$in": soap_ids}},
-                {"$set": {"status": "completed", "updated_at": datetime.utcnow()}}
+                {"$set": {"status": "soap complete", "updated_at": datetime.utcnow()}}
             )
             
         # 2. Set 'soap pending' for those with PENDING SOAP notes OR transcriptions but NO completed SOAP
