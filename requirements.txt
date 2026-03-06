@@ -1,7 +1,7 @@
 # FastAPI Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-python-multipart==0.0.6
+python-multipart==0.0.7
 
 # Authentication
 PyJWT==2.8.0
@@ -10,7 +10,7 @@ PyJWT==2.8.0
 python-dotenv==1.0.0
 
 # HTTP Requests & API Clients
-requests==2.31.0
+requests==2.32.2
 openai==1.54.0
 
 # Data Validation
@@ -18,11 +18,14 @@ pydantic==2.5.0
 
 # MongoDB (for feedback storage)
 motor==3.3.2
-pymongo==4.6.1
+pymongo==4.6.3
 
 # PDF Processing
-pypdf==3.17.0
+pypdf==6.0.0
 
 # Optional: FFmpeg required for OPUS audio conversion
 # Install separately: brew install ffmpeg (macOS) or apt install ffmpeg (Ubuntu)
 
+urllib3>=1.26.19 # not directly required, pinned by Snyk to avoid a vulnerability
+zipp>=3.19.1 # not directly required, pinned by Snyk to avoid a vulnerability
+dnspython>=2.6.1 # not directly required, pinned by Snyk to avoid a vulnerability
